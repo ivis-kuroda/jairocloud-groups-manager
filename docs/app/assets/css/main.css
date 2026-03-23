@@ -6,11 +6,6 @@
   --font-mono: 'Source Code Pro', ui-monospace, monospace;
 }
 
-@layer base {
-  html {
-    scrollbar-gutter: stable;
-  }
-}
 @layer components {
   :not(h1, h2, h3, h4, h5, h6) > a code {
     @apply text-primary!;

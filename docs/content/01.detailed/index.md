@@ -28,3 +28,6 @@ headline: JAIRO Cloud Groups Manager
 - **Pydantic**： JSON および Python オブジェクト間の型安全なシリアライズ・デシリアライズを行う。
 - **Redis**： Celery のバックエンド、セッション管理、キャッシュストアとして利用する。
 - **amqp (RabbitMQ)**： Celery のメッセージブローカーとして使用する。
+
+すべての依存関係は、uv で管理され、`pyproject.toml` および `uv.lock` に記録される。
+あるいは、 [依存関係グラフ](https://github.com/RCOSDP/jairocloud-groups-manager/network/dependencies) から確認することもできる。

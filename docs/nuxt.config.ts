@@ -18,7 +18,7 @@ export default defineNuxtConfig({
             light: 'github-light',
             dark: 'github-dark',
           },
-          langs: ['python'],
+          langs: ['python', 'json'],
         },
       },
     },
