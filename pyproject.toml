@@ -37,7 +37,7 @@ dev = [
 [tool.taskipy.tasks]
 # refer to https://github.com/taskipy/taskipy?tab=readme-ov-file#usage
 "test" = "pytest"
-"test:cov" = "pytest --cov=server --cov-report=term --cov-report=html"
+"coverage" = "pytest --cov=server --cov-report=term --cov-report=html"
 "lint" = "uvx ruff check"
 "lint:fix" = "uvx ruff check --fix"
 "format" = "uvx ruff format"
