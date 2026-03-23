@@ -1,5 +1,6 @@
 import typing as t
 
+from unittest.mock import patch
 from uuid import uuid7
 
 import pytest
@@ -56,6 +57,20 @@ def test_get_upload_results_with_exception(app, mocker: MockerFixture):
         history_table.get_upload_results(history_id, attribute)
     result_fnc.assert_called_once()
     assert str(exc.value) == str(E.FAILED_GET_UPLOAD_HISTORY_RECORD % {"history_id": history_id})
+
+
+def test_get_upload_results_result_none(app, mocker: MockerFixture):
+    """Test get_upload_results: result is None, should log and raise RecordNotFound."""
+    history_id = uuid7()
+    attribute = "results"
+    mock_query = mocker.patch("server.db.db.session.query")
+    mock_filter = mock_query.return_value.filter.return_value
+    mock_filter.first.return_value = None
+    mock_logger = mocker.patch("flask.current_app.logger.error")
+    mocker.patch("server.services.history_table.E.FAILED_GET_FILE_RECORD", "FAILED_GET_FILE_RECORD")
+    with pytest.raises(RecordNotFound):
+        history_table.get_upload_results(history_id, attribute)
+    assert mock_logger.called
 
 
 @pytest.mark.parametrize(
@@ -188,6 +203,23 @@ def test_update_upload_status_no_file_id(app, mocker: MockerFixture):
     assert obj.status == status
 
 
+def test_update_upload_status_results_with_exception(app, mocker: MockerFixture):
+    history_id = uuid7()
+    status = "S"
+    new_results = {"summary": {}, "results": [], "missing_users": []}
+    file_id = uuid7()
+    mock_logger = mocker.patch("flask.current_app.logger.error")
+    mocker.patch(
+        "server.db.db.session.query",
+        return_value=mocker.MagicMock(filter=mocker.MagicMock(first=None)),
+        side_effect=SQLAlchemyError,
+    )
+    with pytest.raises(DatabaseError) as exc:
+        history_table.update_upload_status(history_id, status, new_results, file_id)
+    assert str(exc.value) == str(E.FAILED_UPDATE_HISTORY_RECORD_STATUS % {"history_id": history_id})
+    assert mock_logger.called
+
+
 def test_get_history_by_file_id(app, mocker: MockerFixture):
     file_id = uuid7()
     mock_query = mocker.MagicMock()
@@ -211,6 +243,22 @@ def test_get_history_by_file_id_not_found(app, mocker: MockerFixture):
     with pytest.raises(RecordNotFound) as exc:
         history_table.get_history_by_file_id(file_id)
     assert str(exc.value) == str(E.FAILED_GET_UPLOAD_HISTORY_RECORD_BY_FILE_ID % {"file_id": file_id})
+
+
+def test_get_history_by_file_id_with_exception(app, mocker: MockerFixture) -> None:
+    file_id = uuid7()
+    mock_logger = mocker.patch("flask.current_app.logger.error")
+    mock_query = mocker.MagicMock()
+    mock_filter_by = mocker.MagicMock()
+    mock_query.filter_by.return_value = mock_filter_by
+    mock_filter_by.one_or_none.side_effect = SQLAlchemyError
+    mocker.patch("server.db.db.session.query", return_value=mock_query)
+    with pytest.raises(DatabaseError) as exc:
+        history_table.get_history_by_file_id(file_id)
+    assert str(exc.value) == str(E.FAILED_GET_UPLOAD_HISTORY_RECORD_BY_FILE_ID % {"file_id": file_id})
+    assert mock_logger.called
+    assert mock_query.filter_by.called
+    assert mock_filter_by.one_or_none.called
 
 
 def test_get_file_by_id(app, mocker):
@@ -238,6 +286,20 @@ def test_get_file_by_id_not_found(app, mocker):
     assert str(exc.value) == str(E.FAILED_GET_FILE_RECORD % {"file_id": file_id})
 
 
+def test_get_file_by_id_with_exception(app, mocker: MockerFixture) -> None:
+    file_id = uuid7()
+    mock_logger = mocker.patch("flask.current_app.logger.error")
+    mock_query = mocker.MagicMock()
+    mock_filter_by = mocker.MagicMock()
+    mock_query.filter_by.return_value = mock_filter_by
+    mock_filter_by.one_or_none.side_effect = SQLAlchemyError
+    mocker.patch("server.db.db.session.query", return_value=mock_query)
+    with pytest.raises(DatabaseError) as exc:
+        history_table.get_file_by_id(file_id)
+    assert str(exc.value) == str(E.FAILED_GET_FILE_RECORD % {"file_id": file_id})
+    assert mock_logger.called
+
+
 def test_delete_file_by_id(app, mocker: MockerFixture):
     file_id = uuid7()
     mock_files = mocker.patch(
@@ -246,6 +308,22 @@ def test_delete_file_by_id(app, mocker: MockerFixture):
     )
     history_table.delete_file_by_id(file_id)
     mock_files.query.filter.assert_called_once()
+
+
+def test_delete_file_by_id_with_exception(app, mocker: MockerFixture) -> None:
+    file_id = uuid7()
+    mock_logger = mocker.patch("flask.current_app.logger.error")
+    mock_filter = mocker.MagicMock()
+    mock_filter.delete.side_effect = SQLAlchemyError
+    mock_query = mocker.MagicMock()
+    mock_query.filter.return_value = mock_filter
+
+    with patch("server.services.history_table.Files.query", new=mock_query), pytest.raises(DatabaseError) as exc:
+        history_table.delete_file_by_id(file_id)
+    assert str(exc.value) == str(E.FAILED_DELETE_FILE_RECORD % {"file_id": file_id})
+    assert mock_logger.called
+    assert mock_query.filter.called
+    assert mock_filter.delete.called
 
 
 def test_create_file(app, mocker: MockerFixture):
@@ -276,6 +354,21 @@ def test_create_file_without_id(app, mocker: MockerFixture):
     assert result.id == file_id
     assert result.file_path == file_path
     assert result.file_content == file_content
+
+
+def test_create_file_with_exception(app, mocker: MockerFixture) -> None:
+    file_path = "/var/tmp/test_file.csv"  # noqa: S108
+    file_content = {"repositories": [], "groups": [], "users": []}
+    file_id = uuid7()
+    mocker.patch("flask.current_app.logger.error")
+    mock_files = mocker.patch("server.services.history_table.Files", autospec=True)
+    instance = mock_files.return_value
+    instance.id = file_id
+    mocker.patch("server.db.db.session.add", side_effect=SQLAlchemyError)
+    with pytest.raises(DatabaseError) as exc:
+        history_table.create_file(file_path, file_content, file_id)
+    assert str(exc.value) == str(E.FAILED_CREATE_FILE_RECORD % {"file_path": file_path})
+    assert mock_files.called
 
 
 def test_create_download_history(app, mocker: MockerFixture):

@@ -10,6 +10,7 @@ from pydantic_core import ValidationError
 from pytest_mock import MockerFixture
 from requests import HTTPError, Response
 
+from server.config import config
 from server.entities.bulk_request import BulkOperation, BulkResponse
 from server.entities.group_detail import GroupDetail, Repository
 from server.entities.map_error import MapError
@@ -1981,9 +1982,18 @@ def test_delete_multiple_all_failure(app, gen_group_id, mocker: MockerFixture) -
     assert result == {f"/Groups/{gen_group_id('g1')}", f"/Groups/{gen_group_id('g2')}", f"/Groups/{gen_group_id('g3')}"}
 
 
+def test_delete_multiple_calls_sequentially_when_bulk_disabled(app, mocker):
+    group_ids = {"g1", "g2"}
+    mocker.patch("server.config.config.FEATURES.enable_bulk_operation", new=False)
+    mock_delete_seq = mocker.patch("server.services.groups.delete_multiple_sequentially", return_value={"g2"})
+    result = groups.delete_multiple(group_ids)
+    mock_delete_seq.assert_called_once_with(group_ids)
+    assert result == {"g2"}
+
+
 def test_delete_multiple_raises_resource_invalid_and_logs(app: Flask, gen_group_id, mocker: MockerFixture) -> None:
     """Test delete_multiple raises ResourceInvalid and logs when MapError is returned."""
-    mocker.patch("server.config.config.FEATURES.enable_bulk_operation", return_value=True)
+    mocker.patch.object(config.FEATURES, "enable_bulk_operation", return_value=True)
     group_ids: set[str] = {gen_group_id("g1"), gen_group_id("g2")}
     mocker.patch("server.services.groups.get_access_token", return_value="token")
     mocker.patch("server.services.groups.get_client_secret", return_value="secret")
@@ -2129,6 +2139,37 @@ def test_delete_multiple_raises_unexpected_exception_propagation(
     msg: str = "unexpected error"
     with pytest.raises(UnexpectedError, match=msg):
         groups.delete_multiple(group_ids)
+
+
+def test_delete_multiple_sequentially_bulk_enabled(app, mocker):
+    group_ids = {"g1", "g2"}
+    mocker.patch("server.config.config.FEATURES.enable_bulk_operation", return_value=True)
+    mock_delete_multiple = mocker.patch("server.services.groups.delete_multiple", return_value={"g2"})
+
+    result = groups.delete_multiple_sequentially(group_ids)
+    mock_delete_multiple.assert_called_once_with(group_ids)
+    assert result == {"g2"}
+
+
+def test_delete_multiple_sequentially_bulk_disabled_with_failures(app, mocker):
+    group_ids = {"g1", "g2"}
+    mocker.patch("server.config.config.FEATURES.enable_bulk_operation", new=False)
+    mocker.patch("server.services.groups.delete_by_id", side_effect=ResourceNotFound("not found"))
+
+    result = groups.delete_multiple_sequentially(group_ids)
+    assert result == {"g1", "g2"}
+
+
+def test_delete_multiple_sequentially_raises_oauth_or_credentials_error(app, mocker):
+
+    mocker.patch("server.services.groups.delete_by_id", side_effect=OAuthTokenError("oauth error"))
+    mocker.patch.object(config.FEATURES, "enable_bulk_operation", return_value=False)
+    mocker.patch("server.config.config.FEATURES.enable_bulk_operation", new=False)
+    mocker.patch("server.services.groups.get_access_token", return_value="token")
+    mocker.patch("server.services.groups.get_client_secret", return_value="secret")
+
+    with pytest.raises(OAuthTokenError):
+        groups.delete_multiple_sequentially({"g1"})
 
 
 def test_delete_by_id_success(gen_group_id, mocker: MockerFixture) -> None:

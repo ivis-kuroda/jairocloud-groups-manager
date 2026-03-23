@@ -657,7 +657,7 @@ INVALID_QUERY = LogMessage(
 
 FAILED_CREATE_FILE_RECORD = LogMessage(
     "E620",
-    "Failed to create file record for file (id: %(file_id)s) in database.",
+    "Failed to create file record for file (path: %(file_path)s) in database.",
 )
 
 INVALID_FILE_STRUCTURE = LogMessage(

@@ -1,6 +1,8 @@
 import typing as t
 
-from server.cli.token import issue, refresh
+from server.cli.token import check, issue, refresh, whoami
+from server.entities.user_detail import UserDetail
+from server.messages import E, I
 
 
 if t.TYPE_CHECKING:
@@ -28,3 +30,33 @@ def test_token_refresh_calls_refresh_access_token(app: Flask, mocker: MockerFixt
     refresh.main(args=[], standalone_mode=False)
 
     refresh_mock.assert_called_once()
+
+
+def test_token_check_invalid(app, mocker):
+    mocker.patch("server.cli.token.get_access_token", return_value="dummy_token")
+    mocker.patch("server.cli.token.check_token_validity", return_value=False)
+    logger_mock = mocker.patch("server.cli.token.current_app.logger.info")
+
+    check.main(args=[], standalone_mode=False)
+    logger_mock.assert_called_once_with(E.ACCESS_TOKEN_NOT_AVAILABLE)
+
+
+def test_token_check_valid(app, mocker):
+    mocker.patch("server.cli.token.get_access_token", return_value="dummy_token")
+    mocker.patch("server.cli.token.check_token_validity", return_value=True)
+    logger_mock = mocker.patch("server.cli.token.current_app.logger.info")
+
+    check.main(args=[], standalone_mode=False)
+    logger_mock.assert_called_once_with(I.ACCESS_TOKEN_AVAILABLE)
+
+
+def test_token_whoami_logs_owner_userdetail(app, mocker):
+    dummy_owner = UserDetail(id="dummy", user_name="dummy", emails=[], eppns=[])
+    mocker.patch("server.cli.token.get_token_owner", return_value=dummy_owner)
+    logger_mock = mocker.patch("server.cli.token.current_app.logger.info")
+
+    whoami.main(args=[], standalone_mode=False)
+    logger_mock.assert_called_once_with(
+        I.SUCCESS_GET_TOKEN_OWNER,
+        {"user": dummy_owner.model_dump_json(indent=2, ensure_ascii=False)},
+    )

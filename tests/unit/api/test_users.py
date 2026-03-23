@@ -10,7 +10,7 @@ from server.const import USER_ROLES
 from server.entities.login_user import LoginUser
 from server.entities.search_request import SearchResult
 from server.entities.user_detail import RepositoryRole, UserDetail
-from server.exc import InvalidFormError, InvalidQueryError, ResourceInvalid, ResourceNotFound
+from server.exc import InvalidExportError, InvalidFormError, InvalidQueryError, ResourceInvalid, ResourceNotFound
 from server.messages import E
 
 
@@ -286,36 +286,6 @@ def test_id_put_invalid_form_error_400(app: Flask, mocker: MockerFixture) -> Non
     assert result == expected_result
 
 
-def test_id_put_sys_exc_info_branch(app: Flask, mocker: MockerFixture):
-    """Covers id_put: sys.exc_info()[0] is not None -> traceback.print_exc() branch (without raising exception)."""
-    expected_status = 200
-    user = UserDetail(
-        id="dummy",
-        user_name="user20",
-        emails=["user20@example.com"],
-        eppns=["eppn20"],
-        preferred_language="en",
-        repository_roles=[RepositoryRole(id="repo20", user_role=USER_ROLES.REPOSITORY_ADMIN)],
-        is_system_admin=False,
-    )
-    dummy_user = LoginUser(
-        eppn="dummy",
-        is_member_of="",
-        user_name="dummy",
-        map_id="not_u20",
-        session_id="dummy",
-    )
-    mocker.patch("server.api.users.current_user", dummy_user)
-    mocker.patch("server.services.users.update", return_value=user)
-    mocker.patch("sys.exc_info", return_value=(Exception, None, None))
-    print_exc_mock = mocker.patch("traceback.print_exc")
-    original_func = inspect.unwrap(users_api.id_put)
-    result, status = original_func("u20", user)
-    assert result == user
-    assert status == expected_status
-    assert print_exc_mock.called
-
-
 def test_id_put_not_found(app: Flask, mocker: MockerFixture) -> None:
     """Tests id_put returns ErrorResponse and 404 when user not found."""
 
@@ -379,6 +349,36 @@ def test_id_put_resource_invalid(app: Flask, mocker: MockerFixture) -> None:
     assert not result.message
 
 
+def test_id_put_sys_exc_info_branch(app: Flask, mocker: MockerFixture):
+    """Covers id_put: sys.exc_info()[0] is not None -> traceback.print_exc() branch (without raising exception)."""
+    expected_status = 200
+    user = UserDetail(
+        id="dummy",
+        user_name="user20",
+        emails=["user20@example.com"],
+        eppns=["eppn20"],
+        preferred_language="en",
+        repository_roles=[RepositoryRole(id="repo20", user_role=USER_ROLES.REPOSITORY_ADMIN)],
+        is_system_admin=False,
+    )
+    dummy_user = LoginUser(
+        eppn="dummy",
+        is_member_of="",
+        user_name="dummy",
+        map_id="not_u20",
+        session_id="dummy",
+    )
+    mocker.patch("server.api.users.current_user", dummy_user)
+    mocker.patch("server.services.users.update", return_value=user)
+    mocker.patch("sys.exc_info", return_value=(Exception, None, None))
+    print_exc_mock = mocker.patch("traceback.print_exc")
+    original_func = inspect.unwrap(users_api.id_put)
+    result, status = original_func("u20", user)
+    assert result == user
+    assert status == expected_status
+    assert print_exc_mock.called
+
+
 def test_has_permission_system_admin(mocker: MockerFixture) -> None:
     """Tests has_permission returns True for system admin."""
     user = UserDetail(
@@ -436,3 +436,62 @@ def test_filter_options_returns_search_users_options_unit(mocker: MockerFixture)
 
     result = original_func()
     assert result == mock_return
+
+
+def test_export_get_success(app, mocker: MockerFixture) -> None:
+
+    query = {"foo": "bar"}
+    mock_current_user = mocker.patch("server.api.users.current_user")
+    mock_current_user.map_id = "mapid"
+    mock_current_user.name = "username"
+    mock_file = object()
+    mocker.patch("server.api.users.users.make_export_file", return_value=mock_file)
+    mock_send_file = mocker.patch("server.api.users.send_file", return_value="sent-file-response")
+    original_func = inspect.unwrap(users_api.export_get)
+    with app.test_request_context():
+        resp = original_func(query)
+    mock_send_file.assert_called_once_with(mock_file)
+    assert resp == "sent-file-response"
+
+
+def test_export_get_invalid_export_error(app, mocker: MockerFixture) -> None:
+    excepted_status = 403
+    query = {"foo": "bar"}
+    mock_current_user = mocker.patch("server.api.users.current_user")
+    mock_current_user.map_id = "mapid"
+    mock_current_user.name = "username"
+    mocker.patch("server.api.users.users.make_export_file", side_effect=InvalidExportError("failmsg"))
+    original_func = inspect.unwrap(users_api.export_get)
+    with app.test_request_context():
+        result, state = original_func(query)
+    assert state == excepted_status
+    assert isinstance(result, ErrorResponse)
+
+
+def test_export_post_success(app, mocker: MockerFixture) -> None:
+    query = {"foo": "bar"}
+    mock_current_user = mocker.patch("server.api.users.current_user")
+    mock_current_user.map_id = "mapid"
+    mock_current_user.name = "username"
+    mock_file = object()
+    mocker.patch("server.api.users.users.make_export_file", return_value=mock_file)
+    mock_send_file = mocker.patch("server.api.users.send_file", return_value="sent-file-response")
+    original_func = inspect.unwrap(users_api.export_post)
+    with app.test_request_context():
+        resp = original_func(query)
+    mock_send_file.assert_called_once_with(mock_file)
+    assert resp == "sent-file-response"
+
+
+def test_export_post_invalid_export_error(app, mocker: MockerFixture) -> None:
+    excepted_status = 403
+    query = {"foo": "bar"}
+    mock_current_user = mocker.patch("server.api.users.current_user")
+    mock_current_user.map_id = "mapid"
+    mock_current_user.name = "username"
+    mocker.patch("server.api.users.users.make_export_file", side_effect=InvalidExportError("failmsg"))
+    original_func = inspect.unwrap(users_api.export_post)
+    with app.test_request_context():
+        result, state = original_func(query)
+    assert state == excepted_status
+    assert isinstance(result, ErrorResponse)

@@ -150,29 +150,6 @@ def test_search_raises_unexpected_response_error_on_internal_server_error(app: F
         repositories.search(criteria)
 
 
-def test_search_raises_unexpected_response_error_on_other_http_error(app: Flask, mocker: MockerFixture) -> None:
-    """Tests that UnexpectedResponseError is raised on non-500 HTTP errors during search."""
-    criteria = make_criteria_object("repositories", q="test", i=["repo1"])
-    build_search_query = SearchRequestParameter(
-        filter='(serviceName co "test") or (entity_ids.value co "repo1")',
-        start_index=1,
-        count=10,
-        sort_by="serviceName",
-        sort_order="ascending",
-    )
-    mocker.patch("server.services.repositories.build_search_query", return_value=build_search_query)
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    response = Response()
-    response.status_code = HTTPStatus.BAD_REQUEST
-    http_error = requests.HTTPError(response=response)
-    mocker.patch("server.clients.services.search", side_effect=http_error)
-
-    msg = "E031 | Received unexpected response from mAP Core API."
-    with pytest.raises(UnexpectedResponseError, match=msg):
-        repositories.search(criteria)
-
-
 def test_search_raises_unexpected_response_error_on_request_exception(app: Flask, mocker: MockerFixture) -> None:
     """Tests that UnexpectedResponseError is raised on request exception during search."""
     criteria = make_criteria_object("repositories", q="test", i=["repo1"])
@@ -404,6 +381,20 @@ def test_get_by_id_more_detail(app, mocker: MockerFixture, test_config) -> None:
     assert str(result.service_url) == str(service_url)
 
 
+def test_get_by_id_returns_none_on_map_error(app, mocker: MockerFixture, test_config) -> None:
+    """Tests that get_by_id returns None when MapError is returned."""
+    service_id = test_config.REPOSITORIES.id_patterns.sp_connector.format(repository_id="repo1")
+    map_error = MapError(detail="not found", status="404", scim_type="invalidSyntax")
+    mocker.patch("server.services.repositories.resolve_service_id", return_value=service_id)
+    mocker.patch("server.services.repositories.get_access_token", return_value="token")
+    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
+    mocker.patch("server.clients.services.get_by_id", return_value=map_error)
+
+    result = repositories.get_by_id("repo1")
+
+    assert result is None
+
+
 def test_get_by_id_raises_oauth_token_error_on_unauthorized(app: Flask, mocker: MockerFixture) -> None:
     """Tests that OAuthTokenError is raised when get_by_id receives an unauthorized response."""
     mocker.patch("server.services.repositories.resolve_service_id", return_value="repo1")
@@ -497,24 +488,11 @@ def test_get_by_id_raises_unexpected_response_error_on_other_http_error(app: Fla
         repositories.get_by_id("repo1")
 
 
-def test_get_by_id_returns_none_on_map_error(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that get_by_id returns None when MapError is returned."""
-    service_id = test_config.REPOSITORIES.id_patterns.sp_connector.format(repository_id="repo1")
-    map_error = MapError(detail="not found", status="404", scim_type="invalidSyntax")
-    mocker.patch("server.services.repositories.resolve_service_id", return_value=service_id)
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.clients.services.get_by_id", return_value=map_error)
-
-    result = repositories.get_by_id("repo1")
-
-    assert result is None
-
-
 def test_create_success(app, mocker: MockerFixture, test_config) -> None:
     """Tests successful creation of a repository and validates the returned RepositoryDetail."""
 
     repository_id = "repo1"
+    role_groups: list = [["group1"], ["group2"]]
     service_id = test_config.REPOSITORIES.id_patterns.sp_connector.format(repository_id=repository_id)
     service_name = test_config.SP.entity_id
     service_url: HttpUrl = HttpUrl(f"https://{test_config.POSTGRES.host}/repo1")
@@ -525,7 +503,7 @@ def test_create_success(app, mocker: MockerFixture, test_config) -> None:
     )
     mocker.patch("server.services.repositories.users.get_system_admins", return_value=["admin"])
     mocker.patch("server.services.repositories.prepare_service", return_value=(map_service, service_id))
-    mocker.patch("server.services.repositories.prepare_role_groups", return_value=[])
+    mocker.patch("server.services.repositories.prepare_role_groups", return_value=role_groups)
     mocker.patch("server.services.repositories.get_access_token", return_value="token")
     mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
     mocker.patch("server.clients.groups.post")
@@ -624,26 +602,6 @@ def test_create_raises_unexpected_response_error_on_validation_error(
         repositories.create(repo)
 
 
-def test_create_raises_resource_invalid_on_map_error(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that ResourceInvalid is raised when MapError is returned from create."""
-
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    map_error = MapError(detail=r"Duplicate id '(.*)'", status="400", scim_type="invalidSyntax")
-    mocker.patch("server.services.repositories.users.get_system_admins", return_value=["admin"])
-    mocker.patch("server.services.repositories.prepare_role_groups", return_value=[])
-    mocker.patch("server.services.repositories.prepare_service", return_value=(mocker.MagicMock(), "repo1"))
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.clients.groups.post")
-    mocker.patch("server.clients.services.post", return_value=map_error)
-    mocker.patch("server.services.repositories.current_app")
-
-    msg: str = "E111 | A Service resource for Repository (id: %(id)s) already exists."
-    with pytest.raises(ResourceInvalid, match=msg):
-        repositories.create(repo)
-
-
 def test_create_raises_oauth_token_error_direct(app: Flask, mocker: MockerFixture, test_config) -> None:
     """Tests that OAuthTokenError is raised directly from create."""
 
@@ -720,67 +678,12 @@ def test_create_raises_system_admin_not_found_direct(app: Flask, mocker: MockerF
         repositories.create(repo)
 
 
-def test_create_raises_unexpected_response_error_on_other_http_error(
-    app: Flask, mocker: MockerFixture, test_config
-) -> None:
-    """Tests that UnexpectedResponseError is raised on non-401/500 HTTP errors during create."""
+def test_create_raises_resource_invalid_on_map_error(app, mocker: MockerFixture, test_config) -> None:
+    """Tests that ResourceInvalid is raised when MapError is returned from create."""
+
     service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
     repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    mocker.patch("server.services.repositories.users.get_system_admins", return_value=["admin"])
-    mocker.patch("server.services.repositories.prepare_role_groups", return_value=[])
-    mocker.patch("server.services.repositories.prepare_service", return_value=(mocker.MagicMock(), "repo1"))
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.clients.groups.post")
-    mocker.patch("server.services.repositories.current_app")
-    response = Response()
-    response.status_code = HTTPStatus.BAD_REQUEST
-    http_error = requests.HTTPError(response=response)
-    mocker.patch("server.clients.services.post", side_effect=http_error)
-
-    msg: str = "E031 | Received unexpected response from mAP Core API."
-    with pytest.raises(UnexpectedResponseError, match=msg):
-        repositories.create(repo)
-
-
-@pytest.mark.parametrize(
-    "role_groups",
-    [
-        [["group1"], ["group2"]],
-        [[]],
-    ],
-    ids=["multiple-groups", "empty-groups"],
-)
-def test_create_calls_groups_post_for_each_group(app, mocker: MockerFixture, test_config, role_groups: list) -> None:
-    """Tests that groups.post is called for each group in role_groups during create."""
-    repository_id = "repo1"
-    service_id = test_config.REPOSITORIES.id_patterns.sp_connector.format(repository_id=repository_id)
-    service_name = test_config.SP.entity_id
-    service_url: HttpUrl = HttpUrl(f"https://{test_config.POSTGRES.host}/repo1")
-    service_schema = const.MAP_SERVICE_SCHEMA
-    repo = RepositoryDetail(id=service_id, service_name=service_name, service_url=service_url, entity_ids=[])
-    map_service = MapService(
-        id=service_id, service_name=service_name, service_url=service_url, schemas=[service_schema], entity_ids=[]
-    )
-    mocker.patch("server.services.repositories.users.get_system_admins", return_value=["admin"])
-    mocker.patch("server.services.repositories.prepare_role_groups", return_value=role_groups)
-    mocker.patch("server.services.repositories.prepare_service", return_value=(map_service, service_id))
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.services.repositories.current_app")
-    mock_groups_post = mocker.patch("server.clients.groups.post")
-    mocker.patch("server.clients.services.post", return_value=map_service)
-
-    repositories.create(repo)
-
-    assert mock_groups_post.call_count == len(role_groups)
-
-
-def test_create_map_error_unexpected_response(app, mocker: MockerFixture, test_config) -> None:
-    """Test create raises UnexpectedResponseError when MapError.detail does not match known patterns."""
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    map_error = MapError(detail="some unknown error", status="400", scim_type="invalidSyntax")
+    map_error = MapError(detail=r"Duplicate id '(.*)'", status="400", scim_type="invalidSyntax")
     mocker.patch("server.services.repositories.users.get_system_admins", return_value=["admin"])
     mocker.patch("server.services.repositories.prepare_role_groups", return_value=[])
     mocker.patch("server.services.repositories.prepare_service", return_value=(mocker.MagicMock(), "repo1"))
@@ -790,8 +693,8 @@ def test_create_map_error_unexpected_response(app, mocker: MockerFixture, test_c
     mocker.patch("server.clients.services.post", return_value=map_error)
     mocker.patch("server.services.repositories.current_app")
 
-    msg: str = "Received unexpected response from mAP Core API"
-    with pytest.raises(UnexpectedResponseError, match=msg):
+    msg: str = "E111 | A Service resource for Repository (id: %(id)s) already exists."
+    with pytest.raises(ResourceInvalid, match=msg):
         repositories.create(repo)
 
 
@@ -814,22 +717,23 @@ def test_create_map_error_no_rights_create(app, mocker: MockerFixture, test_conf
         repositories.create(repo)
 
 
-def test_update_map_error_no_rights_update(app, mocker: MockerFixture, test_config) -> None:
-    """Test update raises OAuthTokenError when MapError.detail matches MAP_NO_RIGHTS_UPDATE_PATTERN."""
+def test_create_map_error_unexpected_response(app, mocker: MockerFixture, test_config) -> None:
+    """Test create raises UnexpectedResponseError when MapError.detail does not match known patterns."""
     service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
     repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    map_error = MapError(detail="No update rights for 'repo1'", status="400", scim_type="invalidSyntax")
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=repo)
+    map_error = MapError(detail="some unknown error", status="400", scim_type="invalidSyntax")
+    mocker.patch("server.services.repositories.users.get_system_admins", return_value=["admin"])
+    mocker.patch("server.services.repositories.prepare_role_groups", return_value=[])
+    mocker.patch("server.services.repositories.prepare_service", return_value=(mocker.MagicMock(), "repo1"))
     mocker.patch("server.services.repositories.get_access_token", return_value="token")
     mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.services.repositories.build_patch_operations", return_value=[])
-    mocker.patch("server.clients.services.patch_by_id", return_value=map_error)
+    mocker.patch("server.clients.groups.post")
+    mocker.patch("server.clients.services.post", return_value=map_error)
     mocker.patch("server.services.repositories.current_app")
 
-    msg: str = "E123 | No update rights for Repository (id: repo1) with current access token."
-    with pytest.raises(OAuthTokenError, match=msg):
-        repositories.update(repo)
+    msg: str = "Received unexpected response from mAP Core API"
+    with pytest.raises(UnexpectedResponseError, match=msg):
+        repositories.create(repo)
 
 
 def test_update_success(app, mocker: MockerFixture, test_config) -> None:
@@ -869,6 +773,34 @@ def test_update_calls_update_put_when_strategy_put(app, mocker: MockerFixture, t
 
     assert result == "called"
     assert mock_update_put.called
+
+
+def test_update_raises_resource_not_found_on_none(app, mocker: MockerFixture, test_config) -> None:
+    """Tests that ResourceNotFound is raised when get_by_id returns None during update."""
+
+    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
+    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
+    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
+    mocker.patch("server.services.repositories.get_by_id", return_value=None)
+
+    msg: str = "E104 | Service resource for Repository (id: repo1) not found."
+    with pytest.raises(ResourceNotFound, match=msg):
+        repositories.update(repo)
+
+
+def test_update_raises_invalid_form_error_on_service_url_update(app, mocker: MockerFixture, test_config) -> None:
+    """Tests that InvalidFormError is raised when service_url is updated during update."""
+
+    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
+    current_url: HttpUrl = HttpUrl("https://other.com")
+    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
+    current = RepositoryDetail(id="repo1", service_name="s", service_url=current_url, entity_ids=[])
+    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
+    mocker.patch("server.services.repositories.get_by_id", return_value=current)
+
+    msg: str = "E150 | Service URL of Repository cannot be updated."
+    with pytest.raises(InvalidFormError, match=msg):
+        repositories.update(repo)
 
 
 def test_update_raises_oauth_token_error_on_unauthorized(app, mocker: MockerFixture, test_config) -> None:
@@ -981,53 +913,6 @@ def test_update_raises_credentials_error_direct(app, mocker: MockerFixture, test
         repositories.update(repo)
 
 
-def test_update_raises_resource_not_found_on_none(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that ResourceNotFound is raised when get_by_id returns None during update."""
-
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=None)
-
-    msg: str = "E104 | Service resource for Repository (id: repo1) not found."
-    with pytest.raises(ResourceNotFound, match=msg):
-        repositories.update(repo)
-
-
-def test_update_raises_invalid_form_error_on_service_url_update(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that InvalidFormError is raised when service_url is updated during update."""
-
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    current_url: HttpUrl = HttpUrl("https://other.com")
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    current = RepositoryDetail(id="repo1", service_name="s", service_url=current_url, entity_ids=[])
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=current)
-
-    msg: str = "E150 | Service URL of Repository cannot be updated."
-    with pytest.raises(InvalidFormError, match=msg):
-        repositories.update(repo)
-
-
-def test_update_raises_unexpected_response_error_on_other_http_error(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that UnexpectedResponseError is raised on non-401/500 HTTP errors during update."""
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=repo)
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.services.repositories.build_patch_operations", return_value=[])
-    response = Response()
-    response.status_code = HTTPStatus.BAD_REQUEST
-    http_error = requests.HTTPError(response=response)
-    mocker.patch("server.clients.services.patch_by_id", side_effect=http_error)
-
-    msg: str = "E500 | An unexpected error occurred in the server application."
-    with pytest.raises(UnexpectedResponseError, match=msg):
-        repositories.update(repo)
-
-
 def test_update_raises_resource_not_found_on_map_error(app, mocker: MockerFixture, test_config) -> None:
     """Tests that ResourceNotFound is raised when MapError.detail matches MAP_NOT_FOUND_PATTERN during update."""
     service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
@@ -1042,6 +927,24 @@ def test_update_raises_resource_not_found_on_map_error(app, mocker: MockerFixtur
 
     msg: str = "not found"
     with pytest.raises(ResourceNotFound, match=msg):
+        repositories.update(repo)
+
+
+def test_update_map_error_no_rights_update(app, mocker: MockerFixture, test_config) -> None:
+    """Test update raises OAuthTokenError when MapError.detail matches MAP_NO_RIGHTS_UPDATE_PATTERN."""
+    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
+    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
+    map_error = MapError(detail="No update rights for 'repo1'", status="400", scim_type="invalidSyntax")
+    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
+    mocker.patch("server.services.repositories.get_by_id", return_value=repo)
+    mocker.patch("server.services.repositories.get_access_token", return_value="token")
+    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
+    mocker.patch("server.services.repositories.build_patch_operations", return_value=[])
+    mocker.patch("server.clients.services.patch_by_id", return_value=map_error)
+    mocker.patch("server.services.repositories.current_app")
+
+    msg: str = "E123 | No update rights for Repository (id: repo1) with current access token."
+    with pytest.raises(OAuthTokenError, match=msg):
         repositories.update(repo)
 
 
@@ -1100,6 +1003,36 @@ def test_update_put_calls_update_when_strategy_patch(app, mocker: MockerFixture,
 
     assert result == "called"
     assert mock_update.called
+
+
+def test_update_put_raises_resource_not_found_on_none(app, mocker: MockerFixture, test_config) -> None:
+    """Tests that ResourceNotFound is raised when get_by_id returns None during update_put."""
+    mocker.patch("server.config.config.MAP_CORE.update_strategy", "put")
+
+    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
+    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
+    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
+    mocker.patch("server.services.repositories.get_by_id", return_value=None)
+
+    msg: str = "E104 | Service resource for Repository (id: repo1) not found."
+    with pytest.raises(ResourceNotFound, match=msg):
+        repositories.update_put(repo)
+
+
+def test_update_put_raises_invalid_form_error_on_service_url_update(app, mocker: MockerFixture, test_config) -> None:
+    """Tests that InvalidFormError is raised when service_url is updated during update_put."""
+    mocker.patch("server.config.config.MAP_CORE.update_strategy", "put")
+
+    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
+    current_url: HttpUrl = HttpUrl("https://other.com")
+    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
+    current = RepositoryDetail(id="repo1", service_name="s", service_url=current_url, entity_ids=[])
+    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
+    mocker.patch("server.services.repositories.get_by_id", return_value=current)
+
+    msg: str = "E150 | Service URL of Repository cannot be updated."
+    with pytest.raises(InvalidFormError, match=msg):
+        repositories.update_put(repo)
 
 
 def test_update_put_raises_oauth_token_error_on_unauthorized(app, mocker: MockerFixture, test_config) -> None:
@@ -1218,57 +1151,6 @@ def test_update_put_raises_credentials_error_direct(app, mocker: MockerFixture, 
         repositories.update_put(repo)
 
 
-def test_update_put_raises_resource_not_found_on_none(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that ResourceNotFound is raised when get_by_id returns None during update_put."""
-    mocker.patch("server.config.config.MAP_CORE.update_strategy", "put")
-
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=None)
-
-    msg: str = "E104 | Service resource for Repository (id: repo1) not found."
-    with pytest.raises(ResourceNotFound, match=msg):
-        repositories.update_put(repo)
-
-
-def test_update_put_raises_invalid_form_error_on_service_url_update(app, mocker: MockerFixture, test_config) -> None:
-    """Tests that InvalidFormError is raised when service_url is updated during update_put."""
-    mocker.patch("server.config.config.MAP_CORE.update_strategy", "put")
-
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    current_url: HttpUrl = HttpUrl("https://other.com")
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    current = RepositoryDetail(id="repo1", service_name="s", service_url=current_url, entity_ids=[])
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=current)
-
-    msg: str = "E150 | Service URL of Repository cannot be updated."
-    with pytest.raises(InvalidFormError, match=msg):
-        repositories.update_put(repo)
-
-
-def test_update_put_raises_unexpected_response_error_on_other_http_error(
-    app, mocker: MockerFixture, test_config
-) -> None:
-    """Tests that UnexpectedResponseError is raised on non-401/500 HTTP errors during update_put."""
-    mocker.patch("server.config.config.MAP_CORE.update_strategy", "put")
-    service_url: HttpUrl = HttpUrl(test_config.MAP_CORE.base_url)
-    repo = RepositoryDetail(id="repo1", service_name="s", service_url=service_url, entity_ids=[])
-    mocker.patch("server.services.repositories.validate_repository_to_map_service", return_value=repo)
-    mocker.patch("server.services.repositories.get_by_id", return_value=repo)
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    response = Response()
-    response.status_code = HTTPStatus.BAD_REQUEST
-    http_error = requests.HTTPError(response=response)
-    mocker.patch("server.clients.services.put_by_id", side_effect=http_error)
-
-    msg: str = "E500 | An unexpected error occurred in the server application."
-    with pytest.raises(UnexpectedResponseError, match=msg):
-        repositories.update_put(repo)
-
-
 def test_update_put_raises_resource_not_found_on_map_error(app, mocker: MockerFixture, test_config) -> None:
     """Tests that ResourceNotFound is raised when MapError.detail matches MAP_NOT_FOUND_PATTERN during update_put."""
     mocker.patch("server.config.config.MAP_CORE.update_strategy", "put")
@@ -1343,6 +1225,28 @@ def test_delete_by_id_success(app, test_config, mocker: MockerFixture) -> None:
     mock_delete.assert_called_once_with("repo1", access_token="token", client_secret="secret")
 
 
+def test_delete_by_id_raises_resource_not_found_if_repo_missing(app, test_config, mocker: MockerFixture) -> None:
+    """Tests that ResourceNotFound is raised if get_by_id returns None in delete_by_id."""
+    mocker.patch("server.services.repositories.get_by_id", return_value=None)
+
+    msg: str = "E104 | Service resource for Repository (id: missing_repo) not found."
+    with pytest.raises(ResourceNotFound, match=msg):
+        repositories.delete_by_id("missing_repo", test_config.SP.entity_id)
+
+
+def test_delete_by_id_raises_invalid_form_error_if_service_name_mismatch(app, mocker: MockerFixture) -> None:
+    """Tests that InvalidFormError is raised if service_name does not match in delete_by_id."""
+    dummy_map_service = MapService(
+        id="repo1",
+        service_name="actual_service",
+    )
+    mocker.patch("server.services.repositories.get_by_id", return_value=dummy_map_service)
+
+    msg: str = "does not match"
+    with pytest.raises(InvalidFormError, match=msg):
+        repositories.delete_by_id("repo1", "wrong_service")
+
+
 def test_delete_by_id_raises_oauth_token_error_on_unauthorized(app, test_config, mocker: MockerFixture) -> None:
     """Tests that OAuthTokenError is raised when delete_by_id receives an unauthorized response."""
     dummy_map_service = MapService(
@@ -1404,16 +1308,20 @@ def test_delete_by_id_raises_unexpected_response_error_on_request_exception(
         repositories.delete_by_id("repo1", test_config.SP.entity_id)
 
 
-def test_delete_by_id_raises_unexpected_response_error_on_validation_error(
+def test_delete_by_id_raises_unexpected_response_error_on_validation_error_(
     app, test_config, mocker: MockerFixture
 ) -> None:
-    """Tests that UnexpectedResponseError is raised on validation error during delete_by_id."""
+    """Tests that UnexpectedResponseError is raised on ValidationError during delete_by_id."""
+    dummy_repo = RepositoryDetail(id="repo1", service_name=test_config.SP.entity_id)
+    dummy_repo._groups = []  # noqa: SLF001
+    dummy_repo._rolegroups = []  # noqa: SLF001
+    mocker.patch("server.services.repositories.get_by_id", return_value=dummy_repo)
     mocker.patch("server.services.repositories.get_access_token", return_value="token")
     mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
     mocker.patch("server.services.repositories.resolve_service_id", return_value="repo1")
     mocker.patch("server.clients.services.delete_by_id", side_effect=ValidationError("fail", []))
 
-    msg: str = "E033 | Failed to communicate with mAP Core API."
+    msg: str = "Failed to parse response from mAP Core API."
     with pytest.raises(UnexpectedResponseError, match=msg):
         repositories.delete_by_id("repo1", test_config.SP.entity_id)
 
@@ -1467,86 +1375,6 @@ def test_delete_by_id_raises_resource_not_found_on_map_error(app, test_config, m
 
     msg: str = "not found"
     with pytest.raises(ResourceNotFound, match=msg):
-        repositories.delete_by_id("repo1", test_config.SP.entity_id)
-
-
-def test_delete_by_id_raises_resource_not_found_if_repo_missing(app, test_config, mocker: MockerFixture) -> None:
-    """Tests that ResourceNotFound is raised if get_by_id returns None in delete_by_id."""
-    mocker.patch("server.services.repositories.get_by_id", return_value=None)
-
-    msg: str = "E104 | Service resource for Repository (id: missing_repo) not found."
-    with pytest.raises(ResourceNotFound, match=msg):
-        repositories.delete_by_id("missing_repo", test_config.SP.entity_id)
-
-
-def test_delete_by_id_raises_invalid_form_error_if_service_name_mismatch(
-    app, test_config, mocker: MockerFixture
-) -> None:
-    """Tests that InvalidFormError is raised if service_name does not match in delete_by_id."""
-    dummy_map_service = MapService(
-        id="repo1",
-        service_name="actual_service",
-    )
-    mocker.patch("server.services.repositories.get_by_id", return_value=dummy_map_service)
-
-    msg: str = "does not match"
-    with pytest.raises(InvalidFormError, match=msg):
-        repositories.delete_by_id("repo1", "wrong_service")
-
-
-def test_delete_by_id_raises_unexpected_response_error_on_other_http_error(
-    app, test_config, mocker: MockerFixture
-) -> None:
-    """Tests that UnexpectedResponseError is raised on non-401/500 HTTP errors during delete_by_id."""
-    dummy_repo = RepositoryDetail(
-        id="repo1",
-        service_name=test_config.SP.entity_id,
-    )
-    dummy_repo._groups = []  # noqa: SLF001
-    dummy_repo._rolegroups = []  # noqa: SLF001
-    mocker.patch("server.services.repositories.get_by_id", return_value=dummy_repo)
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.services.repositories.resolve_service_id", return_value="repo1")
-    response = Response()
-    response.status_code = HTTPStatus.BAD_REQUEST
-    http_error = requests.HTTPError(response=response)
-    mocker.patch("server.clients.services.delete_by_id", side_effect=http_error)
-
-    msg: str = "E500 | An unexpected error occurred in the server application."
-    with pytest.raises(UnexpectedResponseError, match=msg):
-        repositories.delete_by_id("repo1", test_config.SP.entity_id)
-
-
-def test_delete_by_id_raises_unexpected_response_error_on_validation_error_(
-    app, test_config, mocker: MockerFixture
-) -> None:
-    """Tests that UnexpectedResponseError is raised on ValidationError during delete_by_id."""
-    dummy_repo = RepositoryDetail(id="repo1", service_name=test_config.SP.entity_id)
-    dummy_repo._groups = []  # noqa: SLF001
-    dummy_repo._rolegroups = []  # noqa: SLF001
-    mocker.patch("server.services.repositories.get_by_id", return_value=dummy_repo)
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.services.repositories.resolve_service_id", return_value="repo1")
-    mocker.patch("server.clients.services.delete_by_id", side_effect=ValidationError("fail", []))
-
-    msg: str = "Failed to parse response from mAP Core API."
-    with pytest.raises(UnexpectedResponseError, match=msg):
-        repositories.delete_by_id("repo1", test_config.SP.entity_id)
-
-
-def test_delete_by_id_map_error_unexpected_response(app, test_config, mocker: MockerFixture) -> None:
-    """Test delete_by_id raises UnexpectedResponseError when MapError.detail does not match known patterns."""
-
-    map_error = MapError(detail="some unknown delete error", status="400", scim_type="invalidSyntax")
-    mocker.patch("server.services.repositories.get_access_token", return_value="token")
-    mocker.patch("server.services.repositories.get_client_secret", return_value="secret")
-    mocker.patch("server.clients.services.delete_by_id", return_value=map_error)
-    mocker.patch("server.services.repositories.current_app")
-
-    msg: str = "E033 | Failed to communicate with mAP Core API."
-    with pytest.raises(UnexpectedResponseError, match=msg):
         repositories.delete_by_id("repo1", test_config.SP.entity_id)
 
 

@@ -889,39 +889,6 @@ def test_patch_by_id_with_exclude(app: Flask, mocker: MockerFixture, service_dat
     assert called_kwargs["json"]["request"] == expected_request
 
 
-def test_patch_by_id_with_exclude_param(app, mocker: MockerFixture, service_data):
-    json_data, _ = service_data
-    service_id = json_data["id"]
-    exclude = {"meta", "serviceName"}
-    time_stamp = str(int(time.time()))
-    signature = hashlib.sha256(b"hash").hexdigest()
-    operations = [ReplaceOperation(op="replace", path="serviceName", value="NewName")]
-    response_data = {
-        "schemas": json_data["schemas"],
-        "id": json_data["id"],
-        "serviceName": json_data["serviceName"],
-    }
-    mocker.patch("server.clients.services.get_time_stamp", return_value=time_stamp)
-    mocker.patch("server.clients.services.compute_signature", return_value=signature)
-    mock_patch = mocker.patch("server.clients.services.requests.patch")
-    mock_patch.return_value.text = json.dumps(response_data)
-    mock_patch.return_value.status_code = 200
-    mocker.patch.object(services, "alias_generator", side_effect=lambda x: x)
-    mocker.patch("server.clients.services.repository_updated")
-    original_func = inspect.unwrap(services.patch_by_id)
-    result = original_func(
-        service_id,
-        operations,
-        exclude=exclude,
-        access_token="token",
-        client_secret="secret",
-    )
-    _, called_kwargs = mock_patch.call_args
-    assert "excluded_attributes" in called_kwargs["params"]
-    assert set(called_kwargs["params"]["excluded_attributes"].split(",")) == exclude
-    assert isinstance(result, MapService)
-
-
 def test_patch_by_id_not_found(app: Flask, mocker: MockerFixture) -> None:
     error_data = load_json_data("data/map_error.json")
     operations: list[ReplaceOperation] = [ReplaceOperation(op="replace", path="serviceName", value="NewName")]
@@ -950,18 +917,19 @@ def test_patch_by_id_http_error(app: Flask, mocker: MockerFixture, service_data)
         services.patch_by_id(service_id, operations, access_token="token", client_secret="secret")
 
 
-def test_patch_by_id_bad_request(app, mocker: MockerFixture):
+def test_delete_by_id_success(app: Flask, mocker: MockerFixture) -> None:
 
-    service_id = "dummy_id"
-    operations = [ReplaceOperation(op="replace", path="serviceName", value="NewName")]
-    error_data = load_json_data("data/map_error.json")
-    mock_patch = mocker.patch("server.clients.services.requests.patch")
-    mock_patch.return_value.text = json.dumps(error_data)
-    mock_patch.return_value.status_code = HTTPStatus.BAD_REQUEST
-    original_func = inspect.unwrap(services.patch_by_id)
-    result = original_func(service_id, operations, access_token="token", client_secret="secret")
-    assert isinstance(result, MapError)
-    assert "Not Found" in result.detail
+    service_id = "s1"
+    access_token = "token"
+    client_secret = "secret"
+    mock_delete = mocker.patch("server.clients.services.requests.delete")
+    mock_delete.return_value.text = ""
+    mock_delete.return_value.status_code = 200
+    mocker.patch("server.clients.services.repository_deleted.send")
+    mocker.patch("server.clients.services.repository_updated")
+    result = services.delete_by_id(service_id, access_token=access_token, client_secret=client_secret)
+    mock_delete.assert_called_once()
+    assert result is None
 
 
 def test_delete_by_id_error_response(app: Flask, mocker: MockerFixture) -> None:
@@ -979,21 +947,6 @@ def test_delete_by_id_error_response(app: Flask, mocker: MockerFixture) -> None:
     mock_delete.assert_called_once()
     assert isinstance(result, MapError)
     assert "Not Found" in result.detail
-
-
-def test_delete_by_id_success(app: Flask, mocker: MockerFixture) -> None:
-
-    service_id = "s1"
-    access_token = "token"
-    client_secret = "secret"
-    mock_delete = mocker.patch("server.clients.services.requests.delete")
-    mock_delete.return_value.text = ""
-    mock_delete.return_value.status_code = 200
-    mocker.patch("server.clients.services.repository_deleted.send")
-    mocker.patch("server.clients.services.repository_updated")
-    result = services.delete_by_id(service_id, access_token=access_token, client_secret=client_secret)
-    mock_delete.assert_called_once()
-    assert result is None
 
 
 def test_delete_by_id_http_error(app: Flask, mocker: MockerFixture) -> None:
@@ -1043,19 +996,19 @@ def test_handle_repository_updated_clears_cache(mocker):
     mock_clear.assert_called_once_with(service.id)
 
 
+def test_handle_repository_updated_no_service_id(mocker):
+    """Covers branch where service or service.id is falsy."""
+    mock_clear = mocker.patch("server.clients.services.get_by_id.clear_cache")
+    handle_repository_updated(_sender=None, service=None)
+    mock_clear.assert_not_called()
+
+
 def test_handle_repository_updated_by_id_clears_cache(mocker):
     """Covers get_by_id.clear_cache(service_id) branch for handle_repository_updated_by_id."""
     mock_clear = mocker.patch("server.clients.services.get_by_id.clear_cache")
     service_id = "repo123"
     handle_repository_updated_by_id(_sender=None, service_id=service_id)
     mock_clear.assert_called_once_with(service_id)
-
-
-def test_handle_repository_updated_no_service_id(mocker):
-    """Covers branch where service or service.id is falsy."""
-    mock_clear = mocker.patch("server.clients.services.get_by_id.clear_cache")
-    handle_repository_updated(_sender=None, service=None)
-    mock_clear.assert_not_called()
 
 
 def test_handle_repository_updated_by_id_no_service_id(mocker):

@@ -379,7 +379,7 @@ def test_get_by_id_not_found(app: Flask, mocker: MockerFixture) -> None:
 
     mock_response = mocker.patch("server.clients.users.requests.get")
     mock_response.return_value.text = expected_error.model_dump_json()
-    mock_response.return_value.status_code = 200
+    mock_response.return_value.status_code = 404
 
     original_func = inspect.unwrap(users.get_by_id)
     result = original_func(user_id, access_token="token", client_secret="secret")
@@ -1246,13 +1246,6 @@ def test_get_self_with_include_exclude(app: Flask, mocker: MockerFixture):
     assert isinstance(result, MapUser)
 
 
-@pytest.fixture
-def user_data() -> tuple[dict[str, t.Any], MapUser]:
-    json_data = load_json_data("data/map_user.json")
-    user = MapUser.model_validate(json_data)
-    return json_data, user
-
-
 def test__get_alias_generator_with_serialization_alias(monkeypatch):
     """Covers the branch where generator has serialization_alias attribute."""
 
@@ -1337,3 +1330,10 @@ def test_search_cache_identifier(app, mocker, is_logged_in, is_admin, permitted,
     mocker.patch("server.clients.users.is_user_logged_in", return_value=is_logged_in)
     result = users_mod._search_cache_identifier()  # noqa: SLF001
     assert result == expected
+
+
+@pytest.fixture
+def user_data() -> tuple[dict[str, t.Any], MapUser]:
+    json_data = load_json_data("data/map_user.json")
+    user = MapUser.model_validate(json_data)
+    return json_data, user
