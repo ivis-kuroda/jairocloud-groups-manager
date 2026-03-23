@@ -12,6 +12,8 @@ const { data: files } = useLazyAsyncData(() => `search-${collection.value}`, () 
   watch: [collection],
 },
 )
+
+const { systemAdminVisible } = useSystemAdminVisibility()
 </script>
 
 <template>
@@ -25,6 +27,13 @@ const { data: files } = useLazyAsyncData(() => `search-${collection.value}`, () 
             <UPageAside>
               <template #top>
                 <UContentSearchButton :collapsed="false" :kbds="['/']" />
+
+                <div class="px-4 py-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm font-medium truncate">システム管理者</span>
+                    <USwitch v-model="systemAdminVisible" size="sm" />
+                  </div>
+                </div>
               </template>
 
               <UContentNavigation :navigation="navigation" highlight />

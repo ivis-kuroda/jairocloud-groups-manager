@@ -17,7 +17,7 @@
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
     "docs:dev": "pnpm -F docs dev",
-    "docs:generate": "pnpm -F docs generate"
+    "docs:generate": "pnpm -F docs generate",
     "check-updates": "pnpx --package=npm-check-updates ncu"
   },
   "dependencies": {
