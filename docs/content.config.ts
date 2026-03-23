@@ -35,8 +35,9 @@ export default defineContentConfig({
       type: 'page',
       source: '05.manual/**/*',
       schema: z.object({
-        headline: z.string().optional(),
-        icon: z.string().optional(),
+        'headline': z.string().optional(),
+        'icon': z.string().optional(),
+        'system-admin-only': z.boolean().optional(),
       }),
     }),
   },
