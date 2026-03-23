@@ -267,24 +267,6 @@ request_retry_max = 90
 directory_path = "/var/mnt"
 
 
-# [develop]
-# Enable or disable developer login feature.
-# developer_login = false
-
-# Developer account for testing.
-# [[develop.accounts]]
-# map ID of the developer account.
-# id = ""
-# ePPN of the developer account.
-# eppn = ""
-
-# isMemberOf attributes for the developer account.
-# is_member_of = ""
-
-# user name of the developer account.
-# user_name = ""
-
-
 # Feature flags for enabling or disabling application features.
 # These are due to temporary constraints
 # in the future, all features will be enabled and the settings will be deleted.
@@ -295,3 +277,22 @@ search_only_username = true
 
 # Whether mAP Core API bulk operation is enabled or disabled.
 enable_bulk_operation = false
+
+
+# [develop]
+# Enable or disable developer login feature.
+# developer_login = false
+
+# Developer account for testing.
+# [[develop.accounts]]
+# map ID of the developer account.
+# id = ""
+
+# ePPN of the developer account.
+# eppn = ""
+
+# isMemberOf attributes for the developer account.
+# is_member_of = ""
+
+# user name of the developer account.
+# user_name = ""
