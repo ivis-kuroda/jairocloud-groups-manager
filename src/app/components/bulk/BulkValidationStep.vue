@@ -3,6 +3,8 @@ import { UCheckbox, UIcon } from '#components'
 
 const properties = defineProps<{ onPrevious?: () => void
   onNext?: (data: ExcuteResponse) => void }>()
+
+const { $api } = useNuxtApp()
 const toast = useToast()
 
 const taskId = inject<Ref<string | undefined>>('taskId', ref(undefined))
@@ -19,11 +21,10 @@ const { makePageInfo, makeIndicators } = useBulk()
 const { polling: { interval, maxAttempts } } = useAppConfig()
 const { handleFetchError } = useErrorHandling()
 const { data: status, refresh: refreshValidateStatus }
-  = await useFetch<BulkProcessingStatus>(`/api/bulk/validate/status/${taskId.value}`,
+  = await useApiFetch<BulkProcessingStatus>(`/api/bulk/validate/status/${taskId.value}`,
     {
       method: 'GET',
       lazy: true,
-      server: false,
       onResponseError({ response }) {
         switch (response.status) {
           case 404: {
@@ -74,11 +75,10 @@ const pollValidationStatus = async () => {
 }
 
 const { data: validationResults, refresh: refreshValidateResult, status: getResultStatus }
-  = await useFetch<ValidationResults>(`/api/bulk/validate/result/${taskId.value}`, {
+  = await useApiFetch<ValidationResults>(`/api/bulk/validate/result/${taskId.value}`, {
     method: 'GET',
     query,
     lazy: true,
-    server: false,
     onResponseError({ response }) {
       switch (response.status) {
         case 400: {
@@ -132,7 +132,7 @@ const handleNext = async () => {
     throw new Error('Missing required data')
   }
   try {
-    const { taskId, historyId } = await $fetch<BulkProcessingStatus>(`/api/bulk/execute`, {
+    const { taskId, historyId } = await $api<BulkProcessingStatus>(`/api/bulk/execute`, {
       method: 'POST',
       body: {
         tempFileId: temporaryFileId.value,

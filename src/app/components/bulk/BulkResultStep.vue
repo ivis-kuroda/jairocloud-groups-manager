@@ -1,31 +1,29 @@
 <script setup lang="ts">
+const toast = useToast()
+
 const properties = defineProps<{
   historyId: string
   taskId?: string
 }>()
 
 const { query, makePageInfo, makeIndicators } = useBulk()
-
-const toast = useToast()
-
 const { handleFetchError } = useErrorHandling()
 const { data: status, refresh: refreshStatus }
-  = await useFetch<BulkProcessingStatus>(`/api/bulk/execute/status/${properties.taskId}`,
-    {
-      method: 'GET',
-      lazy: true,
-      onResponseError({ response }) {
-        switch (response.status) {
-          case 404: {
-            break
-          }
-          default:{
-            handleFetchError({ response })
-            break
-          }
+  = await useApiFetch<BulkProcessingStatus>(`/api/bulk/execute/status/${properties.taskId}`, {
+    method: 'GET',
+    lazy: true,
+    onResponseError({ response }) {
+      switch (response.status) {
+        case 404: {
+          break
         }
-      },
-      server: false })
+        default:{
+          handleFetchError({ response })
+          break
+        }
+      }
+    },
+  })
 
 const { polling: { interval, maxAttempts } } = useAppConfig()
 const isPolling = ref(false)
@@ -60,11 +58,10 @@ const pollExecuteStatus = async () => {
 }
 
 const { data: executeResult, refresh: refreshExecuteResult, status: getResultStatus }
-  = await useFetch<ExecuteResults>(`/api/bulk/result/${properties.historyId}`, {
+  = await useApiFetch<ExecuteResults>(`/api/bulk/result/${properties.historyId}`, {
     method: 'GET',
     query,
     lazy: true,
-    server: false,
     onResponseError({ response }) {
       switch (response.status) {
         case 403: {
@@ -90,6 +87,7 @@ const { data: executeResult, refresh: refreshExecuteResult, status: getResultSta
       }
     },
   })
+
 onMounted(async () => {
   if (properties.taskId)
     await pollExecuteStatus()

@@ -12,11 +12,15 @@ export default defineNuxtPlugin(() => {
   const handleFetchError = createFetchErrorHandler($t)
 
   const { baseURL } = useAppConfig()
-  globalThis.$fetch = $fetch.create({
+  const api = $fetch.create({
     baseURL,
     credentials: 'include',
-    onResponseError: ({ response }) => {
-      handleFetchError({ response })
-    },
+    onResponseError: ({ response }) => handleFetchError({ response }),
   })
+
+  return {
+    provide: {
+      api,
+    },
+  }
 })

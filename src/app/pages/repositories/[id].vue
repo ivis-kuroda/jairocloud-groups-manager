@@ -4,6 +4,7 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { $api } = useNuxtApp()
 const { handleFetchError } = useErrorHandling()
 
 const { currentUser } = useAuth()
@@ -13,10 +14,9 @@ const mode = computed(() => (currentUser.value?.isSystemAdmin ? 'edit' : 'view')
 
 const { defaultData, state } = useRepositoryForm()
 
-const { data: repository, refresh } = useFetch<RepositoryDetail>(
+const { data: repository, refresh } = useApiFetch<RepositoryDetail>(
   `/api/repositories/${repositoryId.value}`, {
     method: 'GET',
-    server: false,
     default: () => defaultData,
     onResponseError({ response }) {
       switch (response.status) {
@@ -79,7 +79,7 @@ watch(repository, (newRepo: RepositoryDetail) => {
 const onSubmit = async (data: RepositoryForm) => {
   const { created, spConnectorId, ...payload } = data
   try {
-    await $fetch(`/api/repositories/${repositoryId.value}`, {
+    await $api(`/api/repositories/${repositoryId.value}`, {
       method: 'PUT',
       body: payload,
       onResponseError: ({ response }) => {
@@ -149,7 +149,7 @@ const deleteFormState = reactive({
 
 const onDelete = async (event: FormSubmitEvent<typeof deleteFormState>) => {
   try {
-    await $fetch(`/api/repositories/${repositoryId.value}`, {
+    await $api(`/api/repositories/${repositoryId.value}`, {
       method: 'DELETE',
       query: { confirmation: event.data.serviceName },
       onResponseError: ({ response }) => {

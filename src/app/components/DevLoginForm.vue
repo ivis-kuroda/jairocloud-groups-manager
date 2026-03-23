@@ -3,9 +3,10 @@
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 const { next } = defineProps<{ next?: string }>()
-const { data: accounts } = useFetch<{ eppns: string[] }>('/api/dev/accounts', {
+const { $api } = useNuxtApp()
+
+const { data: accounts } = useApiFetch<{ eppns: string[] }>('/api/dev/accounts', {
   method: 'GET',
-  server: false,
   default: () => ({ eppns: [] }),
 })
 
@@ -14,7 +15,7 @@ const state = ref({ eppn: '' },
 const form = useTemplateRef('form')
 
 const onSubmit = (payload: FormSubmitEvent<{ eppn: string }>) => {
-  $fetch.raw('/api/dev/login', {
+  $api('/api/dev/login', {
     method: 'POST',
     query: { next },
     body: {

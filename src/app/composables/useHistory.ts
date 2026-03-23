@@ -10,6 +10,7 @@ const useHistory = () => {
   const toast = useToast()
   const route = useRoute()
   const { t: $t } = useI18n()
+  const { $api } = useNuxtApp()
   const { currentUser } = useAuth()
 
   const query = computed<HistoryQuery>(() => normalizeHistoryQuery(route.query))
@@ -178,7 +179,7 @@ const useHistory = () => {
               size: 'sm',
               onClick: async () => {
                 try {
-                  await $fetch(`/api/history/files/${data.fileId}`, { method: 'GET' })
+                  await $api(`/api/history/files/${data.fileId}`, { method: 'GET' })
                 }
                 catch {
                   toast.add({
@@ -304,7 +305,7 @@ const useHistory = () => {
     const body = { public: !currentPublic }
     try {
       const result
-        = await $fetch<PublicStatusUpdateRequest>(`/api/history/${tab.value}/${id}/public-status`,
+        = await $api<PublicStatusUpdateRequest>(`/api/history/${tab.value}/${id}/public-status`,
           {
             method: 'PUT',
             body,

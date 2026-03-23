@@ -3,6 +3,7 @@ import { camelCase } from 'scule'
 
 const route = useRoute()
 const toast = useToast()
+const { $api } = useNuxtApp()
 
 const userId = computed(() => route.params.id as string)
 const mode = computed<'view' | 'edit'>(() => 'view')
@@ -12,10 +13,9 @@ const { defaultData, defaultForm, state } = useUserForm()
 const isSelf = computed(() => currentUser.value?.id === userId.value)
 
 const { handleFetchError } = useErrorHandling()
-const { data: user, refresh } = useFetch<UserDetail>(
+const { data: user, refresh } = useApiFetch<UserDetail>(
   `/api/users/${userId.value}`, {
     method: 'GET',
-    server: false,
     default: () => defaultData,
     onResponseError({ response }) {
       switch (response.status) {
@@ -85,7 +85,7 @@ const onSubmit = async (data: UserUpdateForm) => {
   }
 
   try {
-    await $fetch(`/api/users/${userId.value}`, {
+    await $api(`/api/users/${userId.value}`, {
       method: 'PUT',
       body: payload,
       onResponseError: ({ response }) => {

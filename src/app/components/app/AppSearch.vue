@@ -2,7 +2,7 @@
 import type { CommandPaletteGroup } from '@nuxt/ui'
 
 const toast = useToast()
-
+const { $api } = useNuxtApp()
 const { header: { globalSearch } } = useAppConfig()
 const { searchTerm, previousSearchTerm, makeResultGroups } = useGlobalSearch()
 const { handleFetchError } = useErrorHandling()
@@ -37,7 +37,7 @@ const executeSearch = async () => {
 
   // Use $fetch instead of useFetch to avoid stale query params when component remounts via v-if.
   try {
-    result.value = await $fetch<GlobalSearchResults>('/api/search', {
+    result.value = await $api<GlobalSearchResults>('/api/search', {
       method: 'GET',
       query: { q: searchTerm.value, limit: globalSearch.limit },
       onResponseError({ response }) {

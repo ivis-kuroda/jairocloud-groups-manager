@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const toast = useToast()
+const { $api } = useNuxtApp()
+
 const { stateAsCreate: state } = useGroupForm()
 
 const { handleFetchError } = useErrorHandling()
@@ -10,7 +12,7 @@ const onSubmit = async (data: GroupCreateForm) => {
   }
 
   try {
-    await $fetch('/api/groups', {
+    await $api('/api/groups', {
       method: 'POST',
       body: payload,
       onResponseError: ({ response }) => {

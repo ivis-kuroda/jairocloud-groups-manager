@@ -2,6 +2,8 @@
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 const toast = useToast()
+const { $api } = useNuxtApp()
+
 const { table: { pageSize: { groups: groupPageSize } } } = useAppConfig()
 const {
   query, updateQuery, criteria, creationButtons, emptyActions,
@@ -22,7 +24,7 @@ const { table: { pageSize: { users: pageOptions } },
 } = useAppConfig()
 
 const { handleFetchError } = useErrorHandling()
-const { data: searchResult, status, refresh } = useFetch<UsersSearchResult>('/api/users', {
+const { data: searchResult, status, refresh } = useApiFetch<UsersSearchResult>('/api/users', {
   method: 'GET',
   query,
   onResponseError({ response }) {
@@ -42,18 +44,16 @@ const { data: searchResult, status, refresh } = useFetch<UsersSearchResult>('/ap
     }
   },
   lazy: true,
-  server: false,
 })
 const offset = computed(() => (searchResult.value?.offset ?? 1))
 emptyActions.value[0].onClick = () => refresh()
 
 const {
   data: filterOptions, status: filterOptionsStatus,
-} = useFetch<FilterOption[]>('/api/users/filter-options', {
+} = useApiFetch<FilterOption[]>('/api/users/filter-options', {
   method: 'GET',
   onResponseError: ({ response }) => handleFetchError({ response }),
   lazy: true,
-  server: false,
 })
 
 const isFilterOpen = ref(false)
@@ -91,7 +91,7 @@ setupGroupScroll(groupOpSelect)
 
 const onAdd = async (event: FormSubmitEvent<typeof userOpState>) => {
   try {
-    await $fetch(`/api/groups/${event.data.groupId}`, {
+    await $api(`/api/groups/${event.data.groupId}`, {
       method: 'PATCH',
       body: {
         operations: [
@@ -140,7 +140,7 @@ const onAdd = async (event: FormSubmitEvent<typeof userOpState>) => {
 
 const onRemove = async (event: FormSubmitEvent<typeof userOpState>) => {
   try {
-    await $fetch(`/api/groups/${event.data.groupId}`, {
+    await $api(`/api/groups/${event.data.groupId}`, {
       method: 'PATCH',
       body: {
         operations: [

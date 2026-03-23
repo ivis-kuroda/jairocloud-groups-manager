@@ -21,7 +21,7 @@ const tabItems = computed<TabsItem[]>(() => fileUpload
     ])
 
 const { handleFetchError } = useErrorHandling()
-const { data, execute, status } = useFetch<DownloadApiModel | UploadApiModel>(
+const { data, execute, status } = useApiFetch<DownloadApiModel | UploadApiModel>(
   `/api/history/${tab.value}`, {
     method: 'GET',
     query,
@@ -29,7 +29,6 @@ const { data, execute, status } = useFetch<DownloadApiModel | UploadApiModel>(
       handleFetchError({ response })
     },
     lazy: true,
-    server: false,
   })
 const pageInfo = computed(() => makePageInfo(data))
 const offset = computed(() => (data.value?.offset ?? 1))
@@ -48,7 +47,7 @@ const toggleSort = () => {
 }
 
 const handleLoadMoreChildren = async (row: DownloadHistoryData) => {
-  const { data } = await useFetch<DownloadApiModel>('/api/history/download', {
+  const { data } = await useApiFetch<DownloadApiModel>('/api/history/download', {
     method: 'GET',
     query: {
       i: [row.id],

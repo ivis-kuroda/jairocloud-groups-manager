@@ -27,7 +27,7 @@ const serverQuery = computed(() => {
 const { handleFetchError } = useErrorHandling()
 const {
   data: searchResult, status, refresh,
-} = useFetch<RepositoriesSearchResult>('/api/repositories', {
+} = useApiFetch<RepositoriesSearchResult>('/api/repositories', {
   method: 'GET',
   query: serverQuery,
   onResponseError({ response }) {
@@ -47,7 +47,6 @@ const {
     }
   },
   lazy: true,
-  server: false,
 })
 const offset = computed(() => (searchResult.value?.offset ?? 1))
 emptyActions.value[0].onClick = () => refresh()

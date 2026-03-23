@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const toast = useToast()
+const { $api } = useNuxtApp()
+
 const { currentUser } = useAuth()
 const { stateAsCreate: state } = useRepositoryForm()
 
@@ -10,7 +12,7 @@ const onSubmit = async (data: RepositoryCreateForm) => {
     active: true,
   }
   try {
-    await $fetch('/api/repositories', {
+    await $api('/api/repositories', {
       method: 'POST',
       body: payload,
       onResponseError: ({ response }) => {

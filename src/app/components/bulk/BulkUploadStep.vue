@@ -7,6 +7,7 @@ const emit = defineEmits<{
   update: [repositoryId: string]
 }>()
 
+const { $api } = useNuxtApp()
 const { isProcessing } = useUserUpload()
 const { table: { pageSize } } = useAppConfig()
 
@@ -61,7 +62,7 @@ const handleNext = async (event: FormSubmitEvent<Schema>) => {
   formData.append('bulk_file', event.data.file!)
   formData.append('repository_id', event.data.repository!)
   try {
-    const data = await $fetch<BulkProcessingStatus>('/api/bulk/upload-file', {
+    const data = await $api<BulkProcessingStatus>('/api/bulk/upload-file', {
       method: 'POST',
       body: formData,
       onResponseError({ response }) {
@@ -84,6 +85,7 @@ const handleNext = async (event: FormSubmitEvent<Schema>) => {
           }
           default: {
             handleFetchError({ response })
+            break
           }
         }
         isProcessing.value = false
@@ -95,9 +97,10 @@ const handleNext = async (event: FormSubmitEvent<Schema>) => {
     }
   }
   catch {
-    // Error is handled in onResponseError
+    // Already handled in onResponseError
   }
 }
+
 const repositorySelect = useTemplateRef('repositorySelect')
 const {
   items: repositoryNames,

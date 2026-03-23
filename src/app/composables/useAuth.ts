@@ -8,6 +8,7 @@ import type { RouteLocationNormalizedGeneric } from 'vue-router'
  * Composable for managing authentication state and actions
  */
 export function useAuth() {
+  const { $api } = useNuxtApp()
   const { publicRoutes, loginRoute, loggedinRedirectRoute } = useAppConfig()
 
   const authStore = useAuthStore()
@@ -31,7 +32,7 @@ export function useAuth() {
 
     if (!authChecked.value || fromPath === loginRoute) {
       try {
-        const user = await $fetch<LoginUser>('/api/auth/check', { method: 'GET' })
+        const user = await $api<LoginUser>('/api/auth/check', { method: 'GET' })
         if (user.eppn) {
           authStore.setUser(user)
         }
@@ -71,7 +72,7 @@ export function useAuth() {
 
   const logout = async () => {
     try {
-      await $fetch('/api/auth/logout', { method: 'GET' })
+      await $api('/api/auth/logout', { method: 'GET' })
     }
     catch {
       // ignore errors

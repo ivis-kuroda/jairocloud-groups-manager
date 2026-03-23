@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const toast = useToast()
-
+const { $api } = useNuxtApp()
 const {
   table: { pageSize: { cacheGroups: pageOptions } },
   polling: { interval },
@@ -16,7 +16,7 @@ const { searchTerm, filter, pageNumber, pageSize } = criteria
 const { handleFetchError } = useErrorHandling()
 const {
   data: searchResult, status, refresh: refreshSearchResult,
-} = await useFetch<GroupCachesSearchResult>('/api/group-caches', {
+} = await useApiFetch<GroupCachesSearchResult>('/api/group-caches', {
   method: 'GET',
   query,
   onResponseError({ response }) {
@@ -44,7 +44,6 @@ const {
     }
   },
   lazy: true,
-  server: false,
 })
 const offset = computed(() => (searchResult.value?.offset ?? 1))
 const pageInfo = makePageInfo(searchResult)
@@ -52,7 +51,7 @@ const pageInfo = makePageInfo(searchResult)
 const selectedRepositories = ref<{ id: string, serviceName: string, serviceUrl: string }[]>([])
 const {
   data: updatingData, refresh: refreshStatus,
-} = await useFetch<TaskDetail>('/api/group-caches/status', {
+} = await useApiFetch<TaskDetail>('/api/group-caches/status', {
   method: 'GET',
   onResponse({ response }) {
     if (response.ok) isUpdating.value = true
@@ -69,7 +68,6 @@ const {
       }
     }
   },
-  server: false,
   lazy: true,
 })
 
@@ -87,7 +85,7 @@ const pllProgressData = async () => {
 const onExecute = async (op: GroupCacheUpdateAction) => {
   isUpdating.value = true
   try {
-    await $fetch('/api/group-caches', {
+    await $api('/api/group-caches', {
       method: 'post',
       body: {
         ids: op === 'id-specified' ? selectedRepositories.value.map(item => item.id) : undefined,

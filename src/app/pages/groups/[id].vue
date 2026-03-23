@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const toast = useToast()
+const { $api } = useNuxtApp()
 
 const groupId = computed(() => route.params.id as string)
 const mode = 'edit'
@@ -8,10 +9,9 @@ const mode = 'edit'
 const { defaultData, defaultForm, state } = useGroupForm()
 
 const { handleFetchError } = useErrorHandling()
-const { data: group, refresh } = useFetch<GroupDetail>(
+const { data: group, refresh } = useApiFetch<GroupDetail>(
   `/api/groups/${groupId.value}`, {
     method: 'GET',
-    server: false,
     default: () => defaultData,
     onResponseError({ response }) {
       switch (response.status) {
@@ -71,7 +71,7 @@ const onSubmit = async (data: GroupUpdateForm) => {
   const { id, repository, type, created, ...payload } = data
 
   try {
-    await $fetch(`/api/groups/${groupId.value}`, {
+    await $api(`/api/groups/${groupId.value}`, {
       method: 'PUT',
       body: payload as GroupUpdatePayload,
       onResponseError: ({ response }) => {
@@ -135,7 +135,7 @@ const onCancel = () => {
 
 const onDelete = async () => {
   try {
-    await $fetch(`/api/groups/${groupId.value}`, {
+    await $api(`/api/groups/${groupId.value}`, {
       method: 'DELETE',
       onResponseError: ({ response }) => {
         switch (response.status) {

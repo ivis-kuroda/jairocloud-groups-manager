@@ -1,8 +1,8 @@
 <script setup lang="ts">
 const toast = useToast()
+const { $api } = useNuxtApp()
 
 const { stateAsCreate: state } = useUserForm()
-
 const { handleFetchError } = useErrorHandling()
 const onSubmit = async (data: UserCreateForm) => {
   const { repositoryRoles, groups, ...remain } = data
@@ -19,7 +19,7 @@ const onSubmit = async (data: UserCreateForm) => {
   }
 
   try {
-    await $fetch('/api/users', {
+    await $api('/api/users', {
       method: 'POST',
       body: payload,
       onResponseError: ({ response }) => {

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const toast = useToast()
+const { $api } = useNuxtApp()
+
 const {
   query, updateQuery, criteria, creationButtons, emptyActions,
   toggleSelection, selectedCount, getSelected, clearSelection, selectedGroupsActions,
@@ -14,7 +16,7 @@ const { table: { pageSize: { groups: pageOptions } },
 } = useAppConfig()
 
 const { handleFetchError } = useErrorHandling()
-const { data: searchResult, status, refresh } = useFetch<GroupsSearchResult>('/api/groups', {
+const { data: searchResult, status, refresh } = useApiFetch<GroupsSearchResult>('/api/groups', {
   method: 'GET',
   query,
   onResponseError({ response }) {
@@ -34,18 +36,16 @@ const { data: searchResult, status, refresh } = useFetch<GroupsSearchResult>('/a
     }
   },
   lazy: true,
-  server: false,
 })
 const offset = computed(() => (searchResult.value?.offset ?? 1))
 emptyActions.value[0].onClick = () => refresh()
 
 const {
   data: filterOptions, status: filterOptionsStatus,
-} = useFetch<FilterOption[]>('/api/groups/filter-options', {
+} = useApiFetch<FilterOption[]>('/api/groups/filter-options', {
   method: 'GET',
   onResponseError: async ({ response }) => { await handleFetchError({ response }) },
   lazy: true,
-  server: false,
 })
 
 const isFilterOpen = ref(false)
@@ -58,7 +58,7 @@ const pageInfo = makePageInfo(searchResult)
 const selectedGroups = ref<{ id: string, displayName: string }[]>([])
 const onDelete = async () => {
   try {
-    await $fetch('/api/groups/delete', {
+    await $api('/api/groups/delete', {
       method: 'POST',
       body: { groupIds: selectedGroups.value.map(group => group.id) },
       onResponseError: ({ response }) => {

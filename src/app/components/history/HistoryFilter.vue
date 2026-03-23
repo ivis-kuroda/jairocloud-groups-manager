@@ -22,24 +22,26 @@ const { handleFetchError } = useErrorHandling()
 
 const {
   data: filterOptions,
-} = useFetch<FilterOption[]>('/api/history/filter-options', {
+} = useApiFetch<FilterOption[]>('/api/history/filter-options', {
   method: 'GET',
   onResponseError: ({ response }) => handleFetchError({ response }),
   lazy: true,
-  server: false,
 })
 const repositorySelect = useTemplateRef('repositorySelect')
 const groupSelect = useTemplateRef('groupSelect')
 const userSelect = useTemplateRef('userSelect')
 const operatorSelect = useTemplateRef('operatorSelect')
-const { repositoryFilter, groupFilter, userFilter, operatorFilter }
-  = makeHistoryFilters(filterOptions, {
-    repositorySelect: { ref: repositorySelect, url: '/api/repositories' },
-    groupSelect: { ref: groupSelect, url: '/api/groups' },
-    userSelect: { ref: userSelect, url: '/api/users' },
-    operatorSelect: { ref: operatorSelect,
-      url: `/api/history/${tab.value}/filter-options/operators` },
-  })
+const {
+  repositoryFilter, groupFilter, userFilter, operatorFilter,
+} = makeHistoryFilters(filterOptions, {
+  repositorySelect: { ref: repositorySelect, url: '/api/repositories' },
+  groupSelect: { ref: groupSelect, url: '/api/groups' },
+  userSelect: { ref: userSelect, url: '/api/users' },
+  operatorSelect: {
+    ref: operatorSelect,
+    url: `/api/history/${tab.value}/filter-options/operators`,
+  },
+})
 </script>
 
 <template>

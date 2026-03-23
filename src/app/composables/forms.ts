@@ -37,7 +37,7 @@ const useSelectMenuInfiniteScroll = <T>(
 
   const items = ref<Array<{ label: string, value: string }>>([])
 
-  const { data, status, execute } = useFetch<SearchResult<T>>(url, {
+  const { data, status, execute } = useApiFetch<SearchResult<T>>(url, {
     query: computed(() => ({
       ...query,
       q: searchTermDebounced.value || undefined,
