@@ -58,7 +58,7 @@ def test_search_success(app: Flask, mocker: MockerFixture, group_data) -> None:
     mock_get.assert_called_once()
     call_args, called_kwargs = mock_get.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     expected_params = {
         "time_stamp": time_stamp,
         "signature": signature,
@@ -109,7 +109,7 @@ def test_search_with_include(app: Flask, mocker: MockerFixture) -> None:
 
     call_args, called_kwargs = mock_get.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes")
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     expected_params = {
         "time_stamp": time_stamp,
         "signature": signature,
@@ -161,7 +161,7 @@ def test_search_with_exclude(app: Flask, mocker: MockerFixture) -> None:
 
     call_args, called_kwargs = mock_get.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes")
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes")
     expected_params = {
         "time_stamp": time_stamp,
         "signature": signature,
@@ -217,7 +217,7 @@ def test_search_groups_with_all_params(app: Flask, mocker: MockerFixture) -> Non
 
     call_args, called_kwargs = mock_get.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     expected_params = {
         "time_stamp": time_stamp,
         "signature": signature,
@@ -291,7 +291,7 @@ def test_get_by_id_success(app: Flask, mocker: MockerFixture, group_data) -> Non
     mock_response.assert_called_once()
     call_args, called_kwargs = mock_response.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
     assert called_kwargs["timeout"] == expected_timeout
@@ -333,7 +333,7 @@ def test_get_by_id_with_include(app: Flask, mocker: MockerFixture, group_data) -
     }
     call_args, called_kwargs = mock_response.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes")
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     expected_result: MapGroup = MapGroup.model_validate(result.model_dump())
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -485,7 +485,7 @@ def test_post_success(app: Flask, mocker: MockerFixture, group_data) -> None:
     mock_post.assert_called_once()
     call_args, called_kwargs = mock_post.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -522,7 +522,7 @@ def test_post_with_include(app: Flask, mocker: MockerFixture, group_data) -> Non
 
     call_args, called_kwargs = mock_post.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes")
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -659,7 +659,7 @@ def test_put_by_id_success(app: Flask, mocker: MockerFixture, group_data) -> Non
     mock_put.assert_called_once()
     call_args, called_kwargs = mock_put.call_args
     called_params_attributes = called_kwargs["json"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["json"].pop("excludeAttributes", None)
+    called_params_excluded_attributes = called_kwargs["json"].pop("excluded_attributes", None)
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -699,8 +699,8 @@ def test_put_by_id_with_include(app: Flask, mocker: MockerFixture, group_data) -
     result = original_func(group, include=include, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_put.call_args
-    called_params_attributes = called_kwargs["json"].pop("attributes")
-    called_params_excluded_attributes = called_kwargs["json"].pop("excludeAttributes", None)
+    called_params_attributes = called_kwargs["params"].pop("attributes")
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -732,13 +732,14 @@ def test_put_by_id_with_exclude(app: Flask, mocker: MockerFixture, group_data) -
     mocker.patch("server.clients.groups.search.clear_cache")
     mock_put.return_value.text = json.dumps(response_data)
     mock_put.return_value.status_code = 200
+    mocker.patch.object(groups, "alias_generator", side_effect=lambda x: x)
     clear_id = mocker.patch("server.clients.groups.get_by_id.clear_cache")
     original_func = inspect.unwrap(groups.put_by_id)
     result = original_func(group, exclude=exclude, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_put.call_args
-    called_params_attributes = called_kwargs["json"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["json"].pop("excludedAttributes", None)
+    called_params_attributes = called_kwargs["params"].pop("attributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes")
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -778,8 +779,9 @@ def test_put_by_id_with_all_params(app: Flask, mocker: MockerFixture, group_data
     result = original_func(group, include=include, exclude=exclude, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_put.call_args
-    called_params_attributes = called_kwargs["json"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["json"].pop("excluded_attributes", None)
+    print(called_kwargs["params"])
+    called_params_attributes = called_kwargs["params"].pop("attributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes")
     expected_result: MapGroup = MapGroup.model_validate(result.model_dump())
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -888,8 +890,8 @@ def test_patch_by_id_with_include(app: Flask, mocker: MockerFixture, group_data)
     result = original_func(group_id, operations, include=include, access_token="token", client_secret="secret")
     call_args, called_kwargs = mock_patch.call_args
     expected_request = called_kwargs["json"].get("request")
-    called_params_attributes = called_kwargs["json"].pop("attributes")
-    called_params_excluded_attributes = called_kwargs["json"].pop("excludeAttributes", None)
+    called_params_attributes = called_kwargs["params"].pop("attributes")
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -925,14 +927,15 @@ def test_patch_by_id_with_exclude(app: Flask, mocker: MockerFixture, group_data)
     mocker.patch("server.clients.groups.get_by_id.clear_cache")
     mock_patch.return_value.text = json.dumps(response_data)
     mock_patch.return_value.status_code = 200
+    mocker.patch.object(groups, "alias_generator", side_effect=lambda x: x)
 
     original_func = inspect.unwrap(groups.patch_by_id)
     result = original_func(group_id, operations, exclude=exclude, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_patch.call_args
     expected_request = called_kwargs["json"].get("request")
-    called_params_attributes = called_kwargs["json"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["json"].pop("excludedAttributes")
+    called_params_attributes = called_kwargs["params"].pop("attributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes")
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
@@ -976,8 +979,8 @@ def test_patch_by_id_with_all_params(app: Flask, mocker: MockerFixture, group_da
     )
 
     call_args, called_kwargs = mock_patch.call_args
-    called_params_attributes = called_kwargs["json"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["json"].pop("excluded_attributes", None)
+    called_params_attributes = called_kwargs["params"].pop("attributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     expected_result: MapGroup = MapGroup.model_validate(result.model_dump())
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers

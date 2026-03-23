@@ -82,7 +82,7 @@ def search(
             alias_generator(name) for name in include | {"id"}
         ])
     if exclude:
-        attributes_params[alias_generator("excludeAttributes")] = ",".join([
+        attributes_params[alias_generator("excluded_attributes")] = ",".join([
             alias_generator(name) for name in exclude
         ])
 
@@ -276,10 +276,11 @@ def put_by_id(
 
     response = requests.put(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}/{group.id}",
+        params=attributes_params,
         headers={
             "Authorization": f"Bearer {access_token}",
         },
-        json={"request": auth_params} | payload | attributes_params,
+        json={"request": auth_params} | payload,
         timeout=config.MAP_CORE.timeout,
     )
 
@@ -345,10 +346,11 @@ def patch_by_id(
 
     response = requests.patch(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}/{group_id}",
+        params=attributes_params,
         headers={
             "Authorization": f"Bearer {access_token}",
         },
-        json={"request": auth_params} | payload | attributes_params,
+        json={"request": auth_params} | payload,
         timeout=config.MAP_CORE.timeout,
     )
 

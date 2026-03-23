@@ -410,7 +410,8 @@ def patch_by_id(
         timeout=config.MAP_CORE.timeout,
     )
 
-    if response.status_code > HTTPStatus.BAD_REQUEST:
+    status_code = response.status_code
+    if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
     resource = adapter.validate_json(response.text)

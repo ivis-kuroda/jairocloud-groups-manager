@@ -882,6 +882,7 @@ def test_put_by_id_with_exclude(app: Flask, mocker: MockerFixture, user_data) ->
     mock_put = mocker.patch("server.clients.users.requests.put")
     mock_put.return_value.text = json.dumps(response_data)
     mock_put.return_value.status_code = 200
+    mocker.patch.object(users, "alias_generator", side_effect=lambda x: x)
     mocker.patch("server.clients.users.get_by_id.clear_cache")
     mocker.patch("server.clients.users.get_by_eppn.clear_cache")
     mocker.patch("server.clients.users.search.clear_cache")
@@ -890,7 +891,7 @@ def test_put_by_id_with_exclude(app: Flask, mocker: MockerFixture, user_data) ->
     result: MapUser = original_func(user, exclude=exclude, access_token="token", client_secret="secret")
     call_args, called_kwargs = mock_put.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludedAttributes")
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes")
     expected_excluded = expected_params["excluded_attributes"].split(",")
 
     assert call_args[0] == expected_requests_url
@@ -1104,7 +1105,7 @@ def test_patch_by_id_with_exclude(app: Flask, mocker: MockerFixture, user_data) 
         "emails": json_data["emails"],
     }
     expected_params = {
-        "excludedAttributes": "preferredLanguage",
+        "excluded_attributes": "preferredLanguage",
     }
     expected_headers = {"Authorization": "Bearer token"}
     expected_timeout = config.MAP_CORE.timeout
@@ -1123,22 +1124,23 @@ def test_patch_by_id_with_exclude(app: Flask, mocker: MockerFixture, user_data) 
     mock_patch = mocker.patch("server.clients.users.requests.patch")
     mock_patch.return_value.text = json.dumps(response_data)
     mock_patch.return_value.status_code = 200
+    mocker.patch.object(users, "alias_generator", side_effect=lambda x: x)
     mocker.patch("server.clients.users.search.clear_cache")
 
     original_func = inspect.unwrap(users.patch_by_id)
     result: MapUser = original_func(user_id, operations, exclude=exclude, access_token="token", client_secret="secret")
     call_args, called_kwargs = mock_patch.call_args
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
-    called_params_excluded_attributes = called_kwargs["params"].pop("excludedAttributes", None)
+    called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes", None)
     expected_json = {"request": expected_request} | expected_payload
 
     assert call_args[0] == expected_requests_url
     assert called_kwargs["headers"] == expected_headers
     assert called_kwargs["timeout"] == expected_timeout
-    assert called_kwargs["params"] == {k: v for k, v in expected_params.items() if k != "excludedAttributes"}
+    assert called_kwargs["params"] == {k: v for k, v in expected_params.items() if k != "excluded_attributes"}
     assert called_params_attributes is None
     assert called_params_excluded_attributes is not None
-    assert set(called_params_excluded_attributes.split(",")) == set(expected_params["excludedAttributes"].split(","))
+    assert set(called_params_excluded_attributes.split(",")) == set(expected_params["excluded_attributes"].split(","))
     assert expected_request is not None
     assert called_kwargs["json"] == expected_json
     assert isinstance(result, MapUser)

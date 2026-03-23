@@ -4,7 +4,7 @@
 
 """Providers of decorators for client functions."""
 
-# ruff: noqa: ANN002, ANN003, ANN202, SLF001, D102
+# ruff: noqa: ANN002, ANN003, ANN202, SLF001
 
 import hashlib
 import inspect
@@ -25,16 +25,16 @@ from server.messages import E, I, W
 
 
 @t.overload
-def cache_resource[T: ModelReturner](f: T) -> T: ...
+def cache_resource[T: t.Callable[..., BaseModel]](f: T) -> T: ...
 @t.overload
-def cache_resource[T: ModelReturner](
+def cache_resource[T: t.Callable[..., BaseModel]](
     *,
     identifier_generator: t.Callable[..., str] | None = None,
     timeout: int | None = None,
 ) -> t.Callable[[T], T]: ...
 
 
-def cache_resource[T: ModelReturner](  # noqa: C901
+def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
     f: T | None = None,
     *,
     identifier_generator: t.Callable[..., str] | None = None,
@@ -54,7 +54,7 @@ def cache_resource[T: ModelReturner](  # noqa: C901
         Callable: Decorated function with caching.
     """
 
-    def decorator(func: ModelReturner):  # noqa: C901
+    def decorator(func: t.Callable):  # noqa: C901
 
         hints = t.get_type_hints(func)
         return_type: type[BaseModel] | None = hints.get("return")
@@ -186,9 +186,3 @@ def clear_cache(func: t.Callable, *identifier: str) -> None:
             W.FAILED_DELETE_CACHE, {"func": import_name, "id": identifier}
         )
         traceback.print_exc()
-
-
-class ModelReturner(t.Protocol):
-    """Base model for return types of decorated functions."""
-
-    def __call__(self, *args, **kwds) -> BaseModel: ...
