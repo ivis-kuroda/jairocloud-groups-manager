@@ -5,6 +5,8 @@
 <script setup lang="ts">
 import { author } from '@@/package.json'
 
+const { footer: { links } } = useAppConfig()
+
 const { isAuthenticated } = useAuth()
 const { footer: columns } = useMenu()
 </script>
@@ -37,11 +39,17 @@ const { footer: columns } = useMenu()
     </template>
 
     <template #right>
-      <ULink to="" class="text-sm hover:underline inline-flex items-center gap-1">
+      <ULink
+        :to="links['privacy-policy']"
+        class="text-sm hover:underline inline-flex items-center gap-1"
+      >
         {{ $t('footer.privacy-policy') }}
         <UIcon name="i-lucide-external-link" class="size-3 shrink-0" /></ULink>
       |
-      <ULink to="" class="text-sm hover:underline inline-flex items-center gap-1">
+      <ULink
+        :to="links['terms-of-service']"
+        class="text-sm hover:underline inline-flex items-center gap-1"
+      >
         {{ $t('footer.terms-of-use') }}
         <UIcon name="i-lucide-external-link" class="size-3 shrink-0" /></ULink>
     </template>

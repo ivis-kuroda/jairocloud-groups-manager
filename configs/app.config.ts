@@ -46,6 +46,22 @@ const header = {
   },
 }
 
+const footer = {
+  /** Configuration for links in the footer */
+  links: {
+    /**
+     * URL or path to the privacy policy page. \
+     * [Optional, can be left empty]
+     */
+    'privacy-policy': '' as string,
+    /**
+     * URL or path to the terms of service page. \
+     * [Optional, can be left empty]
+     */
+    'terms-of-service': '' as string,
+  },
+}
+
 const table = {
   /**
    * Options for page size selection in tables
@@ -224,6 +240,8 @@ export default {
   baseURL,
   /** Header configuration */
   header,
+  /** Footer configuration */
+  footer,
   /** Table configuration */
   table,
   /** Repository configuration */
