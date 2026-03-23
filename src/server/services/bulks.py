@@ -25,7 +25,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 from server.clients import bulks
 from server.config import config
-from server.const import USER_ROLES, ValidationEntity
+from server.const import USER_NAME_MAX_LENGTH, USER_ROLES
 from server.db import db
 from server.entities.bulk import (
     EachResult,
@@ -192,9 +192,18 @@ def build_user_from_file(
             A tuple containing two dictionaries:
             - The first dictionary contains user data keyed by user ID.
             - The second dictionary contains new user data keyed by user name.
+
+    Raises:
+        FileFormatError : If the format is unsupported or parsing fails.
     """
-    gen = _read_file(file_path)
-    it = next(gen)
+    rows = _read_file(file_path)
+    metadata = next(rows)
+    version = (
+        metadata[metadata.index("version:") + 1] if "version:" in metadata else None
+    )
+    if version != "1.0":
+        current_app.logger.error(E.FILE_VERSION_UNSUPPORTED, {"version": version})
+        raise FileFormatError(E.FILE_VERSION_UNSUPPORTED % {"version": version})
 
     data = defaultdict(lambda: defaultdict(list))
     new_data = defaultdict(lambda: defaultdict(list))
@@ -202,14 +211,11 @@ def build_user_from_file(
     idx_of = {}
     id_idx = None
     user_name_idx = None
-    header_row_index = 1
+    header_row_index = 1 - 1
 
-    for i, row in enumerate(it):
+    for i, row in enumerate(rows):
         if i == header_row_index + 1 or not row:
             continue
-
-        if i == 0:
-            _ = (str(h).strip() if h is not None else "" for h in row)
 
         if i == header_row_index:
             header = [str(h).strip() if h is not None else "" for h in row]
@@ -218,30 +224,33 @@ def build_user_from_file(
             user_name_idx = idx_of.get("user_name")
             continue
 
-        r = list(row)
-        rid = r[id_idx] if id_idx is not None else None
+        columns = list(row)
+        rid = columns[id_idx] if id_idx is not None else None
 
         if rid:
             bucket = data[rid]
             exclude = {"id"}
         else:
-            user_name_value = r[user_name_idx] if user_name_idx else None
+            user_name_value = columns[user_name_idx] if user_name_idx else None
             if not user_name_value:
                 continue
             bucket = new_data[user_name_value]
             exclude = {"user_name"}
         for col, j in idx_of.items():
             if col not in exclude:
-                bucket[col].append(r[j])
+                bucket[col].append(columns[j])
 
     return dict(data), dict(new_data)
 
 
-def _read_file(file_path: str) -> t.Generator:
+def _read_file(file_path: str):  # noqa: ANN202
     """Read a user data file and return a list of `UserDetail` instances.
 
     Args:
         file_path (str): Path to the input file containing user data.
+
+    Returns:
+        Generator yielding rows of user data from the file.
 
     Raises:
         FileNotFound: If the file does not exist.
@@ -258,19 +267,19 @@ def _read_file(file_path: str) -> t.Generator:
         delimiter = "," if suffix == ".csv" else "\t"
         with path.open("r", encoding="utf-8-sig", newline="") as f:
             iterator = csv.reader(f, delimiter=delimiter)
-            yield iterator
     elif suffix == ".xlsx":
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         ws = wb.active
-        if ws:
-            iterator = ws.iter_rows(values_only=True)
-        else:
+        if not ws:
             current_app.logger.error(E.FILE_NOT_ACTIVE_SHEET, {"path": path})
             raise FileValidationError(E.INVALID_FILE_STRUCTURE)
-    if iterator is None:
+
+        iterator = ws.iter_rows(values_only=True)
+
+    else:
         raise FileFormatError(E.FILE_FORMAT_UNSUPPORTED % {"suffix": path.suffix})
 
-    yield iterator
+    return iterator
 
 
 def build_user_detail_from_dict(
@@ -570,7 +579,7 @@ def _check_value(user: UserDetail) -> bool:
         return False
     if not re.compile(r"^[A-Za-z0-9._-]{1,50}$").fullmatch(user.id):
         return False
-    return len(user.user_name) <= ValidationEntity.USER_NAME_MAX_LENGTH
+    return len(user.user_name) <= USER_NAME_MAX_LENGTH
 
 
 def _check_immutable_attributes(

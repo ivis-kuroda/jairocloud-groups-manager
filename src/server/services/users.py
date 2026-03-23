@@ -17,7 +17,6 @@ import requests
 from flask import current_app
 from pydantic_core import ValidationError
 
-from server.api.schemas import FileQuery
 from server.clients import users
 from server.config import config
 from server.const import (
@@ -27,11 +26,15 @@ from server.const import (
     MAP_NO_RIGHTS_APPEND_PATTERN,
     MAP_NO_RIGHTS_UPDATE_PATTERN,
     MAP_NOT_FOUND_PATTERN,
+    USER_EXPORT_HEADERS_V1,
     USER_ROLES,
 )
 from server.db import db
 from server.entities.map_error import MapError
-from server.entities.search_request import SearchResponse, SearchResult
+from server.entities.search_request import (
+    SearchResponse,
+    SearchResult,
+)
 from server.entities.summaries import UserSummary
 from server.entities.user_detail import UserDetail
 from server.exc import (
@@ -54,6 +57,7 @@ from server.signals import user_deleted, user_updated
 
 from .token import get_access_token, get_client_secret
 from .utils import (
+    ExportUsersCriteria,
     UsersCriteria,
     build_patch_operations,
     build_search_query,
@@ -746,29 +750,55 @@ def handle_user_updated(
 
 
 def make_export_file(
-    operator_id: str, operator_name: str, query: FileQuery | None = None
+    operator_id: str, operator_name: str, criteria: ExportUsersCriteria | None = None
 ) -> Path:
     """Generate a file containing user details for the specified user IDs.
 
     Args:
         operator_id (str): The ID of the operator performing the export.
         operator_name (str): The name of the operator performing the export.
-        query (FileQuery | None):
-          The file query containing export format and other parameters.
+        criteria (ExportUsersCriteria | None):
+          The export criteria containing export format and other parameters.
 
     Returns:
         Path: The path to the generated export file.
     """
-    query = query or FileQuery(f="tsv")
-    user_list = search(make_criteria_object("users", i=query.i), raw=True).resources
-    delimiter = "," if query.f == "csv" else "\t"
+    match config.USERS.export_format_version:
+        case 1.0:
+            return _make_export_file_v1(operator_id, operator_name, criteria)
+        case _:
+            return NotImplemented  # pragma: no cover
+
+
+def _make_export_file_v1(
+    operator_id: str, operator_name: str, criteria: ExportUsersCriteria | None = None
+) -> Path:
+
+    results = search(criteria or make_criteria_object("users"), raw=True)
+    user_list = results.resources
+
+    now = datetime.now(UTC)
+    file_format = criteria.f if criteria and criteria.f in {"csv", "tsv"} else "tsv"
+    delimiter = "," if file_format == "csv" else "\t"
     file_id = uuid7()
-    target_dir = Path(config.STORAGE.local.storage) / datetime.now(UTC).strftime(
-        "%Y/%m"
-    )
+
+    target_dir = Path(config.STORAGE.local.storage) / str(now.year) / str(now.month)
     target_dir.mkdir(parents=True, exist_ok=True)
-    file_path = target_dir / f"{file_id}.{query.f}"
-    file_path.write_text(delimiter.join(config.USERS.export_fields), encoding="utf-8")
+
+    file_path = target_dir / f"{file_id}.{file_format}"
+    file_path.write_text(
+        delimiter.join([
+            "created:",
+            now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "version:",
+            "1.0",
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+    file_path.write_text(
+        delimiter.join(USER_EXPORT_HEADERS_V1) + "\n", encoding="utf-8"
+    )
 
     permitted_repository_ids = get_permitted_repository_ids()
 

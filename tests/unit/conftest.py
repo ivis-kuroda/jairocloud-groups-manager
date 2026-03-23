@@ -84,16 +84,7 @@ def test_config():
             },
             "POSTGRES": {"db": "jctest", "host": db_host},
             "USERS": {
-                "export_fields": [
-                    "id",
-                    "user_name",
-                    "groups[].id",
-                    "groups[].name",
-                    "role",
-                    "edu_person_principal_names[]",
-                    "preferred_language",
-                    "emails[]",
-                ]
+                "export_format_version": 1.0,
             },
             "REDIS": {
                 "cache_type": "RedisCache",

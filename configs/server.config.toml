@@ -133,18 +133,11 @@ contributor = "{repository_name}投稿ユーザー"
 # It should include '{repository_name}' placeholder.
 general_user = "{repository_name}一般ユーザー"
 
+
 [users]
-# List of fields to include in the exported user details.
-export_fields = [
-        "id",
-        "user_name",
-        "groups[].id",
-        "groups[].name",
-        "role",
-        "edu_person_principal_names[]",
-        "preferred_language",
-        "emails[]",
-    ]
+# Version of the export file format
+export_format_version = 1.0
+
 
 [map_core]
 # Base URL for the mAP Core service.

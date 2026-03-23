@@ -23,6 +23,7 @@ from .permissions import (
 from .resolvers import resolve_repository_id, resolve_service_id
 from .roles import get_highest_role
 from .search_queries import (
+    ExportUsersCriteria,
     GroupsCriteria,
     RepositoriesCriteria,
     UsersCriteria,

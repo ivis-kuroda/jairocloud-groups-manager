@@ -452,17 +452,8 @@ class GroupNamePatternsConfig(BaseModel):
 class UsersConfig(BaseModel):
     """Schema for user export file configuration."""
 
-    export_fields: list[str] = [
-        "id",
-        "user_name",
-        "groups[].id",
-        "groups[].name",
-        "role",
-        "edu_person_principal_names[]",
-        "preferred_language",
-        "emails[]",
-    ]
-    """List of fields to include in the exported user details."""
+    export_format_version: float = 1.0
+    """Version of the export file format."""
 
 
 class MapCoreConfig(BaseModel):

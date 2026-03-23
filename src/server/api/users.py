@@ -231,18 +231,18 @@ def export_get(query: FileQuery) -> Response | tuple[ErrorResponse, int]:
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
-def export_post(query: FileQuery) -> Response | tuple[ErrorResponse, int]:
+def export_post(body: FileQuery) -> Response | tuple[ErrorResponse, int]:
     """Export users to a file for bulk processing.
 
     Args:
-        query (FileQuery): The query parameters for the export.
+        body (FileQuery): The query parameters for the export.
 
     Returns:
         Response: The response containing the exported file
         ErrorResponse: The response containing an error message if the export fails
     """
     try:
-        files = users.make_export_file(current_user.map_id, current_user.name, query)
+        files = users.make_export_file(current_user.map_id, current_user.name, body)
     except InvalidExportError as exc:
         return ErrorResponse(message=exc.message), 403
     return send_file(files)

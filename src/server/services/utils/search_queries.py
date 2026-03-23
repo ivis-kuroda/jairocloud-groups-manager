@@ -827,6 +827,13 @@ class UsersCriteria(Criteria, t.Protocol):
     """Filter by last modified date (to)."""
 
 
+class ExportUsersCriteria(UsersCriteria, t.Protocol):
+    """Protocol for user export criteria."""
+
+    f: t.Annotated[t.Literal["tsv", "csv"], "format"]
+    """File format for export."""
+
+
 type RepositoriesSortableKeys = t.Literal[
     "id", "service_name", "service_url", "entity_ids"
 ]

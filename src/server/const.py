@@ -158,6 +158,22 @@ class USER_ROLES(StrEnum):
     """Role identifier for General Users."""
 
 
+USER_NAME_MAX_LENGTH: Final = 50
+"""Maximum allowed length for user names."""
+
+USER_EXPORT_HEADERS_V1 = [
+    "id",
+    "user_name",
+    "groups[].id",
+    "groups[].name",
+    "role",
+    "edu_person_principal_names[]",
+    "preferred_language",
+    "emails[]",
+]
+"""List of fields to include in user export files for version 1.0."""
+
+
 HAS_REPO_ID_PATTERN: Final = r".*\{repository_id\}.*"
 """Regular expression pattern for role-type group IDs.
 
@@ -193,9 +209,3 @@ following conditions:
 
 GROUP_CACHE_KEY_PATTERN: Final = "weko-group-cache-db"
 """Regular expression pattern to identify cache keys in Redis."""
-
-
-class ValidationEntity:
-    """Constants for validation entities."""
-
-    USER_NAME_MAX_LENGTH: Final = 50

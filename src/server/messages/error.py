@@ -671,16 +671,22 @@ FILE_EXPIRED = LogMessage(
 
 FILE_FORMAT_UNSUPPORTED = LogMessage(
     "E623",
-    "Unsupported file format (suffix: %(suffix)s).",
+    "Unsupported file format (extension: %(suffix)s). "
+    "only tsv/csv and xlsx formats are supported.",
+)
+
+FILE_VERSION_UNSUPPORTED = LogMessage(
+    "E624",
+    "Unsupported file version (version: %(version)s). only version 1.0 is supported.",
 )
 
 FILE_VALIDATION_ERROR = LogMessage(
-    "E624",
+    "E625",
     "File validation failed for task: %(task_id)s. Please check the file.",
 )
 
 FILE_NOT_ACTIVE_SHEET = LogMessage(
-    "E625",
+    "E626",
     "No active sheet found in the Excel file (path: %(path)s).",
 )
 
