@@ -8,6 +8,8 @@
 
 import typing as t
 
+from flask import current_app
+
 from server.config import config
 from server.const import (
     GROUP_DEFAULT_MEMBER_LIST_VISIBILITY,
@@ -357,7 +359,7 @@ def validate_group_to_map_group(
 ) -> MapGroup: ...
 
 
-def validate_group_to_map_group(  # noqa: C901, PLR0912
+def validate_group_to_map_group(  # noqa: C901
     group: GroupDetail, *, mode: t.Literal["create", "update"]
 ) -> tuple[MapGroup, str] | MapGroup:
     """Validate the GroupDetail instance and convert it to a MapGroup instance.
@@ -383,6 +385,7 @@ def validate_group_to_map_group(  # noqa: C901, PLR0912
             raise InvalidFormError(error)
 
         detected = detect_affiliation(group.id)
+        current_app.logger.error("Detected affiliation: %s", detected)
         if not detected:
             # out of this service's scope.
             error = E.GROUP_INVALID_ID_PATTERN
@@ -414,11 +417,10 @@ def validate_group_to_map_group(  # noqa: C901, PLR0912
         error = E.GROUP_REQUIRES_USER_DEFINED_ID
         raise InvalidFormError(error)
 
-    if user_defined_id:
-        max_id_length = config.GROUPS.max_id_length - len(repository_id)
-        if len(user_defined_id) > max_id_length:
-            error = E.GROUP_TOO_LONG_ID % {"rid": repository_id, "max": max_id_length}
-            raise InvalidFormError(error)
+    max_id_length = config.GROUPS.max_id_length - len(repository_id)
+    if len(user_defined_id) > max_id_length:
+        error = E.GROUP_TOO_LONG_ID % {"rid": repository_id, "max": max_id_length}
+        raise InvalidFormError(error)
 
     id_pattern = config.GROUPS.id_patterns.user_defined
     group.id = id_pattern.format(
@@ -696,6 +698,7 @@ def validate_user_groups(user: UserDetail, permitted: set[str]) -> list[str]:
         return []
 
     specified = [group.id for group in user.groups if group.id]
+    current_app.logger.error("Specified group IDs: %s", specified)
     _, detected = detect_affiliations(specified)
     group_query = make_criteria_object(
         "groups", i=[group.group_id for group in detected], l=-1
@@ -704,6 +707,7 @@ def validate_user_groups(user: UserDetail, permitted: set[str]) -> list[str]:
     from server.services import groups  # noqa: PLC0415
 
     existed = {g.id for g in groups.search(criteria=group_query).resources}
+    current_app.logger.error("Existed group IDs: %s", existed)
 
     if non_existent := set(specified) - existed:
         error = E.USER_REQUIRES_EXISTING_GROUP % {"id": ", ".join(non_existent)}

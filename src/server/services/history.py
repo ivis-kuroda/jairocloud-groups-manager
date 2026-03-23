@@ -272,6 +272,7 @@ def get_filter_items(
         stmt = stmt.limit(page_size).offset(offset)
         try:
             results = db.session.execute(stmt).all()
+            current_app.logger.info("results: %s", results)
         except SQLAlchemyError as exc:
             current_app.logger.error(str(exc))
             raise DatabaseError(E.FAILED_GET_HISTORY_RECORDS % {"table": tab}) from exc

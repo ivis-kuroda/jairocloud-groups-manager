@@ -542,6 +542,36 @@ def test_validate_group_to_map_group(app, mocker: MockerFixture, group, mode, ex
     mock_make_map_group.assert_called_once_with(expectedarg)
 
 
+def test_validate_group_to_map_group_non_repository_id(app, mocker: MockerFixture):
+    group = GroupDetail(
+        id="jc_repo1_gr_test_group_test",
+        display_name="Test Group",
+        repository=GroupRepository(id="repo1"),
+        user_defined_id="test_group",
+        public=True,
+        member_list_visibility="Hidden",
+        type="group",
+    )
+    expectedarg = GroupDetail(
+        id="jc_repo1_gr_test_group_test",
+        display_name="Test Group",
+        repository=GroupRepository(id="repo1"),
+        user_defined_id="test_group",
+        public=True,
+        member_list_visibility="Hidden",
+        type="group",
+    )
+    mocker.patch("server.services.repositories.get_by_id", return_value=RepositoryDetail(id="repo1"))
+    mocker.patch("server.services.utils.transformers.get_permitted_repository_ids", return_value={"repo1"})
+    mock_make_map_group = mocker.patch("server.services.utils.transformers.make_map_group", return_value=MapGroup())
+    mocker.patch(
+        "server.services.utils.transformers.detect_affiliation",
+        return_value=_Group(repository_id="", group_id="jc__gr_test_1", user_defined_id="test_1"),
+    )
+    assert transformers.validate_group_to_map_group(group=group, mode="update") == MapGroup()
+    mock_make_map_group.assert_called_once_with(expectedarg)
+
+
 @pytest.mark.parametrize(
     ("group", "mode", "repository_exist", "expected"),
     [
@@ -582,6 +612,29 @@ def test_validate_group_to_map_group(app, mocker: MockerFixture, group, mode, ex
             "create",
             True,
             E.GROUP_TOO_LONG_ID % {"rid": "repo1", "max": 50 - len("jc_") - len("_gr_") - len("repo1")},
+        ),
+        (
+            GroupDetail(
+                id="invalid_id_pattern",
+                display_name="Test Group1",
+                repository=None,
+                user_defined_id="id",
+                type="group",
+            ),
+            "update",
+            True,
+            E.GROUP_INVALID_ID_PATTERN,
+        ),
+        (
+            GroupDetail(
+                display_name="Test Group",
+                repository=GroupRepository(id="repo2"),
+                user_defined_id="group_id",
+                type="group",
+            ),
+            "create",
+            True,
+            E.GROUP_FORBIDDEN_REPOSITORY % {"rid": "repo2"},
         ),
     ],
 )
@@ -939,6 +992,182 @@ def test_validate_user_to_map_user_update(
         )
         transformers.validate_user_to_map_user(user_detail, mode="update")
         return_fnc.assert_called_once_with(expectedarg)
+
+
+def test_validate_user_to_map_user_not_promote(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        id="user1",
+        user_name="Test User",
+        eppns=["test_eppn"],
+        emails=["test@email.com"],
+        groups=[],
+        is_system_admin=True,
+    )
+    mocker.patch(
+        "server.services.repositories.get_by_id",
+        return_value=RepositoryDetail(id="repo1"),
+    )
+    mocker.patch("server.services.utils.transformers.get_permitted_repository_ids", return_value={"repo1"})
+    mocker.patch(
+        "server.services.utils.transformers.validate_user_roles",
+        return_value=[],
+    )
+    mocker.patch(
+        "server.services.utils.transformers.is_super",
+        return_value=False,
+    )
+    mocker.patch("server.services.utils.transformers.validate_user_groups", return_value=["jc_repo1_gr_test_group"])
+    with pytest.raises(InvalidFormError) as exc:
+        transformers.validate_user_to_map_user(user_detail, mode="update")
+    assert str(exc.value) == str(E.USER_NO_PROMOTE_SYSTEM_ADMIN)
+
+
+def test_validate_user_roles(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+        repository_roles=[
+            RepositoryRole(id="repo1", user_role=USER_ROLES.REPOSITORY_ADMIN),
+            RepositoryRole(id="repo2", user_role=None),
+            RepositoryRole(id="", user_role=USER_ROLES.REPOSITORY_ADMIN),
+        ],
+    )
+    permitted = {"repo1", "repo2"}
+    mocker.patch(
+        "server.services.repositories.search",
+        return_value=SearchResult[RepositorySummary](
+            total=2, page_size=20, offset=1, resources=[RepositorySummary(id="repo1"), RepositorySummary(id="repo2")]
+        ),
+    )
+    assert transformers.validate_user_roles(user_detail, permitted) == ["jc_repo1_ro_radm_test"]
+
+
+def test_validate_user_roles_no_existed(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+        repository_roles=[
+            RepositoryRole(id="repo1", user_role=USER_ROLES.REPOSITORY_ADMIN),
+        ],
+    )
+    permitted = {"repo1", "repo2"}
+    mocker.patch(
+        "server.services.repositories.search",
+        return_value=SearchResult[RepositorySummary](total=0, page_size=20, offset=1, resources=[]),
+    )
+    with pytest.raises(InvalidFormError) as exc:
+        transformers.validate_user_roles(user_detail, permitted)
+    assert str(exc.value) == str(E.USER_REQUIRES_EXISTING_REPOSITORY % {"id": "repo1"})
+
+
+def test_validate_user_roles_forbidden(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+        repository_roles=[
+            RepositoryRole(id="repo1", user_role=USER_ROLES.REPOSITORY_ADMIN),
+            RepositoryRole(id="repo2", user_role=None),
+        ],
+    )
+    permitted = set()
+    mocker.patch(
+        "server.services.repositories.search",
+        return_value=SearchResult[RepositorySummary](
+            total=2,
+            page_size=20,
+            offset=1,
+            resources=[RepositorySummary(id="repo1"), RepositorySummary(id="repo2")],
+        ),
+    )
+    with pytest.raises(InvalidFormError) as exc:
+        transformers.validate_user_roles(user_detail, permitted)
+    assert str(exc.value) == str(E.USER_FORBIDDEN_REPOSITORY % {"id": "repo1"})
+
+
+def test_validate_user_groups(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+        groups=[GroupSummary(id="jc_repo1_gr_test_group")],
+    )
+    permitted = {"repo1"}
+    mocker.patch(
+        "server.services.utils.transformers.detect_affiliations",
+        return_value=(
+            None,
+            [
+                _Group(repository_id="repo1", group_id="jc_repo1_gr_test_group", user_defined_id="test_group"),
+            ],
+        ),
+    )
+    mocker.patch(
+        "server.services.groups.search",
+        return_value=SearchResult[GroupSummary](
+            total=1, page_size=20, offset=1, resources=[GroupSummary(id="jc_repo1_gr_test_group")]
+        ),
+    )
+    assert transformers.validate_user_groups(user_detail, permitted) == ["jc_repo1_gr_test_group"]
+
+
+def test_validate_user_groups_non_existent(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+        groups=[GroupSummary(id="jc_repo1_gr_test_group"), GroupSummary(id="jc_repo2_gr_test_group")],
+    )
+    permitted = {"repo1"}
+    mocker.patch(
+        "server.services.utils.transformers.detect_affiliations",
+        return_value=(
+            None,
+            [
+                _Group(repository_id="repo1", group_id="jc_repo1_gr_test_group", user_defined_id="test_group"),
+                _Group(repository_id="repo2", group_id="jc_repo2_gr_test_group", user_defined_id="test_group"),
+            ],
+        ),
+    )
+    mocker.patch(
+        "server.services.groups.search",
+        return_value=SearchResult[GroupSummary](
+            total=1, page_size=20, offset=1, resources=[GroupSummary(id="jc_repo1_gr_test_group")]
+        ),
+    )
+    with pytest.raises(InvalidFormError) as exc:
+        transformers.validate_user_groups(user_detail, permitted)
+    assert str(exc.value) == str(E.USER_REQUIRES_EXISTING_GROUP % {"id": "jc_repo2_gr_test_group"})
+
+
+def test_validate_user_groups_forbidden(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+        groups=[GroupSummary(id="jc_repo1_gr_test_group"), GroupSummary(id="jc_repo2_gr_test_group")],
+    )
+    permitted = {"repo1"}
+    mocker.patch(
+        "server.services.utils.transformers.detect_affiliations",
+        return_value=(
+            None,
+            [
+                _Group(repository_id="repo1", group_id="jc_repo1_gr_test_group", user_defined_id="test_group"),
+                _Group(repository_id="repo2", group_id="jc_repo2_gr_test_group", user_defined_id="test_group"),
+            ],
+        ),
+    )
+    mocker.patch(
+        "server.services.groups.search",
+        return_value=SearchResult[GroupSummary](
+            total=2,
+            page_size=20,
+            offset=1,
+            resources=[GroupSummary(id="jc_repo1_gr_test_group"), GroupSummary(id="jc_repo2_gr_test_group")],
+        ),
+    )
+    with pytest.raises(InvalidFormError) as exc:
+        transformers.validate_user_groups(user_detail, permitted)
+    assert str(exc.value) == str(E.USER_FORBIDDEN_GROUP % {"id": "jc_repo2_gr_test_group"})
+
+
+def test_validate_user_groups_non(app, mocker: MockerFixture):
+    user_detail = UserDetail(
+        user_name="Test User",
+    )
+    permitted = {"repo1"}
+    assert transformers.validate_user_groups(user_detail, permitted) == []
 
 
 @pytest.mark.parametrize(

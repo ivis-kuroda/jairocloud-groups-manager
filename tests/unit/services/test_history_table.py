@@ -276,3 +276,30 @@ def test_create_file_without_id(app, mocker: MockerFixture):
     assert result.id == file_id
     assert result.file_path == file_path
     assert result.file_content == file_content
+
+
+def test_create_download_history(app, mocker: MockerFixture):
+    file_id = uuid7()
+    file_path = "test/path"
+    file_content = {}
+    operator_id = "test_user_1"
+    operator_name = "Test user"
+    mocker.patch("server.services.history_table.create_file", return_value=None)
+    mock_add = mocker.patch("server.db.db.session.add")
+    result = history_table.create_download_history(file_id, file_path, file_content, operator_id, operator_name)
+    assert result.file_id == file_id
+    assert result.operator_id == operator_id
+    assert result.operator_name == operator_name
+    mock_add.assert_called_once()
+
+
+def test_create_download_history_with_exception(app, mocker: MockerFixture):
+    file_id = uuid7()
+    file_path = "test/path"
+    file_content = {}
+    operator_id = "test_user_1"
+    operator_name = "Test user"
+    mocker.patch("server.services.history_table.create_file", side_effect=SQLAlchemyError)
+    with pytest.raises(DatabaseError) as exc:
+        history_table.create_download_history(file_id, file_path, file_content, operator_id, operator_name)
+    assert str(exc.value) == str(E.FAILED_CREATE_DOWNLOAD_HISTORY_RECORD % {"file_id": file_id})

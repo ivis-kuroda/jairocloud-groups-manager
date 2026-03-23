@@ -8,11 +8,12 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import SQLAlchemyError
 
+from server.api.schemas import OperatorQuery
 from server.db.history import DownloadHistory, Files, UploadHistory, _FileContent, _ResultData
 from server.entities.history_detail import DownloadHistoryData, HistoryQuery, UploadHistoryData
 from server.entities.search_request import SearchResult
 from server.entities.summaries import UserSummary
-from server.exc import DatabaseError, RecordNotFound
+from server.exc import DatabaseError, InvalidQueryError, RecordNotFound
 from server.messages import E
 from server.services import history
 
@@ -328,6 +329,39 @@ def test__build_filters_for_history(
         assert compiled.params == expected_param
 
     repoadmin_filter.assert_not_called() if is_system_admin else repoadmin_filter.assert_called_once()
+
+
+def test_get_filter_items(app, mocker: MockerFixture):
+    expected = SearchResult[UserSummary](
+        total=0,
+        page_size=20,
+        offset=0,
+        resources=[
+            UserSummary(
+                id="operator_1", user_name="Operator 1", role=None, emails=None, eppns=None, last_modified=None
+            ),
+            UserSummary(
+                id="operator_2", user_name="Operator 2", role=None, emails=None, eppns=None, last_modified=None
+            ),
+        ],
+    )
+    mock_data = [("operator_1", "Operator 1"), ("operator_2", "Operator 2")]
+    mocker.patch("server.db.db.session.execute", return_value=mocker.MagicMock(all=lambda: mock_data))
+    result = history.get_filter_items("download", "o", OperatorQuery())
+    assert result == expected
+
+
+def test_get_filter_items_with_exception(app, mocker: MockerFixture):
+    mocker.patch("server.db.db.session.execute", side_effect=SQLAlchemyError())
+    with pytest.raises(DatabaseError) as exc:
+        history.get_filter_items("download", "o", OperatorQuery())
+    assert str(exc.value) == str(E.FAILED_GET_HISTORY_RECORDS % {"table": "download"})
+
+
+def test_get_filter_items_invalid_query(app, mocker: MockerFixture):
+    with pytest.raises(InvalidQueryError) as exc:
+        history.get_filter_items("download", "O", OperatorQuery())
+    assert str(exc.value) == str(InvalidQueryError(E.FAILED_GET_FILTER_ITEMS % {"key": "O"}))
 
 
 def test_update_public_status_not_found(app, mocker: MockerFixture):

@@ -15,16 +15,6 @@ from server.entities.common import camel_case_config, forbid_extra_config
 from server.entities.user_detail import UserDetail
 
 
-CSV_TO_FIELDS = {
-    "user_name": "user_name",
-    "groups[].id": "groups_ids",
-    "groups[].name": "groups_names",
-    "edu_person_principal_names[]": "eppns",
-    "emails[]": "emails",
-    "preferred_language": "preferred_language",
-}
-
-
 class RepositoryMember(BaseModel):
     """Model for members of a repository."""
 
@@ -174,25 +164,3 @@ class FileContent(t.TypedDict):
 
     users: dict[str, str]
     """Dictionary of users."""
-
-
-class FileUserDict(t.TypedDict, total=False):
-    """Model for user data in file as dictionary."""
-
-    user_name: list[str]
-    """List of usernames."""
-
-    groups_ids: list[str]
-    """List of group IDs."""
-
-    groups_names: list[str]
-    """List of group names."""
-
-    eppns: list[str]
-    """List of eduPersonPrincipalNames."""
-
-    emails: list[str]
-    """List of e-mails."""
-
-    preferred_language: list[str]
-    """List of preferred languages."""

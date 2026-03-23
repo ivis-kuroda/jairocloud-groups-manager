@@ -776,9 +776,9 @@ def make_export_file(
         user_list, delimiter, file_path, permitted_repository_ids
     )
     file_content = {
-        "repositories": list(file_repositories),
-        "groups": list(file_groups),
-        "users": list(file_users),
+        "repositories": file_repositories,
+        "groups": file_groups,
+        "users": file_users,
     }
     history_table.create_download_history(
         file_id, str(file_path), file_content, operator_id, operator_name
@@ -792,7 +792,7 @@ def _wite_user(
     delimiter: str,
     file_path: Path,
     permitted_repository_ids: set[str],
-) -> tuple[set[dict[str, str]], set[dict[str, str]], set[dict[str, str]]]:
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     """Write user details to file.
 
     Args:
@@ -802,37 +802,44 @@ def _wite_user(
         permitted_repository_ids (list[str]): A list of permitted repository IDs.
 
     Returns:
-        tuple[set[dict[str, str]], set[dict[str, str]], set[dict[str, str]]]:
-          A tuple containing sets of file repositories, file groups, and file users.
+        tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+          A tuple containing lists of file repositories, file groups, and file users.
 
     Raises:
         InvalidExportError:
           If the user cannot be exported due to insufficient permissions.
     """
-    file_repositories = set[dict[str, str]]()
-    file_groups = set[dict[str, str]]()
-    file_users = set[dict[str, str]]()
+    file_repositories_dict: dict[str, dict[str, str]] = {}
+    file_groups_dict: dict[str, dict[str, str]] = {}
+    file_users_dict: dict[str, dict[str, str]] = {}
     for map_user in user_list:
         roles, groups = detect_affiliations([g.value for g in map_user.groups or []])
         if not is_current_user_system_admin() and any(
-            role.role == USER_ROLES.SYSTEM_ADMIN for role in roles
+            role_group.role == USER_ROLES.SYSTEM_ADMIN for role_group in roles
         ):
-            error = E.USER_CANNOT_EXPORT_SYSTEM_ADMIN
-            raise InvalidExportError(error)
+            raise InvalidExportError(E.USER_CANNOT_EXPORT_SYSTEM_ADMIN)
         if not is_current_user_system_admin() and not any(
             group.repository_id in permitted_repository_ids for group in groups
         ):
-            error = E.USER_FORBIDDEN_EXPORT
-            raise InvalidExportError(error)
+            raise InvalidExportError(E.USER_FORBIDDEN_EXPORT)
 
-        file_users.add({"id": map_user.id or "", "user_name": map_user.user_name or ""})
+        file_users_dict[map_user.id or ""] = {
+            "id": map_user.id or "",
+            "user_name": map_user.user_name or "",
+        }
         group_ids = []
         for group in groups:
             if group.repository_id not in permitted_repository_ids:
                 continue
 
-            file_groups.add({"id": group.group_id or "", "display_name": ""})
-            file_repositories.add({"id": group.repository_id or "", "display_name": ""})
+            file_groups_dict[group.group_id or ""] = {
+                "id": group.group_id or "",
+                "display_name": "",
+            }
+            file_repositories_dict[group.repository_id or ""] = {
+                "id": group.repository_id or "",
+                "service_name": "",
+            }
             group_ids.append(group.group_id or "")
         roles_list = [
             r.role.value for r in roles if r.repository_id in permitted_repository_ids
@@ -859,4 +866,7 @@ def _wite_user(
                 delimiter.join(row) + "\n",
                 encoding="utf-8",
             )
+    file_repositories = list(file_repositories_dict.values())
+    file_groups = list(file_groups_dict.values())
+    file_users = list(file_users_dict.values())
     return file_repositories, file_groups, file_users
