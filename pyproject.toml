@@ -33,6 +33,9 @@ dev = [
     "taskipy>=1.14.1",
 ]
 
+[project.scripts]
+jairocloud-groups-manager = "server.app:cli"
+
 
 [tool.taskipy.tasks]
 # refer to https://github.com/taskipy/taskipy?tab=readme-ov-file#usage
