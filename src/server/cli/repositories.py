@@ -14,6 +14,7 @@ from pydantic import HttpUrl
 from server.entities.repository_detail import RepositoryDetail
 from server.messages import E, I
 from server.services import repositories as repository_services
+from server.services.utils import resolve_repository_id
 
 
 @click.group()
@@ -22,9 +23,10 @@ def repositories() -> None:
 
 
 @repositories.command()
-@click.argument("repository_id")
-def get(repository_id: str) -> None:
+@click.argument("fqdn")
+def get(fqdn: str) -> None:
     """Get Service resource of the Repository."""
+    repository_id = resolve_repository_id(fqdn=fqdn)
     obj = repository_services.get_by_id(repository_id, raw=True)
     if obj is None:
         current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"rid": repository_id})
@@ -35,10 +37,11 @@ def get(repository_id: str) -> None:
 
 
 @repositories.command()
-@click.argument("repository_id")
+@click.argument("fqdn")
 @click.option("--more-detail", is_flag=True, help="Show more detailed information.")
-def detail(repository_id: str, *, more_detail: bool) -> None:
+def detail(fqdn: str, *, more_detail: bool) -> None:
     """Get Repository details."""
+    repository_id = resolve_repository_id(fqdn=fqdn)
     detail = repository_services.get_by_id(repository_id, more_detail=more_detail)
     if detail is None:
         current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"rid": repository_id})
@@ -50,21 +53,23 @@ def detail(repository_id: str, *, more_detail: bool) -> None:
 
 @repositories.command()
 @click.option("-n", "--name", required=True, help="Name of the Repository.")
-@click.option("-u", "--url", required=True, help="URL of the Repository.")
+@click.option("-d", "--fqdn", required=True, help="FQDN of the Repository.")
 @click.option(
     "-e",
     "--entity-id",
     multiple=True,
     help="Entity ID of the SP linked to the Repository. [multiple]",
 )
-def create(name: str, url: str, entity_id: tuple[str] | None = None) -> None:
+def create(name: str, fqdn: str, entity_id: tuple[str] | str | None = None) -> None:
     """Create a new Repository.
 
-    If no entity ID is provided, a default one will be generated using the URL.
+    If no entity ID is provided, a default one will be generated using the FQDN.
+    default: https://<fqdn>/shibboleth-sp
     """
-    service_url = HttpUrl(url)
+    service_url = HttpUrl.build(scheme="https", host=fqdn)
     if not entity_id:
-        entity_id = (f"{service_url.encoded_string()}shibboleth-sp",)
+        default_path = "shibboleth-sp"
+        entity_id = (str(HttpUrl.build(scheme="https", host=fqdn, path=default_path)),)
 
     detail = RepositoryDetail(
         service_name=name,
@@ -75,10 +80,11 @@ def create(name: str, url: str, entity_id: tuple[str] | None = None) -> None:
 
 
 @repositories.command()
-@click.argument("repository_id")
+@click.argument("fqdn")
 @click.option("-f", is_flag=True, help="Skip confirmation.")
-def delete(repository_id: str, *, yes: bool) -> None:
+def delete(fqdn: str, *, yes: bool) -> None:
     """Delete a Repository."""
+    repository_id = resolve_repository_id(fqdn=fqdn)
     if not yes:
         service_name: str = click.prompt(
             "To confirm, type the name of the Repository to delete",
