@@ -67,6 +67,11 @@ FAILED_DELETE_CACHE = LogMessage(
 )
 
 
+CONFIRM_DELETE_GROUP = LogMessage(
+    "W230",
+    "Are you sure to delete the Group (id: %(gid)s)?",
+)
+
 FAILED_UPDATE_TASK_PROGRESS = LogMessage(
     "W800",
     "Failed to update current task progress (done: %(done)s, total: %(total)s).",

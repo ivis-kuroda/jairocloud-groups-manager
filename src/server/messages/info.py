@@ -136,6 +136,11 @@ SUCCESS_DELETE_REPOSITORY = LogMessage(
 )
 
 
+SUCCESS_GET_GROUP = LogMessage(
+    "I205",
+    "Successfully get Group resource. \n%(json)s",
+)
+
 SUCCESS_CREATE_GROUP = LogMessage(
     "I210",
     "Successfully created Group resource (id: %(id)s) in Repository (id: %(rid)s).",
@@ -166,6 +171,11 @@ SUCCESS_DELETE_GROUPS = LogMessage(
 SEARCHED_SYSTEM_ADMINS = LogMessage(
     "I301",
     "Search performed on System Administrator.",
+)
+
+SUCCESS_GET_USER = LogMessage(
+    "I305",
+    "Successfully get User resource. \n%(json)s",
 )
 
 SUCCESS_CREATE_USER = LogMessage(
