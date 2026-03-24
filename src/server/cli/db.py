@@ -2,7 +2,7 @@
 # Copyright (C) 2025 National Institute of Informatics.
 #
 
-"""Database management command-line interface."""
+"""Command-line interface for database management."""
 
 import click
 

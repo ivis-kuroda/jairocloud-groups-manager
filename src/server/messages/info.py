@@ -110,6 +110,11 @@ RESOURCE_CACHE_DELETED = LogMessage(
     "Cache deleted for resource (func %(func)s, id: %(id)s).",
 )
 
+SUCCESS_GET_REPOSITORY = LogMessage(
+    "I105",
+    "Successfully get Repository resource. \n%(json)s",
+)
+
 SUCCESS_CREATE_REPOSITORY = LogMessage(
     "I110",
     "Successfully created Service resource for Repository (id: %(id)s)",

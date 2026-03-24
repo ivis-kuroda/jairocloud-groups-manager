@@ -2,7 +2,7 @@
 # Copyright (C) 2025 National Institute of Informatics.
 #
 
-"""Token management command-line interface."""
+"""Command-line interface for token management."""
 
 import click
 
