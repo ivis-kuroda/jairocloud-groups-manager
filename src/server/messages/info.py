@@ -48,23 +48,29 @@ REQUEST_FOR_AUTH_CODE = LogMessage(
     "Please authenticate at the following URL to issue an access token: %(url)s",
 )
 
-SUCCESS_ISSUE_TOKEN = LogMessage(
+WAITING_TOKEN_ISSUED = LogMessage(
     "I032",
+    "Waiting for the access token to be issued. "
+    "Press Ctrl+C to stop waiting (it does not cancel the token issuance).",
+)
+
+SUCCESS_ISSUE_TOKEN = LogMessage(
+    "I033",
     "Successfully issued access token for the mAP Core API.",
 )
 
 SUCCESS_REFRESH_TOKEN = LogMessage(
-    "I033",
+    "I034",
     "Successfully refreshed access token for the mAP Core API.",
 )
 
 ACCESS_TOKEN_AVAILABLE = LogMessage(
-    "I034",
+    "I035",
     "Access token is valid and available.",
 )
 
 SUCCESS_GET_TOKEN_OWNER = LogMessage(
-    "I035",
+    "I036",
     "Successfully get token owner's User resource from mAP Core API. \n%(user)s",
 )
 

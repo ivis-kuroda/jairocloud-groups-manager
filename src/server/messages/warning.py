@@ -24,6 +24,12 @@ ACCESS_TOKEN_NOT_AVAILABLE = LogMessage(
     "Access token is invalid or expired.",
 )
 
+STOP_WAITING_TOKEN_ISSUED = LogMessage(
+    "W031",
+    "Stopped waiting for the tokens to be issued. "
+    "It does not mean that the token issuance has been canceled.",
+)
+
 
 DENIED_LOGIN_MISSING_EPPN = LogMessage(
     "W060",

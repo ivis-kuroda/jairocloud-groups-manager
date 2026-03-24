@@ -132,6 +132,10 @@ MAP_NO_RIGHTS_APPEND_PATTERN: Final = r"No append rights for '(.*)'"
 """Pattern to identify 'No Append Rights' errors from mAP Core API."""
 
 
+OAUTH_CALLBACK_CHANNEL: Final = "oauth-callback"
+"""Channel name for receiving token issuance callbacks."""
+
+
 GROUP_DEFAULT_PUBLIC: Final = False
 """Default value for the 'public' attribute of groups."""
 

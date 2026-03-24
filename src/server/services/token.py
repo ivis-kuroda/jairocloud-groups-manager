@@ -16,7 +16,8 @@ from pydantic_core import ValidationError
 
 from server.clients import auth
 from server.config import config
-from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT
+from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT, OAUTH_CALLBACK_CHANNEL
+from server.datastore import app_cache
 from server.entities.map_error import MapError
 from server.entities.user_detail import UserDetail
 from server.exc import (
@@ -159,11 +160,13 @@ def issue_access_token(code: str) -> str:
     """
     certs = get_client_credentials()
     if certs is None:
+        app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
         raise CredentialsError(E.CREDENTIALS_NOT_STORED)
 
     try:
         token = auth.issue_oauth_token(code, certs)
     except requests.HTTPError as exc:
+        app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
         current_app.logger.error(E.FAILED_ISSUE_TOKEN)
         response = exc.response
         status_code = response.status_code
@@ -176,11 +179,13 @@ def issue_access_token(code: str) -> str:
                 error = E.RECEIVE_UNEXPECTED_RESPONSE
                 raise UnexpectedResponseError(error) from exc
     except requests.JSONDecodeError as exc:
+        app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
         current_app.logger.error(E.FAILED_ISSUE_TOKEN)
         raise OAuthTokenError(E.FAILED_DECODE_RESPONSE) from exc
 
     current_app.logger.info(I.SUCCESS_ISSUE_TOKEN)
     save_oauth_token(token)
+    app_cache.publish(OAUTH_CALLBACK_CHANNEL, "issued")
 
     return token.access_token
 
