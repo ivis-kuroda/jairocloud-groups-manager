@@ -165,7 +165,6 @@ def get_by_id(
     return adapter.validate_json(response.text)
 
 
-@cache_resource
 def post(
     service: MapService,
     /,

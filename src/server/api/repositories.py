@@ -60,7 +60,7 @@ def get(
     return results, 200
 
 
-@bp.get("/", strict_slashes=False)
+@bp.post("/", strict_slashes=False)
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN)
 @validate(response_by_alias=True)
