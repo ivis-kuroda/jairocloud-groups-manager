@@ -11,10 +11,9 @@ from redis import Redis, sentinel
 from redis.exceptions import ConnectionError as RedisConnectionError
 from werkzeug.local import LocalProxy
 
+from server.config import config as config_
+from server.exc import ConfigurationError
 from server.messages import E, W
-
-from .config import config as config_
-from .exc import ConfigurationError
 
 
 if t.TYPE_CHECKING:

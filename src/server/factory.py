@@ -14,8 +14,8 @@ from celery import Celery, Task
 from flask import Flask
 from flask_login import current_user
 
-from .auth import get_user_from_store, is_user_logged_in
-from .ext import JAIROCloudGroupsManager
+from server.auth import get_user_from_store, is_user_logged_in
+from server.ext import JAIROCloudGroupsManager
 
 
 if t.TYPE_CHECKING:

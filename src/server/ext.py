@@ -11,17 +11,17 @@ from pathlib import Path
 from sqlalchemy_utils import database_exists
 from weko_group_cache_db.config import setup_config as setup_weko_group_cache_db_config
 
-from .api.router import create_api_blueprint
-from .auth import login_manager
-from .cli.base import register_cli_commands
-from .config import RuntimeConfig, setup_config
-from .const import DEFAULT_CONFIG_PATH
-from .datastore import setup_datastore
-from .db.base import db
-from .db.utils import load_models
-from .exc import ConfigurationError
-from .logger import setup_logger
-from .messages import E, W
+from server.api.router import create_api_blueprint
+from server.auth import login_manager
+from server.cli.base import register_cli_commands
+from server.config import RuntimeConfig, setup_config
+from server.const import DEFAULT_CONFIG_PATH
+from server.datastore import setup_datastore
+from server.db.base import db
+from server.db.utils import load_models
+from server.exc import ConfigurationError
+from server.logger import setup_logger
+from server.messages import E, W
 
 
 if t.TYPE_CHECKING:

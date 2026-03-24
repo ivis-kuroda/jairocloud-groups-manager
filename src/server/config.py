@@ -37,13 +37,13 @@ from weko_group_cache_db.config import (
 )
 from werkzeug.local import LocalProxy
 
-from .const import (
+from server.const import (
     HAS_REPO_ID_AND_USER_DEFINED_ID_PATTERN,
     HAS_REPO_ID_PATTERN,
     HAS_REPO_NAME_PATTERN,
     USER_ROLES,
 )
-from .messages import E
+from server.messages import E
 
 
 class RuntimeConfig(BaseSettings):

@@ -4,7 +4,7 @@
 
 """Entry point for the server application."""
 
-from .factory import create_app
+from server.factory import create_app
 
 
 app = create_app(__name__)
