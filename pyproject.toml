@@ -1,6 +1,6 @@
 [project]
 name = "jairocloud-groups-manager"
-version = "1.0.0a1"
+version = "1.0.0a2"
 authors = [
   {name = "National Institute of Informatics"}
 ]
@@ -9,28 +9,28 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.14"
 dependencies = [
-    "celery[redis]>=5.6.2",
-    "flask>=3.1.3",
-    "flask-login>=0.6.3",
-    "flask-pydantic>=0.14.0",
-    "flask-sqlalchemy>=3.1.1",
-    "openpyxl>=3.1.5",
-    "psycopg[binary]>=3.3.3",
-    "pydantic-settings>=2.13.1",
-    "pydantic[email]>=2.12.5",
-    "requests>=2.32.5",
-    "sqlalchemy-utils>=0.42.1",
-    "weko-group-cache-db",
+  "celery[redis]>=5.6.2",
+  "flask>=3.1.3",
+  "flask-login>=0.6.3",
+  "flask-pydantic>=0.14.0",
+  "flask-sqlalchemy>=3.1.1",
+  "openpyxl>=3.1.5",
+  "psycopg[binary]>=3.3.3",
+  "pydantic-settings>=2.13.1",
+  "pydantic[email]>=2.12.5",
+  "requests>=2.32.5",
+  "sqlalchemy-utils>=0.42.1",
+  "weko-group-cache-db",
 ]
 
 [dependency-groups]
 dev = [
-    "celery-types>=0.24.0",
-    "pyright>=1.1.408",
-    "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
-    "pytest-mock>=3.15.1",
-    "taskipy>=1.14.1",
+  "celery-types>=0.24.0",
+  "pyright>=1.1.408",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "pytest-mock>=3.15.1",
+  "taskipy>=1.14.1",
 ]
 
 [project.scripts]

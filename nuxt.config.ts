@@ -23,7 +23,7 @@ export default defineNuxtConfig({
 
   srcDir: 'src/app/',
 
-  compatibilityDate: '2026-03-04',
+  compatibilityDate: '2026-03-23',
 
   vite: {
     vue: {
