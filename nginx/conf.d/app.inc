@@ -4,11 +4,13 @@ root /usr/share/nginx/html;
 
 index index.html;
 
-location /_nuxt/ {
+location ~ ^/(_nuxt|_fonts)/ {
   access_log off;
   log_not_found off;
 
-  try_files $uri $uri/ /index.html;
+  add_header Cache-Control "public, immutable";
+
+  try_files $uri =404;
 }
 
 location / {

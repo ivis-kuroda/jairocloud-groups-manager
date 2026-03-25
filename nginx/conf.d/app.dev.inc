@@ -1,6 +1,6 @@
 # Proxy requests to the application dev server
 
-location ~ "_nuxt" {
+location ~ ^/(_nuxt|_fonts)/ {
   proxy_pass http://app_server;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;
