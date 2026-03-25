@@ -73,7 +73,7 @@ const useRepositoriesTable = () => {
       header: () => sortColumns
         ? sortableHeader('id')
         : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.id),
-      cell: ({ row }) => row.original.spConnectorId,
+      cell: ({ row }) => row.original.id,
       enableGlobalFilter: false,
     },
     {
