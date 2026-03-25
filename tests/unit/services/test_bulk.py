@@ -201,7 +201,7 @@ def test_get_repository_member(app, mocker: MockerFixture):
 
 
 def test_build_user_from_file(app, mocker: MockerFixture):
-    repo = ["id", "name", "ver"]
+    metadata = ["created:", "2026-01-01", "version:", "1.0"]
     header = [
         "id",
         "user_name",
@@ -237,7 +237,7 @@ def test_build_user_from_file(app, mocker: MockerFixture):
     data4 = ["", "User 3", "jc_repo1_gr_test_group1", "Group 1", "general_user", "test@eppn", "user3@example.com", "ja"]
     data5 = []
     data6 = ["", "", "jc_repo1_gr_test_group1", "Group 1", "repository_admin", "test@eppn", "user4@example.com", "ja"]
-    rows = [iter([repo, header, meta, data1, data2, data3, data4, data5, data6])]
+    rows = [metadata, header, meta, data1, data2, data3, data4, data5, data6]
     mock_read_file = mocker.patch("server.services.bulks._read_file", return_value=iter(rows))
     expected_data = {
         "user1": {
@@ -294,7 +294,8 @@ def test__read_file(app, mocker: MockerFixture, file_path, expected):
     mock_wb.active = mock_ws
     mocker.patch("openpyxl.load_workbook", return_value=mock_wb)
     result = bulks._read_file(file_path)  # noqa: SLF001
-    assert list(next(result)) == expected
+    assert list(next(result)) == expected[0]
+    assert list(next(result)) == expected[1]
 
 
 def test__read_file_not_ws(app, mocker: MockerFixture):
