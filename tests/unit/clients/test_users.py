@@ -21,6 +21,7 @@ from server.entities.map_error import MapError
 from server.entities.map_user import MapUser
 from server.entities.patch_request import AddOperation, PatchOperation, PatchRequestPayload, ReplaceOperation
 from server.entities.search_request import SearchRequestParameter, SearchResponse
+
 from tests.helpers import load_json_data, unwrap
 
 

@@ -11,6 +11,7 @@ from server.entities.search_request import SearchResult
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.exc import InvalidExportError, InvalidFormError, InvalidQueryError, ResourceInvalid, ResourceNotFound
 from server.messages import E
+
 from tests.helpers import unwrap
 
 

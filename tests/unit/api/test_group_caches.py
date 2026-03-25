@@ -8,6 +8,7 @@ from server.entities.cache import RepositoryCache, TaskDetail
 from server.entities.search_request import SearchResult
 from server.exc import InvalidQueryError
 from server.messages import E
+
 from tests.helpers import unwrap
 
 

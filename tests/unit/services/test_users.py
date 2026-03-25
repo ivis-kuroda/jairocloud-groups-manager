@@ -36,6 +36,7 @@ from server.services.utils import (
     make_criteria_object,
 )
 from server.services.utils.affiliations import Affiliations, _Group, _RoleGroup
+
 from tests.helpers import load_json_data
 
 

@@ -31,6 +31,7 @@ from server.messages.base import LogMessage
 from server.services import groups
 from server.services.groups import update_put
 from server.services.utils.search_queries import GroupsCriteria, make_criteria_object
+
 from tests.helpers import UnexpectedError
 
 

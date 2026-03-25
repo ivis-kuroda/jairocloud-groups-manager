@@ -6,6 +6,7 @@ from server.api import repositories
 from server.api.schemas import ErrorResponse, RepositoriesQuery, RepositoryDeleteQuery, SearchResult
 from server.entities.repository_detail import RepositoryDetail
 from server.exc import InvalidFormError, InvalidQueryError, ResourceInvalid, ResourceNotFound
+
 from tests.helpers import unwrap
 
 

@@ -5,6 +5,7 @@ from server.api import search as search_api
 from server.api.schemas import ErrorResponse, GlobalSearchQuery, GlobalSearchResult
 from server.entities.search_request import SearchResult
 from server.exc import InvalidQueryError
+
 from tests.helpers import unwrap
 
 

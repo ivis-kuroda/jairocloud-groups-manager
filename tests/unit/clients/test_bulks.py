@@ -9,6 +9,7 @@ from server.clients import bulks
 from server.entities.bulk_request import BulkOperation, BulkResponse
 from server.entities.map_error import MapError
 from server.entities.map_group import Administrator, MapGroup, MemberUser, Meta, Service
+
 from tests.helpers import load_json_data
 
 

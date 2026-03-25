@@ -12,6 +12,7 @@ from server.entities.history_detail import DownloadHistoryData, HistoryQuery, Up
 from server.entities.search_request import FilterOption, SearchResult
 from server.exc import InvalidQueryError, RecordNotFound
 from server.messages import E
+
 from tests.helpers import unwrap
 
 

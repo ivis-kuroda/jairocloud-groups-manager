@@ -3,6 +3,7 @@ import typing as t
 from server.api.callback import auth_code
 from server.api.schemas import OAuthTokenQuery
 from server.exc import CredentialsError, DatabaseError, OAuthTokenError
+
 from tests.helpers import unwrap
 
 

@@ -5,6 +5,7 @@ import pytest
 from pydantic_core import ValidationError
 
 from server.entities.map_user import EPPN, Email, Group, MapUser, Meta
+
 from tests.helpers import load_json_data
 
 

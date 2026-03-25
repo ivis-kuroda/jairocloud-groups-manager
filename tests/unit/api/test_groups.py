@@ -18,6 +18,7 @@ from server.entities.group_detail import GroupDetail, Repository
 from server.entities.search_request import SearchResult
 from server.exc import InvalidFormError, InvalidQueryError, RequestConflict, ResourceInvalid, ResourceNotFound
 from server.messages import E
+
 from tests.helpers import UnexpectedError, unwrap
 
 

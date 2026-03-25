@@ -89,6 +89,16 @@ select = ["ALL"]
 combine-as-imports = true
 lines-after-imports = 2
 lines-between-types = 1
+known-first-party = ["server"]
+sections = { "testing-helpers" = ["tests"] }
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "testing-helpers",
+  "local-folder",
+]
 
 [tool.ruff.lint.pylint]
 max-args = 6

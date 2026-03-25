@@ -12,6 +12,7 @@ from server.exc import ConfigurationError, InvalidQueryError
 from server.messages import E
 from server.services.utils import search_queries
 from server.services.utils.affiliations import Affiliations, _Group
+
 from tests.helpers import unwrap
 
 
