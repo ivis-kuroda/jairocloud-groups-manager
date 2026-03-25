@@ -3,3 +3,4 @@ task format
 task typecheck
 
 pnpm run lint
+pnpm run typecheck
