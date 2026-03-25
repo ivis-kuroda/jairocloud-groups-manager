@@ -13,7 +13,12 @@ from functools import cache
 from server.config import config
 from server.const import USER_ROLES
 
+from .resolvers import resolve_repository_id
 from .roles import get_highest_role
+
+
+if t.TYPE_CHECKING:
+    from server.entities.map_group import Service
 
 
 def detect_affiliations(group_ids: list[str]) -> Affiliations:
@@ -34,9 +39,7 @@ def detect_affiliations(group_ids: list[str]) -> Affiliations:
               that is, (`repository_id`, `group_id`, `user_defined_id`, `type`="group").
     """
     detect_affiliations = [
-        detect
-        for group_id in group_ids
-        if (detect := detect_affiliation(group_id)) is not None
+        detect for group_id in group_ids if (detect := detect_affiliation(group_id))
     ]
 
     aggregated: defaultdict[str | None, list[USER_ROLES]] = defaultdict(list)
@@ -46,7 +49,10 @@ def detect_affiliations(group_ids: list[str]) -> Affiliations:
 
     return Affiliations(
         roles=[
-            _RoleGroup(repository_id=repo_id, role=get_highest_role(roles))
+            _RoleGroup(
+                repository_id=repo_id,
+                role=t.cast("USER_ROLES", get_highest_role(roles)),
+            )
             for repo_id, roles in aggregated.items()
         ],
         groups=[aff for aff in detect_affiliations if aff.type == "group"],
@@ -79,7 +85,7 @@ def detect_affiliation(group_id: str) -> Affiliation | None:
     # Retrieve the name of the main group that matched (the role type)
     matched_role = match.lastgroup
     if not matched_role:
-        return None
+        return None  # pragma: no cover
 
     # Extract parameters by filtering groupdict keys with the role prefix
     params: dict[str, str] = {}
@@ -137,3 +143,20 @@ def _build_combined_regex() -> re.Pattern[str]:
 
     # Combine all patterns into one large regex using the OR (|) operator
     return re.compile("|".join(combined_parts))
+
+
+def detect_repository(services: list[Service]) -> Service | None:
+    """Detect the affiliated repositor.
+
+    Retrieve the first affiliated repository from the given list of services.
+
+    Args:
+        services (list): List of services to analyze.
+
+    Returns:
+        Service:
+            Detected affiliated repository, otherwise None.
+    """
+    return next(
+        (s for s in services if resolve_repository_id(service_id=s.value)), None
+    )

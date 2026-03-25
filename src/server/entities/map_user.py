@@ -68,7 +68,7 @@ class Meta(BaseModel):
     Alias for 'lastModified'.
     """
 
-    created_by: str | None
+    created_by: str | None = None
     """ID of the user who created this resource. Alias for 'createdBy'."""
 
     model_config = camel_case_config | forbid_extra_config | {"frozen": True}
@@ -112,7 +112,7 @@ class Group(BaseModel):
             ...,
             # NOTE: not using `alias` because it changes the constructor arguments.
             validation_alias="$ref",
-            exclude=True,
+            serialization_alias="$ref",
         ),
     ] = None
     """URI of the corresponding Group resource. Alias for '$ref'."""

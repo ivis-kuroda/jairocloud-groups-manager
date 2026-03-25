@@ -24,7 +24,7 @@ class MapGroup(BaseModel):
     schemas: t.Annotated[t.Sequence[str], Field(frozen=True)] = [MAP_GROUP_SCHEMA]
     """Schema URIs that define the attributes present in the Group resource."""
 
-    id: str
+    id: str | None = None
     """The unique identifier for the group."""
 
     external_id: str | None = None
@@ -94,7 +94,7 @@ class MemberUser(BaseModel):
             ...,
             # NOTE: not using `alias` because it changes the constructor arguments.
             validation_alias="$ref",
-            exclude=True,
+            serialization_alias="$ref",
         ),
     ] = None
     """URI of the corresponding User resource. Alias for '$ref'."""
@@ -108,7 +108,7 @@ class MemberUser(BaseModel):
     value: str
     """User ID."""
 
-    custom_roles: t.Annotated[list[str] | None, Field(..., exclude=True)] = None
+    custom_roles: list[str] | None = None
     """Custom roles assigned to the user. Alias for 'customRole'."""
 
     model_config = camel_case_config | forbid_extra_config
@@ -124,7 +124,7 @@ class MemberGroup(BaseModel):
             ...,
             # NOTE: not using `alias` because it changes the constructor arguments.
             validation_alias="$ref",
-            exclude=True,
+            serialization_alias="$ref",
         ),
     ] = None
     """URI of the corresponding Group resource. Alias for '$ref'."""
@@ -151,7 +151,7 @@ class Administrator(BaseModel):
             ...,
             # NOTE: not using `alias` because it changes the constructor arguments.
             validation_alias="$ref",
-            exclude=True,
+            serialization_alias="$ref",
         ),
     ] = None
     """URI of the corresponding User resource. Alias for '$ref'."""
@@ -175,7 +175,7 @@ class Service(BaseModel):
             ...,
             # NOTE: not using `alias` because it changes the constructor arguments.
             validation_alias="$ref",
-            exclude=True,
+            serialization_alias="$ref",
         ),
     ] = None
     """URI of the corresponding Service resource. Alias for '$ref'."""

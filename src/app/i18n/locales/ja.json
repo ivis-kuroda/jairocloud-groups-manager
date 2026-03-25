@@ -1,34 +1,134 @@
 {
+  "bulk": {
+    "about": "一括操作について",
+    "about-description": "ファイルに含まれるユーザーは新規登録または更新されます。",
+    "about-description2": "既存ユーザーはidで照合し、一致する場合は更新されます。",
+    "about-description3": "ファイルに含まれていないユーザーの削除を選択できます。",
+    "about-description4": "対応形式: TSV, CSV, Excel",
+    "column": {
+      "eppn": "ePPN",
+      "groups": "グループ ID",
+      "row": "行",
+      "status": "ステータス",
+      "user-name": "名前"
+    },
+    "completed-at": "終了日時",
+    "description": "ファイルのアップロードによりリポジトリに所属するユーザーを一括操作することができます。",
+    "deselect_all": "すべて解除",
+    "empty": "空",
+    "excute": {
+    },
+    "execute": {
+      "failed": "ユーザーの更新に失敗しました。",
+      "timeout": "一括更新処理がタイムアウトしました。"
+    },
+    "file-format-error": "対応していないファイル形式です。TSV、CSV、またはExcelファイルを選択してください。",
+    "file-required": "ファイルを選択してください。",
+    "import": {
+    },
+    "import-results": "一括操作結果",
+    "missing-user": {
+      "confirm": "削除の確認",
+      "confirm_desc": "選択した${count}件のユーザーは削除されます。この操作は元に戻せません。",
+      "select": "削除するユーザーを選択してください。"
+    },
+    "missing_user": "ファイルに含まれていないユーザー",
+    "no-results": "データが見つかりません。",
+    "operator": "実行ユーザー",
+    "repository-required": "リポジトリを選択してください。",
+    "select-repository": "リポジトリを選択してください。",
+    "select_all": "すべて選択",
+    "start-at": "開始日時",
+    "status": {
+      "create": "作成",
+      "delete": "削除",
+      "error": "エラー",
+      "skip": "更新なし",
+      "update": "更新"
+    },
+    "step": {
+      "complete": "完了",
+      "complete_description": "アップロード結果",
+      "select_file": "ファイル選択",
+      "select_file_description": "CSV,TSVまたはExcelファイル",
+      "validate": "データ検証",
+      "validate_description": "変更内容の確認"
+    },
+    "title": "ユーザー一括操作",
+    "upload": {
+      "execute": "アップロード実行"
+    },
+    "upload-field": "ファイルを選択またはドラッグ&ドロップ",
+    "upload-file": "アップロードファイル",
+    "upload-file-info": "一括操作結果",
+    "validation": {
+      "error": "不正なデータが検出されました。",
+      "error-detail": "ファイルを修正して再度アップロードしてください。",
+      "failed": "ファイルの検証に失敗しました。",
+      "fetch_failed": "検証結果の取得に失敗しました。",
+      "fix_error": "エラーを修正してください。",
+      "results": "データプレビュー",
+      "timeout": "ファイルの検証がタイムアウトしました。"
+    }
+  },
   "button": {
     "add": "追加",
+    "back": "戻る",
     "cancel": "取り消し",
     "create-new": "新規作成",
     "delete": "削除",
+    "next": "次へ",
     "reload": "再読み込み",
+    "remove": "除外",
     "save": "保存",
     "update": "更新",
-    "upload-users": "アップロード"
+    "upload": "アップロード"
   },
   "cache-groups": {
-    "description": "WEKO3が利用するグループ情報のキャッシュ状況を管理できます。",
-    "title": "グループキャッシュ"
+    "button": {
+    },
+    "confirm-update-selected-repositories": "以下の{count}リポジトリを更新しますか？",
+    "count": "{current} / {total} 件",
+    "filter-placeholder": "キャッシュ状態",
+    "select": {
+    },
+    "table": {
+      "column": {
+        "repository-status": "更新状況"
+      }
+    },
+    "update-completed": "更新完了（{count}件）",
+    "update-error": "キャッシュ更新処理が実行中です。"
   },
-  "error": {
-    "conflict": {
-      "description": "入力内容に競合がありました。",
-      "title": "競合エラー"
+  "common": {
+    "loading": "読み込み中..."
+  },
+  "error-page": {
+    "failed": {
+      "load-more": "再ダウンロード履歴の取得に失敗しました"
     },
-    "server": {
-      "description": "サーバーで予期せぬエラーが発生しました。",
-      "title": "サーバーエラー"
+    "forbidden": {
+      "bulk-edit": "このリポジトリのユーザーを操作する権限がありません。",
+      "bulk-result": "アップロード履歴を閲覧する権限がありません。",
+      "group-access": "このグループにアクセスする権限がありません。",
+      "group-caches": "グループキャッシュを管理する権限がありません。",
+      "group-create": "選択したリポジトリにグループを作成する権限がありません。",
+      "group-delete": "このグループを削除する権限がありません。",
+      "group-edit": "このグループの情報を変更する権限がありません。",
+      "group-member-edit": "このグループのメンバーを変更する権限がありません。",
+      "repository-access": "このリポジトリにアクセスする権限がありません。",
+      "repository-create": "リポジトリを作成する権限がありません。",
+      "repository-edit": "このリポジトリの情報を変更する権限がありません。",
+      "user-access": "このユーザーにアクセスする権限がありません。",
+      "user-create": "選択したリポジトリやグループにユーザーを所属させる権限がありません。",
+      "user-edit": "このユーザーの情報を変更する権限がありません。"
     },
-    "unexpected": {
-      "description": "予期しないエラーが発生しました。",
-      "title": "エラー"
-    },
-    "validation": {
-      "description": "入力内容が不正です。入力欄のメッセージを確認してください。",
-      "title": "バリデーションエラー"
+    "not-found": {
+      "bulk-result": "該当するアップロード履歴が見つかりません。",
+      "bulk-validation": "ファイルの検証結果が見つかりません",
+      "group": "該当するグループが見つかりません。",
+      "repository": "該当するリポジトリが見つかりません。",
+      "user": "該当するユーザーが見つかりません。"
     }
   },
   "footer": {
@@ -42,10 +142,8 @@
     "details-title": "グループ詳細",
     "display-name": "表示名",
     "display-name-description": "グループの表示名です。実際のリポジトリ内でのグループ名とはリンクしません。",
-    "error": {
-      "not-found": "グループが見つかりません。"
-    },
     "id": "グループ ID",
+    "id-description": "グループの識別子です。文字列の上限は選択したリポジトリによって変わります。",
     "member-list-visibility": {
       "hidden": "非公開",
       "private": "メンバーにのみ公開",
@@ -53,6 +151,7 @@
     },
     "new-description": "ユーザーをまとめて管理するグループを作成できます。",
     "new-title": "グループの作成",
+    "number-of-users": "ユーザー数",
     "placeholder": {
       "display-name": "ジャイロ研究科",
       "id": "グループの ID です。実際のリポジトリで使用されます。",
@@ -64,9 +163,15 @@
     },
     "repository": "@:repositories.title",
     "repository-description": "グループを作成するリポジトリを選択します。",
+    "type-role": "ロールグループ",
     "validation": {
       "displayName": {
         "required": "表示名は必須項目です。"
+      },
+      "groupId": {
+        "invalid-format": "グループ ID には半角英数字と記号（.-_）が使用可能です。",
+        "max-length": "グループ ID は {max} 文字以下で入力する必要があります。",
+        "required": "グループ ID は必須項目です。"
       },
       "memberListVisibility": {
         "invalid": "メンバーの公開状態はドロップダウンリストから選択してください。"
@@ -78,16 +183,37 @@
       }
     }
   },
+  "group-caches": {
+    "button": {
+      "update-all": "全リポジトリを更新",
+      "update-all-repositories": "キャッシュを全更新",
+      "update-selected-repositories": "キャッシュを更新"
+    },
+    "description": "WEKO3 が利用するグループ情報のキャッシュ状況を管理できます。",
+    "search-placeholder": "検索...",
+    "status": {
+      "cached": "キャッシュあり",
+      "no-cached": "キャッシュなし"
+    },
+    "table": {
+      "column": {
+        "repository-name": "リポジトリ名",
+        "repository-updated-at": "キャッシュ更新日時",
+        "repository-url": "リポジトリURL"
+      }
+    },
+    "title": "グループキャッシュ",
+    "updating": "更新中..."
+  },
   "groups": {
     "actions": {
-      "copy-id": "グループ ID をコピー",
-      "copy-id-success": "クリップボードにグループ ID がコピーされました。"
+      "copy-id": "グループ ID をコピー"
     },
     "button": {
-      "selected-groups-actions": "選択したグループへのアクション"
     },
     "delete-selected-button": "グループを削除",
     "description": "あなたのリポジトリにあるグループを管理できます。",
+    "selected-groups-actions": "選択したグループ",
     "table": {
       "cell": {
         "public": {
@@ -106,28 +232,111 @@
         "public": "グループの公開状態",
         "users-count": "ユーザー数"
       },
-      "search-placeholder": "検索..."
+      "search-placeholder": "グループ名で検索...",
+      "no-groupss-description": "あなたのリポジトリにはグループがありません。まずはグループを作成してください。",
+      "title": "グループ一覧"
     },
     "title": "グループ"
   },
   "header": {
+    "global-search": {
+      "matching": "「{searchTerm}」に一致する{category}",
+      "no-results": "「{searchTerm}」に一致する結果は見つかりませんでした。",
+      "pallet-placeholder": "リポジトリ、グループ、ユーザーを検索...",
+      "placeholder": "横断検索...",
+      "search-empty": "検索ワードを入力してください。",
+      "search-loading": "検索中..."
+    },
     "logoAlt": "ヘッダーロゴ"
   },
   "history": {
-    "description": "ファイルのアップロード・ダウウンロードに履歴を確認できます。",
-    "title": "履歴"
+    "date": "実行日時",
+    "description": "ファイルのアップロード・ダウウンロードの履歴を確認できます。",
+    "empty-data": "データがありません。",
+    "expired": "期限切れ",
+    "failed": "失敗",
+    "file_not_available": "ファイルのダウンロードに失敗しました。",
+    "filter": {
+      "title": "フィルター"
+    },
+    "group-count": "グループ数",
+    "operator": "実行ユーザー",
+    "private": "非公開にする",
+    "progress": "処理中",
+    "public": "公開にする",
+    "re-download": "再ダウンロード",
+    "re-download-count": "再DL: {count}回",
+    "reset": "リセット",
+    "show-detail": "詳細を表示",
+    "status": "ステータス",
+    "success": "成功",
+    "tab": {
+      "download": "ダウンロード履歴",
+      "upload": "アップロード履歴"
+    },
+    "table": {
+      "column": {
+        "download-date": "ダウンロード日時",
+        "upload-date": "アップロード日時"
+      }
+    },
+    "table-title": "履歴一覧",
+    "target": "ダウンロード対象 | アップロード対象",
+    "title": "履歴",
+    "toggle_public_status_failed": "公開状態の更新に失敗しました。",
+    "user-count": "ユーザー数"
+  },
+  "login": {
+    "dev-account": "アカウント",
+    "dev-login-button": "ログイン",
+    "dev-login-error": "ログインに失敗しました。",
+    "dev-login-title": "開発者ログイン",
+    "title": "ログイン"
   },
   "menu": {
     "management": "管理",
     "other": "その他"
   },
+  "modal": {
+    "add-users-to-group": {
+      "selection": "追加先のグループを選択してください。",
+      "title": "以下のユーザーをグループに追加します。"
+    },
+    "delete-group": {
+      "description": "一度削除したグループは元に戻すことができません。",
+      "title": "このグループを削除しますか？"
+    },
+    "delete-groups": {
+      "description": "一度削除したグループは元に戻すことができません。",
+      "title": "これらグループを削除しますか？"
+    },
+    "delete-repository": {
+      "confirmation": "確認のため、以下に「{name}」と入力してください。",
+      "description": "一度削除した SP コネクタは元に戻すことができません。",
+      "title": "このリポジトリに対応する SP コネクタを削除しますか？",
+      "warning": "リポジトリに作成されたグループも併せて削除されます。"
+    },
+    "remove-users-from-group": {
+      "selection": "除外元のグループを選択してください。",
+      "title": "以下のユーザーをグループから除外します。"
+    },
+    "update-all-repositories-cache": {
+      "alert": "すべての処理は完了までに長い時間がかかります。現時点ではこの処理を途中で停止できません。",
+      "title": "全リポジトリのキャッシュの更新を実行しますか。"
+    }
+  },
   "repositories": {
     "actions": {
-      "copy-sp-connector-id": "SP コネクタ ID をコピー",
-      "copy-sp-connector-id-success": "SP コネクタ ID がクリップボードにコピーされました。"
+      "copy-sp-connector-id": "SP コネクタ ID をコピー"
     },
+    "all-repositories-actions": "すべてのリポジトリ",
     "description": "あなたが管理しているリポジトリの情報を確認できます。",
     "entity-id-label": "Entity ID：",
+    "list": {
+      "no-repositories-description": "検索条件を変更して、再度お試しください。",
+      "no-repositories-title": "リポジトリが見つかりません"
+    },
+    "selected-repositories-actions": "選択したリポジトリ",
     "table": {
       "column": {
         "entity-ids": "Entity ID",
@@ -137,6 +346,8 @@
       },
       "no-repositories-description": "あなたには管理できるリポジトリがありません",
       "no-repositories-title": "リポジトリが見つかりません",
+      "search-placeholder": "リポジトリ名、URL、EntityIDで検索...",
+      "search-placeholder-service-name-only": "リポジトリ名で検索...",
       "title": "リポジトリ一覧"
     },
     "title": "リポジトリ",
@@ -144,8 +355,7 @@
   },
   "repository": {
     "actions": {
-      "copy-url": "URL をコピー",
-      "copy-url-success": "クリップボードにリポジトリの URL がコピーされました。"
+      "copy-url": "URL をコピー"
     },
     "created": "作成日時",
     "details-basic-section": "基本情報",
@@ -153,12 +363,6 @@
     "details-title": "リポジトリ詳細",
     "entity-ids": "EntityID",
     "entity-ids-description": "リポジトリに紐づけられている SP の EntityID です。",
-    "error": {
-      "conflict": {
-      },
-      "forbidden": "リポジトリを作成する権限がありません。",
-      "not-found": "リポジトリが見つかりません。"
-    },
     "new-description": "リポジトリの SP コネクタを作成できます。",
     "new-title": "リポジトリの作成",
     "number-of-groups": "グループ数",
@@ -176,7 +380,7 @@
     "sp-connector-description": "リポジトリに紐づく SP コネクタの識別子です。",
     "suspended": "稼働状態",
     "suspended-active": "稼働",
-    "suspended-description": "ユーザーにシステム管理者のロールを付与します。ユーザーがどのリポジトリにも所属していない必要があります。",
+    "suspended-description": "SP コネクタの稼働状態です。",
     "suspended-inactive": "休止",
     "validation": {
       "entityIds": {
@@ -191,29 +395,15 @@
       },
       "serviceUrl": {
         "invalid": "URL が不正です。",
-        "max-length": "URLは {max} 文字で入寮する必要があります。",
+        "max-length": "URLは {max} 文字以下で入力する必要があります。",
         "required": "URL は必須項目です。"
       }
     }
   },
-  "success": {
-    "creation": {
-      "title": "作成成功"
-    },
-    "group": {
-      "created-description": "グループの作成に成功しました。",
-      "updated-description": "グループ情報の更新に成功しました。"
-    },
-    "repository": {
-      "created-description": "リポジトリの SP コネクタの作成に成功しました。",
-      "updated-description": "リポジトリ情報の更新に成功しました。"
-    },
-    "updated": {
-      "title": "更新成功"
-    },
-    "user": {
-      "created-description": "ユーザーの作成に成功しました。"
-    }
+  "submenu": {
+    "logout": "ログアウト",
+    "manual": "利用者マニュアル",
+    "profile": "プロフィール"
   },
   "table": {
     "actions": {
@@ -222,6 +412,9 @@
     },
     "actions-label": "アクション",
     "display-columns-label": "表示項目",
+    "display-count-label": "表示件数：",
+    "display-info-text": "{start}～{end}件を表示（全{total}件）",
+    "display-info-text-empty": "0件を表示（全0件）",
     "filter-button-label": "フィルター",
     "page-size-label": "表示件数：",
     "selected": "選択",
@@ -229,33 +422,143 @@
     "switch-to-table-view": "テーブル表示に切り替え"
   },
   "toast": {
-    "success-title": "成功"
+    "error": {
+      "bad-gateway": {
+        "description": "サーバーとの通信に失敗しました。",
+        "title": "通信エラー"
+      },
+      "bad-request": {
+        "description": "サーバーがリクエストを不正とみなしました。",
+        "title": "不正なリクエスト"
+      },
+      "cache-update-in-progress": {
+        "description": "すでにグループキャッシュの更新処理が進行中です。"
+      },
+      "conflict": {
+        "description": "入力内容に競合がありました。",
+        "title": "競合エラー"
+      },
+      "failed-search": {
+        "title": "検索エラー"
+      },
+      "forbidden": {
+        "description": "アクセス権がありません。",
+        "title": "認可エラー"
+      },
+      "invalid-search-query": {
+        "description": "不正な検索条件が含まれます。"
+      },
+      "no-cache-update-task": {
+        "description": "キャッシュの更新処理は実行中ではありません。"
+      },
+      "not-found": {
+        "description": "リクエスト先が見つかりません。",
+        "title": "未検出"
+      },
+      "server": {
+        "description": "サーバーで予期せぬエラーが発生しました。",
+        "title": "サーバーエラー"
+      },
+      "service-unavailable": {
+        "description": "サービスが一時的に利用できません。",
+        "title": "サービス利用不可"
+      },
+      "unauthorized": {
+        "description": "認証済みセッションの期限が切れました。再ログインしてください。",
+        "title": "認証エラー"
+      },
+      "unexpected": {
+        "description": "予期しないエラーが発生しました。",
+        "title": "エラー"
+      },
+      "validation": {
+        "description": "入力内容が不正です。入力欄のメッセージを確認してください。",
+        "title": "バリデーションエラー"
+      }
+    },
+    "success": {
+      "copy-entity-id": {
+        "description": "クリップボードに EntityID がコピーされました。"
+      },
+      "copy-field": {
+        "description": "クリップボードに{field}がコピーされました。\t"
+      },
+      "copy-group-id": {
+        "description": "クリップボードにグループ ID がコピーされました。"
+      },
+      "copy-service-url": {
+        "description": "クリップボードにリポジトリ URL がコピーされました。"
+      },
+      "copy-sp-connector-id": {
+        "description": "SP コネクタ ID がクリップボードにコピーされました。"
+      },
+      "copy-url": {
+        "description": "クリップボードにリポジトリの URL がコピーされました。"
+      },
+      "copy-user-eppn": {
+        "description": "クリップボードに ePPN がコピーされました。"
+      },
+      "copy-user-id": {
+        "description": "クリップボードにユーザー ID がコピーされました。"
+      },
+      "created": {
+        "title": "作成成功"
+      },
+      "deleted": {
+        "title": "削除成功"
+      },
+      "group-cache-update-started": {
+        "description": "グループキャッシュの更新処理が開始しました。"
+      },
+      "group-created": {
+        "description": "グループの作成に成功しました。"
+      },
+      "group-deleted": {
+        "description": "グループの削除に成功しました。"
+      },
+      "group-updated": {
+        "description": "グループ情報の更新に成功しました。"
+      },
+      "repository-created": {
+        "description": "リポジトリの SP コネクタの作成に成功しました。"
+      },
+      "repository-deleted": {
+        "description": "リポジトリの SP コネクタの削除に成功しました。"
+      },
+      "repository-updated": {
+        "description": "リポジトリ情報の更新に成功しました。"
+      },
+      "title": "成功",
+      "updated": {
+        "title": "更新成功"
+      },
+      "user-created": {
+        "description": "ユーザーの作成に成功しました。"
+      },
+      "user-updated": {
+        "description": "ユーザー情報の更新に成功しました。"
+      }
+    }
   },
   "user": {
     "actions": {
       "copy-eppn": "ePPN をコピー",
-      "copy-eppn-success": "クリップボードに ePPN がコピーされました。",
-      "copy-id": "ユーザー ID をコピー",
-      "copy-id-success": "クリップボードにユーザー ID がコピーされました。"
+      "copy-id": "ユーザー ID をコピー"
     },
     "affiliated-repositories": "所属リポジトリ",
     "affiliated-repositories-description": "ユーザーが所属するリポジトリとロールを指定します。",
     "created": "作成日時",
     "details-affiliation-authority-section": "所属・権限",
+    "details-affiliation-section": "所属",
     "details-basic-section": "基本情報",
     "details-title": "ユーザー詳細",
     "emails": "メールアドレス",
     "emails-description": "ユーザーのメールアドレスです。",
-    "eppns": "ePPN",
+    "eppns": " ePPN ",
     "eppns-description": "IdP によりユーザーに割り当てられた一意で永続的な識別子です。",
-    "error": {
-      "conflict-description": "入力内容に競合がありました。",
-      "conflict-title": "競合エラー",
-      "not-found": "ユーザーが見つかりません。"
-    },
     "groups": "所属グループ",
     "groups-description": "ユーザーを所属させるグループを選択します。",
-    "id": "ユーザー ID",
+    "id": "ユーザー ID ",
     "last-modified": "最終更新日時",
     "new-description": "あなたのリポジトリに新しいユーザーを作成できます。",
     "new-title": "ユーザーの作成",
@@ -273,6 +576,7 @@
     "preferred-language-ja": "日本語",
     "privileged": "特権",
     "roles-title": "ロール",
+    "self-editing-warning": "自身の所属やロールを変更した場合、再ログインが必要です。",
     "title": "ユーザー詳細",
     "userName-description": "ユーザーの表示名です。実際のユーザーのアカウント名とは連動しません。",
     "username": "ユーザー名",
@@ -286,6 +590,9 @@
         "at-least-one": "ePPN は 1 つ以上必須な項目です。",
         "required": "ePPN は必須項目です。"
       },
+      "groups": {
+        "must-be-empty-for-system-admin": "システム管理者はどのグループにも所属していない必要があります。"
+      },
       "preferredLanguage": {
         "invalid": "優先言語はドロップダウンリストから選択してください。"
       },
@@ -296,7 +603,7 @@
         },
         "must-be-empty-for-system-admin": "システム管理者はどのリポジトリにも所属していない必要があります。",
         "userRole": {
-          "required": "ユーザーのロールはドロップダウンリストから選択してください。"
+          "required": "ユーザーのロールをドロップダウンリストから選択してください。"
         }
       },
       "userName": {
@@ -305,10 +612,15 @@
     }
   },
   "users": {
+    "alert": {
+      "filter-by-both-role-group-disabled": "現在、機能が制限されているため、ロールとグループのフィルターを同時に選択することができません。",
+      "filter-by-last-modified-disabled": "現在、機能が制限されているため、最終更新日時によるフィルターはご利用いただけません。"
+    },
+    "all-users-actions": "すべてのユーザー",
     "button": {
-      "selected-users-actions": "選択ユーザーへのアクション",
+      "all-users-download": "全件ダウンロード",
       "selected-users-add-to-group": "グループに追加",
-      "selected-users-export": "エクスポート",
+      "selected-users-download": "ダウンロード",
       "selected-users-remove-from-group": "グループから除外"
     },
     "description": "あなたのリポジトリのユーザーを管理できます。",
@@ -319,6 +631,7 @@
       "repository-admin": "リポジトリ管理者",
       "system-admin": "システム管理者"
     },
+    "selected-users-actions": "選択したユーザー",
     "table": {
       "column": {
         "emails": "Email",
@@ -329,7 +642,8 @@
       },
       "no-users-description": "あなたのリポジトリにはユーザーがいません。まずはユーザーを作成するか、ファイルをアップロードしてください。",
       "no-users-title": "ユーザーが見つかりません",
-      "search-placeholder": "検索...",
+      "search-placeholder": "ユーザー名、Email、ePPN で検索...",
+      "search-placeholder-username-only": "ユーザー名で検索...",
       "title": "ユーザー一覧"
     },
     "title": "ユーザー"

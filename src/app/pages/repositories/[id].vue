@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { FetchError } from 'ofetch'
+import type { FormSubmitEvent } from '@nuxt/ui'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { $api } = useNuxtApp()
+const { handleFetchError } = useErrorHandling()
 
 const { currentUser } = useAuth()
 
@@ -12,23 +14,32 @@ const mode = computed(() => (currentUser.value?.isSystemAdmin ? 'edit' : 'view')
 
 const { defaultData, state } = useRepositoryForm()
 
-const { data: repository, refresh } = useFetch<RepositoryDetail>(
+const { data: repository, refresh } = useApiFetch<RepositoryDetail>(
   `/api/repositories/${repositoryId.value}`, {
     method: 'GET',
-    server: false,
     default: () => defaultData,
     onResponseError({ response }) {
-      if (response.status === 404) {
-        showError({
-          statusCode: 404,
-          statusMessage: $t('repository.error.not-found'),
-        })
+      switch (response.status) {
+        case 403: {
+          showError({
+            status: 403,
+            statusText: 'Forbidden',
+            message: $t('error-page.forbidden.repository-access'),
+          })
+          break
+        }
+        case 404: {
+          showError({
+            status: 404,
+            message: $t('error-page.not-found.repository'),
+          })
+          break
+        }
+        default: {
+          handleFetchError({ response })
+          break
+        }
       }
-      toast.add({
-        title: $t('error.server.title'),
-        description: $t('error.server.description'),
-        color: 'error',
-      })
     },
   },
 )
@@ -61,56 +72,63 @@ watch(repository, (newRepo: RepositoryDetail) => {
     entityIds: newRepo.entityIds?.length ? [...newRepo.entityIds] : [...defaultData.entityIds],
     spConnectorId: newRepo.spConnectorId || defaultData.spConnectorId,
     active: newRepo.active ?? defaultData.active,
-    created: date ? dateFormatter.format(date) : defaultData.created,
+    created: date ? datetimeFormatter.format(date) : defaultData.created,
   })
 }, { immediate: true })
 
-const onSubmit = async (data: RepositoryUpdatePayload) => {
+const onSubmit = async (data: RepositoryForm) => {
+  const { created, spConnectorId, ...payload } = data
   try {
-    await $fetch(`/api/repositories/${repositoryId.value}`, {
+    await $api(`/api/repositories/${repositoryId.value}`, {
       method: 'PUT',
-      body: data,
+      body: payload,
+      onResponseError: ({ response }) => {
+        switch (response.status) {
+          case 400: {
+            toast.add({
+              title: $t('toast.error.validation.title'),
+              description: $t('toast.error.validation.description'),
+              color: 'error',
+              icon: 'i-lucide-circle-x',
+            })
+            break
+          }
+          case 403: {
+            showError({
+              status: 403,
+              statusText: 'Forbidden',
+              message: $t('error-page.forbidden.repository-edit'),
+            })
+            break
+          }
+          case 409: {
+            toast.add({
+              title: $t('toast.error.conflict.title'),
+              description: $t('toast.error.conflict.description'),
+              color: 'error',
+              icon: 'i-lucide-circle-x',
+            })
+            break
+          }
+          default: {
+            handleFetchError({ response })
+            break
+          }
+        }
+      },
     })
 
     toast.add({
-      title: $t('success.updated.title'),
-      description: $t('success.repository.updated-description'),
+      title: $t('toast.success.updated.title'),
+      description: $t('toast.success.repository-updated.description'),
       color: 'success',
+      icon: 'i-lucide-circle-check',
     })
 
     router.push('/repositories')
   }
-  catch (error) {
-    if (error instanceof FetchError) {
-      if (error.status === 400) {
-        toast.add({
-          title: $t('error.validation.title'),
-          description: error?.data?.message ?? $t('error.validation.description'),
-          color: 'error',
-        })
-      }
-      else if (error.status === 409) {
-        toast.add({
-          title: $t('error.conflict.title'),
-          description: $t('error.conflict.description'),
-          color: 'error',
-        })
-      }
-      else {
-        toast.add({
-          title: $t('error.server.title'),
-          description: $t('error.server.description'),
-          color: 'error',
-        })
-      }
-    }
-    else {
-      toast.add({
-        title: $t('error.unexpected.title'),
-        description: $t('error.unexpected.description'),
-        color: 'error',
-      })
-    }
+  catch {
+    // Already handled in onResponseError
   }
 }
 
@@ -123,6 +141,57 @@ const onCancel = () => {
     })
   }
 }
+
+const deleteForm = useTemplateRef('deleteForm')
+const deleteFormState = reactive({
+  serviceName: undefined as string | undefined,
+})
+
+const onDelete = async (event: FormSubmitEvent<typeof deleteFormState>) => {
+  try {
+    await $api(`/api/repositories/${repositoryId.value}`, {
+      method: 'DELETE',
+      query: { confirmation: event.data.serviceName },
+      onResponseError: ({ response }) => {
+        switch (response.status) {
+          case 400: {
+            toast.add({
+              title: $t('toast.error.validation.title'),
+              description: $t('toast.error.validation.description'),
+              color: 'error',
+              icon: 'i-lucide-circle-x',
+            })
+            break
+          }
+          case 403: {
+            showError({
+              status: 403,
+              statusText: 'Forbidden',
+              message: $t('error-page.forbidden.repository-delete'),
+            })
+            break
+          }
+          default: {
+            handleFetchError({ response })
+            break
+          }
+        }
+      },
+    })
+
+    toast.add({
+      title: $t('toast.success.deleted.title'),
+      description: $t('toast.success.repository-deleted.description'),
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    })
+    router.push('/repositories')
+  }
+  catch {
+    // Already handled in onResponseError
+  }
+  deleteFormState.serviceName = undefined
+}
 </script>
 
 <template>
@@ -132,12 +201,13 @@ const onCancel = () => {
     :ui="{ root: 'py-2 mb-6', description: 'mt-4' }"
   />
 
-  <div class="max-w-210 m-auto">
+  <div class="max-w-240 m-auto">
     <div class="grid grid-cols-2 gap-4 mb-6">
       <NumberIndicator
         v-for="(indicator, index) in indicators"
         :key="index" :title="indicator.title" :to="indicator.to"
         :number="indicator.count" :color="indicator.color" :icon="indicator.icon"
+        :ui="{ container: 'lg:px-18 md:px-12' }"
       />
     </div>
 
@@ -148,19 +218,72 @@ const onCancel = () => {
             {{ $t('repository.details-title') }}
           </h2>
 
-          <UButton
+          <UModal
             v-if="mode === 'edit'"
-            :label="$t('button.delete')"
-            icon="i-lucide-trash"
-            variant="subtle"
-            color="error"
-          />
+            :title="$t('modal.delete-repository.title')"
+            :description="$t('modal.delete-repository.description')"
+            :close="false" :ui="{ footer: 'justify-between', body: 'space-y-4' }"
+          >
+            <UButton
+              :label="$t('button.delete')"
+              icon="i-lucide-trash"
+              variant="subtle"
+              color="error"
+            />
+
+            <template #body>
+              <div>
+                <div class="text-xl font-semibold text-highlighted">
+                  {{ repository.serviceName }}
+                </div>
+                <div class="text-xs text-muted mt-1">
+                  {{ repository.id }}
+                </div>
+              </div>
+
+              <UAlert
+                :description="$t('modal.delete-repository.warning')"
+                color="warning" icon="i-lucide-alert-triangle" variant="subtle"
+              />
+
+              <UForm ref="deleteForm" :state="deleteFormState" @submit="onDelete">
+                <UFormField
+                  name="serviceName"
+                  :description="
+                    $t('modal.delete-repository.confirmation', { name: repository.serviceName })
+                  "
+                  :ui="{ wrapper: 'mb-2' }"
+                >
+                  <UInput
+                    v-model="deleteFormState.serviceName"
+                    :ui="{ root: 'w-full' }"
+                  />
+                </UFormField>
+              </UForm>
+            </template>
+
+            <template #footer="{ close }">
+              <UButton
+                :label="$t('button.cancel')"
+                icon="i-lucide-ban" color="neutral" variant="subtle"
+                @click="close"
+              />
+              <UButton
+                :label="$t('button.delete')"
+                icon="i-lucide-trash" color="error" variant="solid"
+                :disabled="deleteFormState.serviceName !== repository.serviceName"
+                loading-auto
+                @click="async () => { await deleteForm!.submit(); close(); }"
+              />
+            </template>
+          </UModal>
         </div>
       </template>
 
       <RepositoryForm
         v-model="state" :mode="mode"
-        @submit="(data) => onSubmit(data as RepositoryUpdatePayload)" @cancel="onCancel"
+        @submit="(event) => onSubmit(event.data as RepositoryForm)"
+        @cancel="onCancel"
       />
     </UCard>
   </div>

@@ -26,6 +26,40 @@ const header = {
    * [Mandatory]
    */
   serviceAltName: 'JAIRO Cloud Groups Manager' as string,
+
+  /**
+   * URL or path to the user manual page \
+   * If set to an empty string, the link to the user manual will not be displayed. \
+   * [Optional, can be left empty]
+   */
+  userManualURL: '' as string,
+
+  /**
+   * Configuration for global search in the header
+   */
+  globalSearch: {
+    /**
+     * Maximum number of search results to be returned for each category in the global search. \
+     * [Mandatory]
+     */
+    limit: 5,
+  },
+}
+
+const footer = {
+  /** Configuration for links in the footer */
+  links: {
+    /**
+     * URL or path to the privacy policy page. \
+     * [Optional, can be left empty]
+     */
+    'privacy-policy': '' as string,
+    /**
+     * URL or path to the terms of service page. \
+     * [Optional, can be left empty]
+     */
+    'terms-of-service': '' as string,
+  },
 }
 
 const table = {
@@ -33,9 +67,12 @@ const table = {
    * Options for page size selection in tables
    */
   pageSize: {
-    repositories: [20, 50, 100] as number[],
-    groups: [20, 50, 100] as number[],
-    users: [20, 50, 100] as number[],
+    repositories: [20, 50, 100] as [number, ...number[]],
+    groups: [20, 50, 100] as [number, ...number[]],
+    users: [20, 50, 100] as [number, ...number[]],
+    history: [20, 50, 100] as [number, ...number[]],
+    bulks: [20, 50, 100] as [number, ...number[]],
+    cacheGroups: [20, 50, 100] as number[],
   },
 }
 
@@ -43,9 +80,11 @@ const repositories = {
   /**
    * Maximum length of the URL ID entered in the repository creation form \
    * (excluding “https://”, the “jc_” prefix assigned to the ID, and additional padding) \
+   * If you change this setting, you must also change setting `repositories.max_url_length`
+   * in `server.config.toml` accordingly to keep them consistent.
    * [Mandatory]
    */
-  maxUrlLength: 50 - 'https://'.length - 'jc_'.length - 9,
+  maxUrlLength: 50 - 'jc_'.length - '_ro_radm'.length - 2,
 }
 
 const groups = {
@@ -54,7 +93,19 @@ const groups = {
    * (excluding the “jc_” prefix assigned to the ID and additional padding) \
    * [Mandatory]
    */
-  maxUrlLength: 50 - 'jc_'.length - '_groups_'.length - 4,
+  maxIdLength: 50 - 'jc_'.length - '_gr_'.length,
+}
+
+const polling = {
+  /**
+   * Interval time (in milliseconds) for polling requests to check the status of task\
+   */
+  interval: 2000,
+
+  /**
+   * Maximum number of attempts for polling requests to check the status of task\
+   */
+  maxAttempts: 100,
 }
 
 const wayf = {
@@ -90,7 +141,7 @@ const wayf = {
    * Examples: "https://econf.switch.ch/aai/home", "https://olat.uzh.ch/my/courses" \
    * [Mandatory]
    */
-  returnURL: `${baseURL}/Shibboleth.sso/Session` as string,
+  returnURL: `${baseURL}/secure` as string,
 
   /**
    * Most used Identity Providers will be shown as top category in the drop down \
@@ -141,6 +192,47 @@ const wayf = {
   ] as { name: string, entityID: string }[],
 }
 
+/**
+ * These are due to temporary constraints
+ * in the future, all features will be enabled and the settings will be deleted.
+ */
+const features = {
+  /** repositories feature flags */
+  repositories: {
+    /**
+     * If true, the search will be performed on the server side.
+     * If false, the search will be performed on the client (browser) side.
+     */
+    'server-search': false,
+
+    /** Whether to allow sorting columns */
+    'sort-columns': false,
+  },
+  /** groups feature flags */
+  groups: {
+    /** Whether to allow sorting columns */
+    'sort-columns': false,
+  },
+  /** users feature flags */
+  users: {
+    /** Whether to allow filters to be applied at the same time for both roles and groups */
+    'filter-by-both-role-group': false,
+    /** Whether to allow the last modified filter */
+    'filter-by-last-modified': false,
+    /** Whether to allow the search by username only */
+    'search-only-username': true,
+    /** Whether to allow sorting columns */
+    'sort-columns': false,
+    /** Whether to display file upload button */
+    'file-upload': false,
+  },
+  /** history feature flags */
+  history: {
+    /** Whether to display history upload tab */
+    upload: false,
+  },
+}
+
 export default {
   /** Server hostname of this application */
   serverName,
@@ -148,10 +240,22 @@ export default {
   baseURL,
   /** Header configuration */
   header,
+  /** Footer configuration */
+  footer,
   /** Table configuration */
   table,
   /** Repository configuration */
   repositories,
+  /** Group configuration */
+  groups,
+  /** Polling configuration */
+  polling,
   /** WAYF (Embedded DS) configuration */
   wayf,
+  /**
+   * Feature flags configuration. \
+   * These are due to temporary constraints
+   * in the future, all features will be enabled and the settings will be deleted.
+   */
+  features,
 }

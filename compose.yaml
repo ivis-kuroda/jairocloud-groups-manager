@@ -99,7 +99,7 @@ services:
       context: .
       dockerfile: nginx/Dockerfile
       target: dev
-    image: jc-groups-manager-nginx
+    image: jc-groups-manager-nginx-dev
     container_name: nginx
     ports:
       - "80:80"

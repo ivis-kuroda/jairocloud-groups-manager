@@ -4,14 +4,29 @@
 
 """Services for managing OAuth tokens."""
 
+import traceback
+import typing as t
+
+from http import HTTPStatus
+
 import requests
 
-from flask import url_for
+from flask import current_app, url_for
+from pydantic_core import ValidationError
 
 from server.clients import auth
 from server.config import config
-from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT
-from server.exc import CertificatesError, CredentialsError, OAuthTokenError
+from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT, OAUTH_CALLBACK_CHANNEL
+from server.datastore import app_cache
+from server.entities.map_error import MapError
+from server.entities.user_detail import UserDetail
+from server.exc import (
+    CertificatesError,
+    CredentialsError,
+    OAuthTokenError,
+    UnexpectedResponseError,
+)
+from server.messages import E, I, W
 
 from .service_settings import (
     get_client_credentials,
@@ -21,8 +36,15 @@ from .service_settings import (
 )
 
 
+if t.TYPE_CHECKING:
+    from server.entities.map_user import MapUser
+
+
 def get_access_token() -> str:
     """Get the OAuth access token.
+
+    Get the access token from database.
+    If the token is expired or invalid, attempt to refresh it.
 
     Returns:
         str: The access token if available, otherwise None.
@@ -32,10 +54,13 @@ def get_access_token() -> str:
     """
     token = get_oauth_token()
     if token is None:
-        error = "OAuth tokens are not stored on the server."
-        raise OAuthTokenError(error)
+        raise OAuthTokenError(E.ACCESS_TOKEN_NOT_STORED)
 
-    return token.access_token
+    if check_token_validity(token.access_token):
+        return token.access_token
+
+    current_app.logger.warning(W.ACCESS_TOKEN_NOT_AVAILABLE)
+    return refresh_access_token()
 
 
 def get_client_secret() -> str:
@@ -49,8 +74,7 @@ def get_client_secret() -> str:
     """
     creds = get_client_credentials()
     if creds is None:
-        error = "Client credentials are not stored on the server."
-        raise CredentialsError(error)
+        raise CredentialsError(E.CREDENTIALS_NOT_STORED)
 
     return creds.client_secret
 
@@ -65,6 +89,7 @@ def prepare_issuing_url() -> str:
 
     Raises:
         CertificatesError: If invalid config for entity ID or certificates is provided.
+        UnexpectedResponseError: If an unexpected response is received.
     """
     entity_id = config.SP.entity_id
 
@@ -73,13 +98,23 @@ def prepare_issuing_url() -> str:
         try:
             certs = auth.issue_client_credentials(entity_id, config.SP)
         except requests.HTTPError as exc:
-            json = exc.response.json()
-            error = f"Failed to issue client credentials: {json['error_description']}"
-            raise CertificatesError(error) from exc
-        except requests.JSONDecodeError as exc:
-            error = "Failed to decode credentials response from mAP Core API."
-            raise CertificatesError(error) from exc
+            current_app.logger.error(E.FAILED_ISSUE_CREDENTIALS)
+            response = exc.response
+            status_code = response.status_code
+            match status_code:
+                case HTTPStatus.BAD_REQUEST:
+                    description = response.json().get("error_description")
+                    error = E.RECEIVE_RESPONSE_MESSAGE % {"message": description}
+                    raise CertificatesError(error) from exc
+                case _:
+                    error = E.RECEIVE_UNEXPECTED_RESPONSE
+                    raise UnexpectedResponseError(error) from exc
 
+        except requests.JSONDecodeError as exc:
+            current_app.logger.error(E.FAILED_ISSUE_CREDENTIALS)
+            raise CertificatesError(E.FAILED_DECODE_RESPONSE) from exc
+
+        current_app.logger.info(I.SUCCESS_ISSUE_CREDENTIALS)
         save_client_credentials(certs)
 
     redirect_uri = url_for("api.callback.auth_code", _external=True)
@@ -121,25 +156,57 @@ def issue_access_token(code: str) -> str:
     Raises:
         CredentialsError: If client credentials are not available.
         OAuthTokenError: If issuing the token fails.
+        UnexpectedResponseError: If an unexpected response is received.
     """
     certs = get_client_credentials()
     if certs is None:
-        error = "Client credentials are not stored on the server."
-        raise CredentialsError(error)
+        app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
+        raise CredentialsError(E.CREDENTIALS_NOT_STORED)
 
     try:
         token = auth.issue_oauth_token(code, certs)
     except requests.HTTPError as exc:
-        json = exc.response.json()
-        error = f"Failed to issue OAuth token: {json['error_description']}"
-        raise OAuthTokenError(error) from exc
+        app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
+        current_app.logger.error(E.FAILED_ISSUE_TOKEN)
+        response = exc.response
+        status_code = response.status_code
+        match status_code:
+            case HTTPStatus.BAD_REQUEST:
+                description = response.json().get("error_description")
+                error = E.RECEIVE_RESPONSE_MESSAGE % {"message": description}
+                raise OAuthTokenError(error) from exc
+            case _:
+                error = E.RECEIVE_UNEXPECTED_RESPONSE
+                raise UnexpectedResponseError(error) from exc
     except requests.JSONDecodeError as exc:
-        error = "Failed to decode token response from mAP Core API."
-        raise OAuthTokenError(error) from exc
+        app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
+        current_app.logger.error(E.FAILED_ISSUE_TOKEN)
+        raise OAuthTokenError(E.FAILED_DECODE_RESPONSE) from exc
 
+    current_app.logger.info(I.SUCCESS_ISSUE_TOKEN)
     save_oauth_token(token)
+    app_cache.publish(OAUTH_CALLBACK_CHANNEL, "issued")
 
     return token.access_token
+
+
+def check_token_validity(token: str) -> bool:
+    """Check the validity of an OAuth access token.
+
+    Args:
+        token (str): The access token to check.
+
+    Returns:
+        bool: True if the token is valid, False otherwise.
+    """
+    try:
+        result = auth.check_token_validity(token)
+    except requests.RequestException:
+        current_app.logger.warning(E.FAILED_CHECK_TOKEN)
+        traceback.print_exc()
+        return False
+
+    return result
 
 
 def refresh_access_token() -> str:
@@ -151,27 +218,86 @@ def refresh_access_token() -> str:
     Raises:
         CredentialsError: If client credentials are not available.
         OAuthTokenError: If refreshing the token fails.
+        UnexpectedResponseError: If an unexpected response is received.
     """
     certs = get_client_credentials()
     if certs is None:
-        error = "Client credentials are not stored on the server."
-        raise CredentialsError(error)
+        raise CredentialsError(E.CREDENTIALS_NOT_STORED)
 
     token = get_oauth_token()
-    if token is None or token.refresh_token is None:
-        error = "Refresh token is not stored on the server."
-        raise OAuthTokenError(error)
+    if token is None or (refresh_token := token.refresh_token) is None:
+        raise OAuthTokenError(E.REFRESH_TOKEN_NOT_STORED)
 
     try:
-        new_token = auth.refresh_oauth_token(token.refresh_token, certs)
+        new_token = auth.refresh_oauth_token(refresh_token, certs)
     except requests.HTTPError as exc:
-        json = exc.response.json()
-        error = f"Failed to refresh OAuth token: {json['error_description']}"
-        raise OAuthTokenError(error) from exc
+        current_app.logger.error(E.FAILED_REFRESH_TOKEN)
+        response = exc.response
+        status_code = response.status_code
+        match status_code:
+            case HTTPStatus.BAD_REQUEST:
+                description = response.json().get("error_description")
+                error = E.RECEIVE_RESPONSE_MESSAGE % {"message": description}
+                raise OAuthTokenError(error) from exc
+            case _:
+                error = E.RECEIVE_UNEXPECTED_RESPONSE
+                raise UnexpectedResponseError(error) from exc
     except requests.JSONDecodeError as exc:
-        error = "Failed to decode token response from mAP Core API."
-        raise OAuthTokenError(error) from exc
+        current_app.logger.error(E.FAILED_REFRESH_TOKEN)
+        raise OAuthTokenError(E.FAILED_DECODE_RESPONSE) from exc
 
+    current_app.logger.info(I.SUCCESS_REFRESH_TOKEN)
     save_oauth_token(new_token)
 
     return new_token.access_token
+
+
+def get_token_owner() -> UserDetail:
+    """Get the owner of the current access token.
+
+    Returns:
+        UserDetail: The user details of the token owner.
+
+    Raises:
+        OAuthTokenError: If the access token is invalid or expired.
+        CredentialsError: If the client credentials are invalid.
+        UnexpectedResponseError: If response from mAP Core API is unexpected.
+    """
+    from server.clients import users  # noqa: PLC0415
+
+    access_token = get_access_token()
+    try:
+        client_secret = get_client_secret()
+        result: MapUser | MapError = users.get_self(
+            access_token=access_token, client_secret=client_secret
+        )
+    except requests.HTTPError as exc:
+        current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
+        code = exc.response.status_code
+        if code == HTTPStatus.UNAUTHORIZED:
+            error = E.ACCESS_TOKEN_NOT_AVAILABLE
+            raise OAuthTokenError(error) from exc
+
+        error = E.RECEIVE_UNEXPECTED_RESPONSE
+        raise UnexpectedResponseError(error) from exc
+
+    except requests.RequestException as exc:
+        current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
+        error = E.FAILED_COMMUNICATE_API
+        raise UnexpectedResponseError(error) from exc
+
+    except ValidationError as exc:
+        current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
+        error = E.FAILED_PARSE_RESPONSE
+        raise UnexpectedResponseError(error) from exc
+
+    except OAuthTokenError, CredentialsError:
+        raise
+
+    if isinstance(result, MapError):
+        current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
+        current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
+        error = E.FAILED_PARSE_RESPONSE
+        raise UnexpectedResponseError(error)
+
+    return UserDetail.from_map_user(result)

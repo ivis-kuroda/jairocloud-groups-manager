@@ -13,6 +13,9 @@ ignore = [
   "ARG001",
   "D",
   "PLC2701",
+  "PLR0914",
+  "PLR0913",
+  "PLR0917"
 ]
 
 [lint.isort]

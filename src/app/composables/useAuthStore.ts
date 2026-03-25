@@ -9,6 +9,7 @@ import { defineStore } from 'pinia'
  */
 export interface LoginUser {
   id: string
+  eppn: string
   userName: string
   isSystemAdmin: boolean
 }

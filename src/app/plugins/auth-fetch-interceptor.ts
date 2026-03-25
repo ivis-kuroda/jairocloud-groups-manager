@@ -6,22 +6,21 @@
  * Nuxt plugin to intercept fetch requests for authentication handling
  */
 export default defineNuxtPlugin(() => {
+  const { $i18n } = useNuxtApp()
+  const $t = $i18n.t.bind($i18n)
+
+  const handleFetchError = createFetchErrorHandler($t)
+
   const { baseURL } = useAppConfig()
-
-  const { checkout } = useAuth()
-
-  const publicRoutes = new Set(['/login'])
-
-  globalThis.$fetch = $fetch.create({
+  const api = $fetch.create({
     baseURL,
     credentials: 'include',
-
-    onResponseError: ({ response }) => {
-      const route = useRoute()
-      const statusCode = response.status
-      if (statusCode === 401 && !publicRoutes.has(route.path.replace(/\/$/, ''))) {
-        checkout()
-      }
-    },
+    onResponseError: ({ response }) => handleFetchError({ response }),
   })
+
+  return {
+    provide: {
+      api,
+    },
+  }
 })

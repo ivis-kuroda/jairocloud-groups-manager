@@ -15,6 +15,7 @@ const hasViewportReference = (
   )
 }
 
+/** Composable to make a select menu support infinite scroll */
 const useSelectMenuInfiniteScroll = <T>(
   options: UseSelectMenuInfiniteScrollOptions<T>,
 ): UseSelectMenuInfiniteScrollReturn => {
@@ -24,10 +25,11 @@ const useSelectMenuInfiniteScroll = <T>(
     transform,
     debounce = 300,
     scrollDistance = 10,
-    params: parameters = {},
+    query = {},
+    server = true,
   } = options
 
-  const page = ref(0)
+  const page = ref(1)
   const hasMore = ref(true)
 
   const searchTerm = ref('')
@@ -35,15 +37,16 @@ const useSelectMenuInfiniteScroll = <T>(
 
   const items = ref<Array<{ label: string, value: string }>>([])
 
-  const { data, status, execute } = useFetch<SearchResult<T>>(url, {
-    params: computed(() => ({
+  const { data, status, execute } = useApiFetch<SearchResult<T>>(url, {
+    query: computed(() => ({
+      ...query,
       q: searchTermDebounced.value || undefined,
       p: page.value,
-      l: limit,
-      ...parameters,
+      l: server ? limit : -1,
     })),
     lazy: true,
     immediate: false,
+    watch: false,
   })
 
   watch(data, (newData) => {
@@ -56,6 +59,7 @@ const useSelectMenuInfiniteScroll = <T>(
   })
 
   watch(searchTermDebounced, () => {
+    if (!server) return
     page.value = 1
     hasMore.value = true
     execute()
@@ -70,19 +74,18 @@ const useSelectMenuInfiniteScroll = <T>(
   const setupInfiniteScroll = (
     selectMenuReference: Ref<unknown>,
   ) => {
-    onMounted(() => {
-      // eslint-disable-next-line unicorn/consistent-function-scoping
-      const getViewportReference = () => {
-        const reference = selectMenuReference.value
-        if (Array.isArray(reference)) {
-          return reference[0]?.viewportRef
-        }
-        if (hasViewportReference(reference)) {
-          return reference.viewportRef
-        }
-        return
+    const getViewportReference = () => {
+      const reference = selectMenuReference.value
+      if (Array.isArray(reference)) {
+        return reference[0]?.viewportRef
       }
+      if (hasViewportReference(reference)) {
+        return reference.viewportRef
+      }
+      return
+    }
 
+    onMounted(() => {
       useInfiniteScroll(
         getViewportReference(),
         () => {
@@ -100,14 +103,20 @@ const useSelectMenuInfiniteScroll = <T>(
   }
 
   return {
+    /** Items for the select menu */
     items,
+    /** Search term for filtering items */
     searchTerm,
+    /** Status of the fetch request */
     status,
+    /** Callback for when the select menu is opened */
     onOpen,
+    /** Setup select menu infinite scroll */
     setupInfiniteScroll,
   }
 }
 
+/** Provides state and default data for repository forms */
 const useRepositoryForm = () => {
   const defaultData: Required<RepositoryDetail> = {
     id: '',
@@ -126,9 +135,17 @@ const useRepositoryForm = () => {
   const { id, spConnectorId, created, ...defaultCreateForm } = defaultForm
   const stateAsCreate = reactive<RepositoryCreateForm>({ ...defaultCreateForm })
 
-  return { defaultData, state, stateAsCreate }
+  return {
+    /** Default data for repository forms */
+    defaultData,
+    /** Reactive state for repository forms */
+    state,
+    /** Reactive state for create repository forms */
+    stateAsCreate,
+  }
 }
 
+/** Provides schema for repository forms */
 const useRepositorySchema = (mode?: MaybeRefOrGetter<FormMode>) => {
   const { t: $t } = useI18n()
 
@@ -139,6 +156,10 @@ const useRepositorySchema = (mode?: MaybeRefOrGetter<FormMode>) => {
     serviceUrl: z.string()
       .min(1, $t('repository.validation.serviceUrl.required'))
       .max(maxUrlLength, $t('repository.validation.serviceUrl.max-length', { max: maxUrlLength }))
+      .regex(
+        /^(?!-)[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$/,
+        $t('repository.validation.serviceUrl.invalid'),
+      )
       .transform(value => `https://${value}`)
       .pipe(z.string().url($t('repository.validation.serviceUrl.invalid'))),
     entityIds: z.array(z.string().min(1, $t('repository.validation.entityIds.required')))
@@ -147,12 +168,9 @@ const useRepositorySchema = (mode?: MaybeRefOrGetter<FormMode>) => {
   }))
 
   const updateSchema = computed(() => z.object({
-    id: z.string().min(1, $t('repository.validation.id.required')),
+    id: z.string(),
     serviceName: z.string().min(1, $t('repository.validation.serviceName.required')),
-    serviceUrl: z.string()
-      .min(1, $t('repository.validation.serviceUrl.required'))
-      .transform(value => `https://${value}`)
-      .pipe(z.string().url($t('repository.validation.serviceUrl.invalid'))),
+    serviceUrl: z.string(),
     entityIds: z.array(z.string().min(1, $t('repository.validation.entityIds.required')))
       .nonempty($t('repository.validation.entityIds.at-least-one')),
     active: z.boolean(),
@@ -169,9 +187,15 @@ const useRepositorySchema = (mode?: MaybeRefOrGetter<FormMode>) => {
       })
     : undefined
 
-  return { schema, maxUrlLength }
+  return {
+    /** Schema for repository forms */
+    schema,
+    /** Maximum URL length for repository forms */
+    maxUrlLength,
+  }
 }
 
+/** Provides state and default data for group forms */
 const useGroupForm = () => {
   const defaultData: Required<GroupDetail> = {
     id: '',
@@ -179,6 +203,7 @@ const useGroupForm = () => {
     displayName: '',
     description: '',
     repository: { id: '', serviceName: '' },
+    type: 'group',
     public: false,
     memberListVisibility: 'Private',
     usersCount: 0,
@@ -188,19 +213,31 @@ const useGroupForm = () => {
   const { usersCount, ..._defaultForm } = defaultData
   const defaultForm = {
     ..._defaultForm,
-    repository: { id: '', label: '' },
+    repository: { value: undefined, label: undefined },
   }
   const state = reactive<Omit<GroupForm, 'usersCount'>>({ ...defaultForm })
 
   const defaultCreateForm: GroupCreateForm = {
     ..._defaultForm,
-    repository: { id: '', label: '' },
+    repository: { value: undefined, label: undefined },
   }
   const stateAsCreate = reactive<GroupCreateForm>({ ...defaultCreateForm })
 
-  return { defaultData, defaultForm, defaultCreateForm, state, stateAsCreate }
+  return {
+    /** Default data for group forms */
+    defaultData,
+    /** Default form state for group forms */
+    defaultForm,
+    /** Default create form state for group forms */
+    defaultCreateForm,
+    /** Reactive state for group forms */
+    state,
+    /** Reactive state for create group forms */
+    stateAsCreate,
+  }
 }
 
+/** Provides options for group forms */
 const useGroupFormOptions = () => {
   const { t: $t } = useI18n()
 
@@ -229,26 +266,49 @@ const useGroupFormOptions = () => {
       return { label, value: visibility }
     }))
 
-  return { publicStatusOptions, visibilityOptions }
+  return {
+    /** Select menu items for public status */
+    publicStatusOptions,
+    /** Select menu items for member list visibility */
+    visibilityOptions,
+  }
 }
 
+/** Provides schema for group forms */
 const useGroupSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
   const { t: $t } = useI18n()
 
-  const { groups: { maxUrlLength } } = useAppConfig()
-  const getMaxIdLength = (repositoryId: string) => maxUrlLength - repositoryId.length
+  const { groups: { maxIdLength } } = useAppConfig()
+  const getMaxIdLength = (repositoryId: string) => maxIdLength - repositoryId.length
 
   const createSchema = computed(() => z.object({
-    userDefinedId: z.string().optional(),
+    userDefinedId: z.string()
+      .min(1, $t('group.validation.groupId.required'))
+      .regex(/^[a-zA-Z0-9._-]+$/, $t('group.validation.groupId.invalid-format')),
     displayName: z.string().min(1, $t('group.validation.displayName.required')),
     description: z.string().optional(),
     repository: z.object({
-      id: z.string().min(1, $t('group.validation.repository.id.required')),
+      value: z.string({
+        // eslint-disable-next-line camelcase
+        required_error: $t('group.validation.repository.id.required'),
+      }).min(1, $t('group.validation.repository.id.required')),
     }),
     public: z.boolean().default(false),
     memberListVisibility: z.enum(VISIBILITY_OPTIONS, {
       errorMap: () => ({ message: $t('group.validation.memberListVisibility.invalid') }),
-    }).default('Hidden'),
+    }).default('Private'),
+  }).superRefine((data, context) => {
+    const maxIdLength = getMaxIdLength(data.repository?.value || '')
+    if (data.userDefinedId && data.userDefinedId.length > maxIdLength) {
+      context.addIssue({
+        code: z.ZodIssueCode.too_big,
+        maximum: maxIdLength,
+        type: 'string',
+        path: ['userDefinedId'],
+        inclusive: true,
+        message: $t('group.validation.groupId.max-length', { max: maxIdLength }),
+      })
+    }
   }))
 
   const updateSchema = computed(() => z.object({
@@ -257,7 +317,7 @@ const useGroupSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
     public: z.boolean().default(false),
     memberListVisibility: z.enum(VISIBILITY_OPTIONS, {
       errorMap: () => ({ message: $t('group.validation.memberListVisibility.invalid') }),
-    }).default('Hidden'),
+    }).default('Private'),
   }))
 
   const getSchemaByMode = (m: FormMode) => {
@@ -271,16 +331,22 @@ const useGroupSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
       })
     : undefined
 
-  return { schema, getMaxIdLength }
+  return {
+    /** Schema for group forms */
+    schema,
+    /** Get the maximum ID length based on the repository ID */
+    getMaxIdLength,
+  }
 }
 
+/** Provides reactive state and default data for user forms */
 const useUserForm = () => {
   const defaultData: Required<UserDetail> = {
     id: '',
     eppns: [''],
     userName: '',
     emails: [''],
-    preferredLanguage: '' as PreferredLanguage,
+    preferredLanguage: undefined as unknown as PreferredLanguage,
     isSystemAdmin: false,
     repositoryRoles: [{ id: '', serviceName: '', userRole: undefined }],
     groups: [{ id: '', displayName: '' }],
@@ -290,17 +356,29 @@ const useUserForm = () => {
   const { repositoryRoles, groups, ..._defaultForm } = defaultData
   const defaultForm: UserForm = {
     ..._defaultForm,
-    repositoryRoles: [{ id: '', label: '', userRole: undefined }],
-    groups: [{ id: '', label: '' }],
+    repositoryRoles: [{ value: undefined, label: undefined, userRole: undefined }],
+    groups: [{ value: undefined, label: undefined }],
   }
   const state = reactive<UserForm>({ ...defaultForm })
 
   const { id, created, lastModified, ...defaultCreateForm } = defaultForm
   const stateAsCreate = reactive<UserCreateForm>({ ...defaultCreateForm })
 
-  return { defaultData, defaultForm, state, stateAsCreate }
+  return {
+    /** Default data for user forms */
+    defaultData,
+    /** Default form state for user forms */
+    defaultForm,
+    /** Default create form state for user forms */
+    defaultCreateForm,
+    /** Reactive state for user forms */
+    state,
+    /** Reactive state for create user forms */
+    stateAsCreate,
+  }
 }
 
+/** Provides options for user forms */
 const useUserFormOptions = () => {
   const { t: $t } = useI18n()
 
@@ -330,9 +408,18 @@ const useUserFormOptions = () => {
     }))
   })
 
-  return { preferredLanguageOptions, userRoleOptions }
+  return {
+    /** Select menu items for preferred language */
+    preferredLanguageOptions,
+    /** Select menu items for user roles */
+    userRoleOptions,
+  }
 }
 
+/**
+ * Provides schema for user forms
+ * @param mode form mode to return the corresponding schema.
+ */
 const useUserSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
   const { t: $t } = useI18n()
   const userRoles = Object.keys(USER_ROLES) as [string, ...string[]]
@@ -348,16 +435,16 @@ const useUserSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
     ).nonempty($t('user.validation.emails.at-least-one')),
     preferredLanguage: z.enum(PREFERRED_LANGUAGE, {
       errorMap: () => ({ message: $t('user.validation.preferredLanguage.invalid') }),
-    }).optional(),
+    }).optional().nullable(),
     isSystemAdmin: z.boolean().default(false),
     repositoryRoles: z.array(z.object({
-      id: z.string().optional().default(''),
+      value: z.string().optional(),
       userRole: z.enum(userRoles).optional(),
     })),
-    groups: z.array(z.object({ id: z.string() })).optional(),
+    groups: z.array(z.object({ value: z.string().optional() })).optional(),
   }).superRefine((data, context) => {
     if (data.isSystemAdmin === true) {
-      const hasFilledRole = data.repositoryRoles.some(role => role.id || role.userRole)
+      const hasFilledRole = data.repositoryRoles.some(role => role.value || role.userRole)
       if (hasFilledRole) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -365,20 +452,18 @@ const useUserSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
           path: ['repositoryRoles'],
         })
       }
-    }
-    else {
-      const hasValidRole = data.repositoryRoles.some(role => role.id && role.userRole)
-      if (!hasValidRole) {
+      if (data.groups && data.groups.some(group => group.value)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: $t('user.validation.repositoryRoles.at-least-one'),
-          path: ['repositoryRoles'],
+          message: $t('user.validation.groups.must-be-empty-for-system-admin'),
+          path: ['groups'],
         })
       }
-
+    }
+    else {
       for (const [index, role] of data.repositoryRoles.entries()) {
-        if (role.id || role.userRole) {
-          if (!role.id || role.id.length === 0) {
+        if (role.value || role.userRole) {
+          if (!role.value || role.value.length === 0) {
             context.addIssue({
               code: z.ZodIssueCode.custom,
               message: $t('user.validation.repositoryRoles.id.required'),
@@ -394,15 +479,80 @@ const useUserSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
           }
         }
       }
+
+      const hasValidRole = data.repositoryRoles.some(role => role.value && role.userRole)
+      if (!hasValidRole) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: $t('user.validation.repositoryRoles.at-least-one'),
+          path: ['repositoryRoles'],
+        })
+      }
     }
   }))
 
-  const updateSchema = computed(() => ({} as unknown))
+  const updateSchema = computed(() => z.object({
+    eppns: z.array(z.string().optional()).optional(),
+    userName: z.string().optional(),
+    emails: z.array(z.string().optional()).optional(),
+    preferredLanguage: z.string().optional().nullable(),
+    isSystemAdmin: z.boolean().default(false),
+    repositoryRoles: z.array(z.object({
+      value: z.string().optional(),
+      userRole: z.enum(userRoles).optional(),
+    })),
+    groups: z.array(z.object({ value: z.string().optional() })).optional(),
+  }).superRefine((data, context) => {
+    if (data.isSystemAdmin === true) {
+      const hasFilledRole = data.repositoryRoles.some(role => role.value || role.userRole)
+      if (hasFilledRole) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: $t('user.validation.repositoryRoles.must-be-empty-for-system-admin'),
+          path: ['repositoryRoles'],
+        })
+      }
+      if (data.groups && data.groups.some(group => group.value)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: $t('user.validation.groups.must-be-empty-for-system-admin'),
+          path: ['groups'],
+        })
+      }
+    }
+    else {
+      for (const [index, role] of data.repositoryRoles.entries()) {
+        if (role.value || role.userRole) {
+          if (!role.value || role.value.length === 0) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: $t('user.validation.repositoryRoles.id.required'),
+              path: ['repositoryRoles', index, 'id'],
+            })
+          }
+          if (!role.userRole) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: $t('user.validation.repositoryRoles.userRole.required'),
+              path: ['repositoryRoles', index, 'userRole'],
+            })
+          }
+        }
+      }
+
+      const hasValidRole = data.repositoryRoles.some(role => role.value && role.userRole)
+      if (!hasValidRole) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: $t('user.validation.repositoryRoles.at-least-one'),
+          path: ['repositoryRoles'],
+        })
+      }
+    }
+  }))
 
   const getSchemaByMode = (m: FormMode) => {
-    return m === 'new'
-      ? createSchema.value
-      : updateSchema.value as Record<keyof UserCreatePayload, z.ZodTypeAny>
+    return m === 'new' ? createSchema.value : updateSchema.value
   }
 
   const schema = mode
@@ -412,24 +562,30 @@ const useUserSchema = (mode?: MaybeRefOrGetter<FormMode>) => {
       })
     : undefined
 
-  return { schema }
+  return {
+    /** Schema for user forms */
+    schema,
+  }
 }
 
+/** Provides form error handling */
 const useFormError = () => {
   const { t: $t } = useI18n()
   const toast = useToast()
 
   const handleFormError = (event: FormErrorEvent) => {
     toast.add({
-      title: $t('error.validation.title'),
-      description: $t('error.validation.description'),
+      title: $t('toast.error.validation.title'),
+      description: $t('toast.error.validation.description'),
       color: 'error',
+      icon: 'i-lucide-circle-x',
     })
 
     focusFirstError(event)
   }
 
   return {
+    /** Show form error toast and focus the first error field */
     handleFormError,
   }
 }

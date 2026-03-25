@@ -8,7 +8,7 @@ import type { RouteLocationNormalizedGeneric } from 'vue-router'
  * Composable for managing authentication state and actions
  */
 export function useAuth() {
-  const router = useRouter()
+  const { $api } = useNuxtApp()
   const { publicRoutes, loginRoute, loggedinRedirectRoute } = useAppConfig()
 
   const authStore = useAuthStore()
@@ -26,15 +26,19 @@ export function useAuth() {
     const toPath = to.path.replace(/\/$/, '')
     const fromPath = from.path.replace(/\/$/, '')
 
-    if (publicRoutes.has(to.path.replace(/\/$/, ''))) {
+    if (publicRoutes.has(toPath)) {
       return
     }
 
     if (!authChecked.value || fromPath === loginRoute) {
       try {
-        const user = await $fetch<LoginUser>('/api/auth/check', { method: 'GET' })
-        authStore.setUser(user)
-        // return
+        const user = await $api<LoginUser>('/api/auth/check', { method: 'GET' })
+        if (user.eppn) {
+          authStore.setUser(user)
+        }
+        else {
+          authStore.unsetUser()
+        }
       }
       catch {
         authStore.unsetUser()
@@ -42,43 +46,39 @@ export function useAuth() {
     }
 
     if (isAuthenticated.value) {
-      let { next } = to.query
-      if (Array.isArray(next)) {
-        next = next[0]
+      let { next: nextTo } = to.query
+      if (Array.isArray(nextTo)) {
+        nextTo = nextTo[0]
       }
 
-      if (next && !publicRoutes.has(next as string)) {
-        router.push(next as string)
-        return
+      if (nextTo && !publicRoutes.has(nextTo as string)) {
+        return navigateTo((decodeURIComponent(nextTo)) as string)
       }
 
       if (!toPath) {
-        router.push(loggedinRedirectRoute)
-        return
+        return navigateTo(loggedinRedirectRoute)
       }
 
       return
     }
 
-    router.push({ path: loginRoute, query: next ? { next } : {} })
+    return navigateTo({ path: loginRoute, query: next ? { next } : {} })
   }
 
-  const checkout = () => {
-    const route = useRoute()
+  const checkout = async ({ next }: { next?: string } = {}) => {
     authStore.unsetUser()
-    const next = encodeURIComponent(route.fullPath.replace(/\/$/, ''))
-    router.push({ path: loginRoute, query: next ? { next } : {} })
+    return await navigateTo({ path: loginRoute, query: next ? { next } : {} })
   }
 
   const logout = async () => {
     try {
-      await $fetch('/api/auth/logout', { method: 'POST' })
+      await $api('/api/auth/logout', { method: 'GET' })
     }
     catch {
       // ignore errors
     }
     finally {
-      checkout()
+      await checkout()
     }
   }
 

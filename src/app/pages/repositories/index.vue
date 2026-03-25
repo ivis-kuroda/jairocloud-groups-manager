@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const toast = useToast()
 const { currentUser } = useAuth()
 const tableView = ref(currentUser.value?.isSystemAdmin)
 
@@ -10,12 +11,45 @@ const {
 const { searchTerm, pageNumber, pageSize } = criteria
 
 const table = useTemplateRef('table')
-const { table: { pageSize: { repositories: pageOptions } } } = useAppConfig()
+const {
+  table: { pageSize: { repositories: pageOptions } },
+  features: { repositories: { 'server-search': serverSearch } },
+} = useAppConfig()
+const serverQuery = computed(() => {
+  if (serverSearch) return query.value
 
-const { data: searchResult, status, refresh } = useFetch<RepositoriesSearchResult>(
-  '/api/repositories', { method: 'GET', query, lazy: true, server: false })
+  const { q, l, ...remain } = query.value
+  return {
+    ...remain,
+    l: -1,
+  }
+})
+const { handleFetchError } = useErrorHandling()
+const {
+  data: searchResult, status, refresh,
+} = useApiFetch<RepositoriesSearchResult>('/api/repositories', {
+  method: 'GET',
+  query: serverQuery,
+  onResponseError({ response }) {
+    switch (response.status) {
+      case 400: {
+        toast.add({
+          title: $t('toast.error.failed-search.title'),
+          description: $t('toast.error.invalid-search-query.description'),
+          color: 'error',
+        })
+        break
+      }
+      default: {
+        handleFetchError({ response })
+        break
+      }
+    }
+  },
+  lazy: true,
+})
 const offset = computed(() => (searchResult.value?.offset ?? 1))
-emptyActions.value[0]!.onClick = () => refresh()
+emptyActions.value[0].onClick = () => refresh()
 
 const pageInfo = makePageInfo(searchResult)
 </script>
@@ -50,7 +84,12 @@ const pageInfo = makePageInfo(searchResult)
 
   <div class="grid grid-cols-3 gap-4 my-4 h-8">
     <UInput
-      v-model="searchTerm" :placeholder="$t('users.table.search-placeholder')"
+      v-model="searchTerm"
+      :placeholder="
+        serverSearch || tableView
+          ? $t('repositories.table.search-placeholder')
+          : $t('repositories.table.search-placeholder-service-name-only')
+      "
       icon="i-lucide-search" :ui="{ trailing: 'pe-1.5' }"
       @keydown.enter="() => updateQuery({ q: searchTerm, p: 1 })"
     >
@@ -68,7 +107,7 @@ const pageInfo = makePageInfo(searchResult)
     <div class="col-span-2 flex gap-4">
       <div class="flex flex-1 justify-end items-center space-x-4">
         <div class="flex items-center">
-          <label class="text-sm text-gray-600">{{ $t('table.page-size-label') }}</label>
+          <label class="text-sm text-gray-600 mr-1">{{ $t('table.page-size-label') }}</label>
           <USelect
             v-model="pageSize" :items="pageOptions"
             class="w-24"
@@ -109,7 +148,7 @@ const pageInfo = makePageInfo(searchResult)
   <div v-if="tableView">
     <UTable
       ref="table"
-      v-model:column-visibility="columnVisibility"
+      v-model:column-visibility="columnVisibility" v-model:global-filter="searchTerm"
       :loading="status === 'pending'"
       :data="searchResult?.resources" :columns="columns" :ui="{ root: 'mb-8' }"
     >
@@ -124,7 +163,13 @@ const pageInfo = makePageInfo(searchResult)
   </div>
   <div v-else class="grid grid-cols-3 gap-4">
     <UPageCard
-      v-for="item in searchResult?.resources" :key="item.id"
+      v-for="
+        item in searchResult?.resources.filter(
+          repo => serverSearch
+            || !searchTerm
+            || repo.serviceName.toLowerCase().includes(searchTerm.toLowerCase()),
+        )
+      " :key="item.id"
       :ui="{ root: 'p-4 cursor-pointer', title: 'hover:underline' }"
     >
       <template #title>
@@ -153,6 +198,13 @@ const pageInfo = makePageInfo(searchResult)
         </p>
       </template>
     </UPageCard>
+
+    <UEmpty
+      v-if="!searchResult?.resources.length"
+      :title="$t('repositories.table.no-repositories-title')"
+      :description="$t('repositories.table.no-repositories-description')"
+      :actions="emptyActions" :ui="{ root: 'col-span-3' }"
+    />
   </div>
 
   <div class="flex justify-center mt-4">

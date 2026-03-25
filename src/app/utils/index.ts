@@ -1,8 +1,8 @@
 /** Date formatter for Japanese locale with full date and time in Tokyo timezone. */
-const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
+const datetimeFormatter = new Intl.DateTimeFormat('ja-JP', {
   year: 'numeric',
-  month: 'numeric',
-  day: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
   hour: 'numeric',
   minute: 'numeric',
   second: 'numeric',
@@ -10,4 +10,10 @@ const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
 })
 
-export { dateFormatter }
+const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: 'Asia/Tokyo',
+})
+export { datetimeFormatter, dateFormatter }

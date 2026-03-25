@@ -16,6 +16,9 @@ ENV VIRTUAL_ENV="/code/.venv"
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /code
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN pip install -U pip && pip install uv
 
 RUN groupadd -g ${GID} ${GROUPNAME} && \
@@ -44,3 +47,32 @@ ENV FLASK_DEBUG=1
 
 EXPOSE 5050
 CMD ["flask", "run", "--reload"]
+
+# ==============================
+# Production stage:
+#   install only prod dependencies and start prod server
+# ==============================
+FROM base AS prod
+
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        python3-dev \
+        libssl-dev \
+        libpcre2-dev \
+        supervisor && \
+    rm -rf /var/lib/apt/lists/*
+RUN uv pip install uwsgi --system
+
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev --frozen
+
+COPY . .
+RUN uv pip install .
+
+ENV FLASK_ENV=production
+ENV FLASK_APP="server.app"
+
+CMD ["/usr/bin/supervisord", "-c", "supervisord.web.conf"]

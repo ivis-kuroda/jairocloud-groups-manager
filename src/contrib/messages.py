@@ -11,8 +11,8 @@ import pkgutil
 
 from datetime import UTC, datetime
 
-from server import messages
-from server.messages.base import LogMessage
+from src.server import messages
+from src.server.messages.base import LogMessage
 
 
 def generate_type_stub() -> None:
@@ -54,7 +54,7 @@ def generate_type_stub() -> None:
             body.extend([
                 f"{attr_name}: Final[str]",
                 f'"""Message Code: {attr.code}',
-                f'>>> "{attr.data}"',
+                f'>>> "{attr.data.encode("unicode_escape").decode("utf-8")}"',
                 '"""',
                 "",
             ])
@@ -77,3 +77,7 @@ def _read_last_hash(stub_path: pathlib.Path) -> str:
         if second_line.startswith("# source hash:"):
             return second_line.split(":")[-1].strip()
     return ""
+
+
+if __name__ == "__main__":
+    generate_type_stub()

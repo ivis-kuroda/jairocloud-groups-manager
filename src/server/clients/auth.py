@@ -6,13 +6,20 @@
 
 import typing as t
 
+from http import HTTPStatus
+
 import requests
 
-from flask import url_for
+from flask import current_app, url_for
 
 from server.config import config
-from server.const import MAP_OAUTH_ISSUE_ENDPOINT, MAP_OAUTH_TOKEN_ENDPOINT
+from server.const import (
+    MAP_OAUTH_CHECK_ENDPOINT,
+    MAP_OAUTH_ISSUE_ENDPOINT,
+    MAP_OAUTH_TOKEN_ENDPOINT,
+)
 from server.entities.auth import ClientCredentials, OAuthToken
+from server.messages import I
 
 
 if t.TYPE_CHECKING:
@@ -53,7 +60,7 @@ def issue_oauth_token(code: str, credentials: _ClientCreds) -> OAuthToken:
 
     Args:
         code (str): Authorization code received from mAP Core Authorization Server.
-        credentials (_ClientCreds):
+        credentials (ClientCreds):
             Client credentials. It must contain members `client_id` and `client_secret`.
 
     Returns:
@@ -78,12 +85,37 @@ def issue_oauth_token(code: str, credentials: _ClientCreds) -> OAuthToken:
     return OAuthToken.model_validate(response.json())
 
 
+def check_token_validity(access_token: str) -> bool:
+    """Check the validity of an access token with mAP Core Authorization Server.
+
+    Args:
+        access_token (str): The access token to check.
+
+    Returns:
+        bool: True if the token is valid, False otherwise.
+    """
+    response = requests.post(
+        f"{config.MAP_CORE.base_url}{MAP_OAUTH_CHECK_ENDPOINT}",
+        data={"access_token": access_token},
+        timeout=config.MAP_CORE.timeout,
+    )
+
+    if response.status_code == HTTPStatus.UNAUTHORIZED:
+        description = response.json().get("error_description")
+        current_app.logger.info(I.RECEIVE_RESPONSE_MESSAGE, {"message": description})
+        return False
+
+    response.raise_for_status()
+
+    return response.json().get("success", False)
+
+
 def refresh_oauth_token(refresh_token: str, credentials: _ClientCreds) -> OAuthToken:
     """Refresh an OAuth access token using the refresh token.
 
     Args:
         refresh_token (str): Refresh token.
-        credentials (_ClientCreds):
+        credentials (ClientCreds):
             Client credentials. It must contain members `client_id` and `client_secret`.
 
     Returns:

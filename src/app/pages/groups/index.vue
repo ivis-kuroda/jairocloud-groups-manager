@@ -1,36 +1,102 @@
 <script setup lang="ts">
+const toast = useToast()
+const { $api } = useNuxtApp()
+
 const {
   query, updateQuery, criteria, creationButtons, emptyActions,
-  toggleSelection, selectedCount, selectedGroupsActions,
-  columns, columnNames, columnVisibility, makeAttributeFilters, makePageInfo,
+  toggleSelection, selectedCount, getSelected, clearSelection, selectedGroupsActions,
+  columns, columnNames, columnVisibility, makeAttributeFilters, makePageInfo, modals,
 } = useGroupsTable()
 
 const { searchTerm, pageNumber, pageSize } = criteria
 
 const table = useTemplateRef('table')
-const { table: { pageSize: { groups: pageOptions } } } = useAppConfig()
+const { table: { pageSize: { groups: pageOptions } },
+  features: { repositories: { 'server-search': serverSearch } },
+} = useAppConfig()
 
-const { data: searchResult, status, refresh } = useFetch<GroupsSearchResult>(
-  '/api/groups', { method: 'GET', query, lazy: true, server: false })
+const { handleFetchError } = useErrorHandling()
+const { data: searchResult, status, refresh } = useApiFetch<GroupsSearchResult>('/api/groups', {
+  method: 'GET',
+  query,
+  onResponseError({ response }) {
+    switch (response.status) {
+      case 400: {
+        toast.add({
+          title: $t('toast.error.failed-search.title'),
+          description: $t('toast.error.invalid-search-query.description'),
+          color: 'error',
+        })
+        break
+      }
+      default: {
+        handleFetchError({ response })
+        break
+      }
+    }
+  },
+  lazy: true,
+})
 const offset = computed(() => (searchResult.value?.offset ?? 1))
-emptyActions.value[0]!.onClick = () => refresh()
+emptyActions.value[0].onClick = () => refresh()
 
 const {
   data: filterOptions, status: filterOptionsStatus,
-} = useFetch<FilterOption[]>('/api/groups/filter-options', {
+} = useApiFetch<FilterOption[]>('/api/groups/filter-options', {
   method: 'GET',
+  onResponseError: async ({ response }) => { await handleFetchError({ response }) },
   lazy: true,
-  server: false,
 })
 
 const isFilterOpen = ref(false)
-const filterSelects = makeAttributeFilters(filterOptions)
+const repositorySelect = useTemplateRef('repositorySelect')
+const { repositoryFilter, filters: statusFilters } = makeAttributeFilters(filterOptions, {
+  repositorySelect: { ref: repositorySelect, url: '/api/repositories' },
+})
 const pageInfo = makePageInfo(searchResult)
+
+const selectedGroups = ref<{ id: string, displayName: string }[]>([])
+const onDelete = async () => {
+  try {
+    await $api('/api/groups/delete', {
+      method: 'POST',
+      body: { groupIds: selectedGroups.value.map(group => group.id) },
+      onResponseError: ({ response }) => {
+        switch (response.status) {
+          case 403: {
+            showError({
+              status: 403,
+              statusText: 'Forbidden',
+              message: $t('error-page.forbidden.group-delete'),
+            })
+            break
+          }
+          default: {
+            handleFetchError({ response })
+            break
+          }
+        }
+      },
+    })
+
+    toast.add({
+      title: $t('toast.success.deleted.title'),
+      description: $t('toast.success.group-deleted.description'),
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    })
+    clearSelection()
+    await refresh()
+  }
+  catch {
+    // Error handling is done in onResponseError, so we can ignore errors here
+  }
+}
 </script>
 
 <template>
   <UPageHeader
-    :title="$t('groups.title')"
+    :title="$t('groups.table.title')"
     :description="$t('groups.description')"
     :ui="{ root: 'py-2 mb-6', description: 'mt-4' }"
   />
@@ -38,22 +104,25 @@ const pageInfo = makePageInfo(searchResult)
   <div class="flex justify-between items-center my-4">
     <div class="flex space-x-2">
       <UButton
-        v-for="(button, index) in creationButtons"
-        :key="index"
+        v-for="(button, index) in creationButtons" :key="index"
         :icon="button.icon" :label="button.label"
         :to="button.to" :color="button.color" :variant="button.variant"
         :ui="{ base: 'gap-1' }"
       />
     </div>
-
-    <UDropdownMenu :items="selectedGroupsActions">
-      <UButton
-        :label="$t('groups.button.selected-groups-actions')"
-        color="warning" variant="subtle"
-        :ui="{ base: 'gap-1' }"
-        :disabled="selectedCount === 0"
-      />
-    </UDropdownMenu>
+    <UChip
+      :text="selectedCount"
+      :ui="{
+        base: 'h-4 min-w-4 text-[12px]' + (selectedCount ? ' visible' : ' invisible'),
+      }"
+    >
+      <UDropdownMenu :items="selectedGroupsActions" :content="{ align: 'end' }">
+        <UButton
+          icon="i-lucide-wand" color="neutral" variant="outline"
+          :ui="{ base: 'gap-1' }"
+        />
+      </UDropdownMenu>
+    </UChip>
   </div>
 
   <div class="grid grid-cols-3 gap-4 my-4 h-8">
@@ -78,13 +147,12 @@ const pageInfo = makePageInfo(searchResult)
         :label="$t('table.filter-button-label')"
         color="neutral" variant="outline" icon="i-lucide-filter"
         :trailing-icon="isFilterOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-        :loading="filterOptionsStatus === 'pending'"
         @click="isFilterOpen = !isFilterOpen"
       />
 
       <div class="flex flex-1 justify-end items-center space-x-4">
         <div class="flex items-center">
-          <label class="text-sm text-gray-600">{{ $t('table.page-size-label') }}</label>
+          <label class="text-sm text-gray-600 mr-1">{{ $t('table.page-size-label') }}</label>
           <USelect
             v-model="pageSize" :items="pageOptions"
             class="w-24"
@@ -127,7 +195,17 @@ const pageInfo = makePageInfo(searchResult)
   >
     <template #content>
       <USelectMenu
-        v-for="filter in filterSelects"
+        ref="repositorySelect"
+        v-model:search-term="repositoryFilter.searchTerm.value"
+        :ignore-filter="serverSearch"
+        :placeholder="repositoryFilter.placeholder"
+        :icon="repositoryFilter.icon" :items="repositoryFilter.items"
+        :multiple="repositoryFilter.multiple" :loading="repositoryFilter.loading"
+        @update:open="repositoryFilter.onOpen" @update:model-value="repositoryFilter.onUpdated"
+      />
+
+      <USelectMenu
+        v-for="filter in statusFilters"
         :key="filter.key" :placeholder="filter.placeholder" :icon="filter.icon"
         :items="filter.items" :multiple="filter.multiple"
         :loading="filterOptionsStatus === 'pending'" :search-input="filter.searchInput"
@@ -146,7 +224,7 @@ const pageInfo = makePageInfo(searchResult)
     <template #empty>
       <UEmpty
         :title="$t('users.table.no-users-title')"
-        :description="$t('users.table.no-users-description')"
+        :description="$t('groups.table.no-groupss-description')"
         :actions="emptyActions"
       />
     </template>
@@ -166,4 +244,38 @@ const pageInfo = makePageInfo(searchResult)
     </div>
     <div class="flex-1" />
   </div>
+
+  <UModal
+    v-model:open="modals.delete"
+    :title="$t('modal.delete-groups.title')"
+    :description="$t('modal.delete-groups.description')"
+    :close="false" :ui="{ footer: 'justify-between', body: 'max-h-85 space-y-2' }"
+  >
+    <template #body>
+      <div v-for="group in (selectedGroups = getSelected())" :key="group.id" class="group">
+        <div class="text-lg font-semibold text-highlighted">
+          {{ group.displayName }}
+        </div>
+        <div class="text-xs text-muted mt-1">
+          {{ group.id }}
+        </div>
+
+        <USeparator class="my-1 group-last:hidden" />
+      </div>
+    </template>
+
+    <template #footer="{ close }">
+      <UButton
+        :label="$t('button.cancel')"
+        icon="i-lucide-ban" color="neutral" variant="subtle"
+        @click="close"
+      />
+      <UButton
+        :label="$t('button.delete')"
+        icon="i-lucide-trash" color="error" variant="solid"
+        loading-auto
+        @click="async () => { await onDelete(); close(); }"
+      />
+    </template>
+  </UModal>
 </template>

@@ -77,8 +77,8 @@ class SearchResult[T: BaseModel](BaseModel):
     resources: list[T]
     """The list of resources returned by the search."""
 
-    model_config = camel_case_config | forbid_extra_config
-    """Configure to use camelCase aliasing and forbid extra fields."""
+    model_config = camel_case_config | {"extra": "allow"}
+    """Configure to use camelCase aliasing and allow extra fields."""
 
 
 class FilterOption[T: BaseModel](BaseModel):

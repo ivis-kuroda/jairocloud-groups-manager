@@ -4,9 +4,10 @@
 
 import { UButton, UCheckbox, UDropdownMenu, ULink } from '#components'
 
-import type { Row } from '@tanstack/table-core'
+import type { Row, Table } from '@tanstack/table-core'
 import type { ButtonProps, DropdownMenuItem, TableColumn, TableRow } from '@nuxt/ui'
 
+/** Composable for managing groups table */
 const useGroupsTable = () => {
   const route = useRoute()
 
@@ -14,9 +15,13 @@ const useGroupsTable = () => {
   const { t: $t } = useI18n()
   const { copy } = useClipboard()
 
-  /** Reactive query object */
+  const {
+    table: { pageSize: pageSizeConfig },
+    features: { groups: { 'sort-columns': sortColumns },
+      repositories: { 'server-search': serverSearch } },
+  } = useAppConfig()
+
   const query = computed<GroupsSearchQuery>(() => normalizeGroupsQuery(route.query))
-  /** Update query parameters and push to router */
   const updateQuery = async (newQuery: Partial<GroupsSearchQuery>) => {
     await navigateTo({
       query: {
@@ -33,22 +38,62 @@ const useGroupsTable = () => {
   const pageSize = ref(query.value.l)
 
   const searchIdentityKey = computed(() => {
+    // exclude pagination and sorting parameters
     const { k, d, p, l, ...filters } = query.value
     return JSON.stringify(filters)
   })
 
-  const selectedMap = useState<Record<string, boolean>>(
+  const selectedMap = useState<Record<string, string | undefined>>(
     `selection-groups:${searchIdentityKey.value}`, () => ({}),
   )
 
-  /** Number of selected groups */
   const selectedCount = computed(() => {
-    return Object.values(selectedMap.value).filter(value => value === true).length
+    return Object.values(selectedMap.value).filter(value => value !== undefined).length
   })
+  /** Toggle the selection of a group */
   const toggleSelection = (event: Event | undefined, row: Row<GroupSummary>) => {
-    selectedMap.value[row.id] = !selectedMap.value[row.id]
-    row.toggleSelected(selectedMap.value[row.id])
+    selectedMap.value[row.original.id]
+      = selectedMap.value[row.original.id] ? undefined : row.original.displayName
   }
+  const toggleAllPageRows = (table: Table<GroupSummary>) => {
+    const pageRows = table.getRowModel().rows
+    const allSelected = pageRows.every(row => selectedMap.value[row.original.id] !== undefined)
+
+    if (allSelected) {
+      for (const row of pageRows) {
+        selectedMap.value[row.original.id] = undefined
+      }
+    }
+    else {
+      for (const row of pageRows) {
+        selectedMap.value[row.original.id] = row.original.displayName
+      }
+    }
+  }
+  const isAllPageRowsSelected = (table: Table<GroupSummary>) => {
+    const pageRows = table.getRowModel().rows
+    return pageRows.length > 0 && pageRows.every(
+      row => selectedMap.value[row.original.id] !== undefined,
+    )
+  }
+  const isSomePageRowsSelected = (table: Table<GroupSummary>) => {
+    const pageRows = table.getRowModel().rows
+    const selectedRows = pageRows.filter(row => selectedMap.value[row.original.id] !== undefined)
+    return selectedRows.length > 0 && selectedRows.length < pageRows.length
+  }
+
+  const getSelected = (): { id: string, displayName: string }[] => {
+    return Object.entries(selectedMap.value)
+      .filter(([_, displayName]) => displayName !== undefined)
+      .map(([id, displayName]) => ({ id, displayName: displayName! }))
+  }
+  const clearSelection = () => {
+    selectedMap.value = {}
+  }
+
+  const modals = reactive({
+    delete: false,
+  })
 
   /** Column names with translations */
   const columnNames = computed<Record<keyof GroupSummary, string>>(() => ({
@@ -64,14 +109,14 @@ const useGroupsTable = () => {
     false: $t('groups.table.cell.public.private'),
   }))
 
-  const visibilityStatus = computed(() => ({
+  const visibilityStatus = computed<Record<Visibility, string>>(() => ({
     Public: $t('groups.table.cell.visibility.public'),
     Private: $t('groups.table.cell.visibility.private'),
     Hidden: $t('groups.table.cell.visibility.hidden'),
   }))
 
   /** Returns action buttons for a group entity */
-  const creationButtons = computed<ButtonProps[]>(() => [
+  const creationButtons = computed<[ButtonProps, ...ButtonProps[]]>(() => [
     {
       icon: 'i-lucide-plus',
       label: $t('button.create-new'),
@@ -82,7 +127,7 @@ const useGroupsTable = () => {
   ])
 
   /** Actions to display when the list is empty */
-  const emptyActions = computed<ButtonProps[]>(() => [
+  const emptyActions = computed<[ButtonProps, ...ButtonProps[]]>(() => [
     {
       icon: 'i-lucide-refresh-cw',
       label: $t('button.reload'),
@@ -93,13 +138,17 @@ const useGroupsTable = () => {
   ])
 
   /** Actions for selected groups */
-  const selectedGroupsActions = computed<DropdownMenuItem[]>(() => [
+  const selectedGroupsActions = computed<[DropdownMenuItem, ...DropdownMenuItem[]]>(() => [
+    {
+      type: 'label' as const,
+      label: $t('groups.selected-groups-actions'),
+    },
     {
       icon: 'i-lucide-trash',
       label: $t('groups.delete-selected-button'),
-      onClick: () => {
-        // TODO: Delete selected groups
-      },
+      color: 'error',
+      onSelect: () => modals.delete = true,
+      disabled: selectedCount.value === 0,
     },
   ])
 
@@ -109,15 +158,15 @@ const useGroupsTable = () => {
       id: 'select',
       header: ({ table }) =>
         h(UCheckbox, {
-          'modelValue': table.getIsSomePageRowsSelected()
+          'modelValue': isSomePageRowsSelected(table)
             ? 'indeterminate'
-            : table.getIsAllPageRowsSelected(),
-          'onUpdate:modelValue': value => table.toggleAllPageRowsSelected(!!value),
+            : isAllPageRowsSelected(table),
+          'onUpdate:modelValue': () => toggleAllPageRows(table),
           'aria-label': 'Select all',
         }),
       cell: ({ row }) =>
         h(UCheckbox, {
-          'modelValue': row.getIsSelected(),
+          'modelValue': selectedMap.value[row.original.id] !== undefined,
           'onUpdate:modelValue': () => toggleSelection(undefined, row),
           'aria-label': 'Select row',
         }),
@@ -125,17 +174,21 @@ const useGroupsTable = () => {
     },
     {
       accessorKey: 'id',
-      header: () => sortableHeader('id'),
+      header: () => sortColumns
+        ? sortableHeader('id')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.id),
     },
     {
       accessorKey: 'displayName',
-      header: () => sortableHeader('displayName'),
+      header: () => sortColumns
+        ? sortableHeader('displayName')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.displayName),
       cell: ({ row }) => {
         const name: string = row.original.displayName
         return h(ULink, {
           to: `/groups/${row.original.id}`,
           class: 'font-bold hover:underline inline-flex items-center',
-        }, [
+        }, () => [
           h('span', name),
         ])
       },
@@ -143,14 +196,19 @@ const useGroupsTable = () => {
     },
     {
       accessorKey: 'public',
-      header: () => sortableHeader('public'),
+      header: () => sortColumns
+        ? sortableHeader('public')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.public),
       cell: ({ row }) => (
         publicStatus.value[`${row.original.public}`]
       ),
     },
     {
       accessorKey: 'memberListVisibility',
-      header: () => sortableHeader('memberListVisibility'),
+      header: () => sortColumns
+        ? sortableHeader('memberListVisibility')
+        : h('span', { class: 'text-xs text-default font-medium' },
+            columnNames.value.memberListVisibility),
       cell: ({ row }) => (
         visibilityStatus.value[row.original.memberListVisibility]
       ),
@@ -170,7 +228,6 @@ const useGroupsTable = () => {
           'div',
           { class: 'text-right' },
           h(
-            // @ts-expect-error: props type mismatch
             UDropdownMenu,
             {
               'content': { align: 'end' },
@@ -229,7 +286,8 @@ const useGroupsTable = () => {
           copy(row.original.id)
 
           toast.add({
-            title: $t('groups.actions.copy-id-success'),
+            title: $t('toast.success.title'),
+            description: $t('toast.success.copy-group-id.description'),
             color: 'success',
             icon: 'i-lucide-circle-check',
           })
@@ -255,24 +313,49 @@ const useGroupsTable = () => {
 
   const columnVisibility = ref({ id: false })
 
-  const makeAttributeFilters = (data: Ref<FilterOption[] | undefined>) => {
+  const makeAttributeFilters = (
+    data: Ref<FilterOption[] | undefined>,
+    {
+      repositorySelect,
+    }: { [key in 'repositorySelect']: { ref: Ref<unknown>, url: string } },
+  ) => {
+    const {
+      items: repositoryItems,
+      searchTerm: repoSearchTerm,
+      status: repoSearchStatus,
+      onOpen: onRepoOpen,
+      setupInfiniteScroll: setupRepoScroll,
+    } = useSelectMenuInfiniteScroll<RepositorySummary>({
+      url: repositorySelect.url,
+      limit: pageSizeConfig.repositories[0],
+      server: serverSearch,
+      transform: repository => ({
+        label: repository.serviceName,
+        value: repository.id,
+      }),
+    })
+    setupRepoScroll(repositorySelect.ref)
+
     const options = computed(() => (
       Object.fromEntries(data.value?.map(option => [option.key, option]) ?? [],
       ) as Record<keyof GroupsSearchQuery, FilterOption>
     ))
 
-    const filters = computed(() => [
-      {
-        key: 'r',
-        placeholder: $t('repositories.title'),
-        icon: 'i-lucide-folder',
-        items: options.value.r.items ?? [],
-        multiple: options.value.r.multiple ?? false,
-        searchInput: true,
-        onUpdated: (values: unknown) => {
-          updateQuery({ r: (values as { value: string }[]).map(v => v.value), p: 1 })
-        },
+    const repositoryFilter = computed(() => ({
+      key: 'repositorySelect',
+      placeholder: $t('repositories.title'),
+      icon: 'i-lucide-folder',
+      items: repositoryItems.value,
+      multiple: options.value.r.multiple ?? false,
+      searchTerm: repoSearchTerm,
+      loading: repoSearchStatus.value === 'pending',
+      onOpen: onRepoOpen,
+      onUpdated: (values: unknown) => {
+        updateQuery({ r: (values as { value: string }[]).map(v => v.value), p: 1 })
       },
+    }))
+
+    const filters = computed(() => [
       {
         key: 's',
         placeholder: $t('groups.table.column.public'),
@@ -308,7 +391,7 @@ const useGroupsTable = () => {
       },
     ])
 
-    return filters
+    return { repositoryFilter, filters }
   }
 
   const makePageInfo = (result: Ref<GroupsSearchResult | undefined>) => {
@@ -325,26 +408,51 @@ const useGroupsTable = () => {
   }
 
   return {
+    /** Computed reference for the current query */
     query,
+    /** Update query parameters and push to router */
     updateQuery,
+    /** Criteria for filtering and sorting groups */
     criteria: {
+      /** Reactive object for the search term */
       searchTerm,
+      /** Computed reference for the sort key */
       sortKey,
+      /** Computed reference for the sort order */
       sortOrder,
+      /** Reactive object for the current page number */
       pageNumber,
+      /** Reactive object for the page size */
       pageSize,
     },
+    /** Column names for the table with translations */
     columnNames,
+    /** Reactive object for the selected groups */
     selectedMap,
+    /** Computed reference for the count of selected groups */
     selectedCount,
+    /** Toggle selection of a group */
     toggleSelection,
+    /** Get selected groups as an array of id and displayName */
+    getSelected,
+    /** Clear all selections */
+    clearSelection,
+    /** Dropdown items of actions for the selected groups */
     selectedGroupsActions,
+    /** Button properties for creating a new group */
     creationButtons,
+    /** Button properties for empty actions */
     emptyActions,
+    /** Column definitions for the table with translations */
     columns,
+    /** Reactive object for the visibility of columns */
     columnVisibility,
+    /** Make attribute filters for table columns */
     makeAttributeFilters,
+    /** Make indicator for the page information */
     makePageInfo,
+    /** Reactive object for the state of modals */
+    modals,
   }
 }
 

@@ -13,29 +13,31 @@ from server.const import MAP_PATCH_SCHEMA
 from .common import forbid_extra_config
 
 
-class PatchRequestPayload(BaseModel):
+class PatchRequestPayload[T: BaseModel](BaseModel):
     """Model for PATCH request payloads."""
 
     schemas: t.Annotated[t.Sequence[str], Field(frozen=True)] = [MAP_PATCH_SCHEMA]
     """Schema URIs that define the attributes present in the PATCH request payload."""
 
     operations: t.Annotated[
-        list[PatchOperation], Field(..., serialization_alias="Operations")
+        list[PatchOperation[T]], Field(..., serialization_alias="Operations")
     ]
-    """List of patch operations to be applied to the target resource."""
+    """List of patch operations to be applied to the target resource.
+    Alias for 'Operations'.
+    """
 
     model_config = forbid_extra_config
     """Configure to forbid extra fields."""
 
 
-type PatchOperation[T] = t.Annotated[
+type PatchOperation[T: BaseModel] = t.Annotated[
     AddOperation[T] | RemoveOperation[T] | ReplaceOperation[T],
     Field(discriminator="op"),
 ]
 """Union type for patch operations based on the 'op' field."""
 
 
-class AddOperation[T](BaseModel):
+class AddOperation[T: BaseModel](BaseModel):
     """Model for 'add' patch operations."""
 
     op: t.Literal["add"] = "add"
@@ -51,7 +53,7 @@ class AddOperation[T](BaseModel):
     """Configure to forbid extra fields."""
 
 
-class RemoveOperation[T](BaseModel):
+class RemoveOperation[T: BaseModel](BaseModel):
     """Model for 'remove' patch operations."""
 
     op: t.Literal["remove"] = "remove"
@@ -64,7 +66,7 @@ class RemoveOperation[T](BaseModel):
     """Configure to forbid extra fields."""
 
 
-class ReplaceOperation[T](BaseModel):
+class ReplaceOperation[T: BaseModel](BaseModel):
     """Model for 'replace' patch operations."""
 
     op: t.Literal["replace"] = "replace"

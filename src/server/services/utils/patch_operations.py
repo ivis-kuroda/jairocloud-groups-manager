@@ -14,6 +14,7 @@ from server.entities.patch_request import (
     RemoveOperation,
     ReplaceOperation,
 )
+from server.messages import E
 
 
 def build_patch_operations[T: BaseModel](
@@ -37,8 +38,11 @@ def build_patch_operations[T: BaseModel](
     Raises:
         TypeError: If `original` and `updated` are not of the same type.
     """
-    if type(original) is not type(updated):
-        error = "Original and updated models must be of the same type."
+    if (type_o := type(original)) is not (type_u := type(updated)):
+        error = E.CANNOT_RESOLVE_DIFFERENCE % {
+            "original": type_o.__name__,
+            "updated": type_u.__name__,
+        }
         raise TypeError(error)
 
     gen = original.model_config.get("alias_generator")
@@ -164,3 +168,31 @@ def _handle_list_diff(
     )
 
     return ops
+
+
+def build_update_member_operations(
+    add: set[str], remove: set[str], user_list: set[str], system_admins: set[str]
+) -> list[PatchOperation]:
+    """Make patch request body for members from group_id and operation.
+
+    Args:
+        add (set[str]): List of user IDs to add .
+        remove (set[str]): List of user IDs to remove.
+        user_list (set[str]): List of user IDs in the current group.
+        system_admins (set[str]): List of system administrator IDs.
+
+    Returns:
+        list[PatchOperation]: List of patch operations.
+    """
+    operations: list[PatchOperation] = []
+    add.difference_update(user_list)
+    remove.difference_update(system_admins)
+    remove.intersection_update(user_list)
+    if remove.issuperset(user_list | add):
+        add.update(system_admins)
+    operations.extend([
+        AddOperation(path="members", value={"type": "User", "value": g}) for g in add
+    ])
+    operations.extend([RemoveOperation(path=f"members[value eq {g}]") for g in remove])
+
+    return operations

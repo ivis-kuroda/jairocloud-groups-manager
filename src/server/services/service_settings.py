@@ -16,6 +16,7 @@ from server.db import db
 from server.db.service_settings import ServiceSettings
 from server.entities.auth import ClientCredentials, OAuthToken
 from server.exc import CredentialsError, DatabaseError, OAuthTokenError
+from server.messages import E
 
 
 def get_client_credentials() -> ClientCredentials | None:
@@ -37,10 +38,10 @@ def get_client_credentials() -> ClientCredentials | None:
 
         creds = ClientCredentials(**setting)
     except SQLAlchemyError as exc:
-        error = "Failed to get client credentials from database."
+        error = E.FAILED_GET_CLIENT_CREDENTIALS
         raise DatabaseError(error) from exc
     except ValidationError as exc:
-        error = "Invalid client credentials in service settings."
+        error = E.FAILED_PARSE_CLIENT_CREDENTIALS
         raise CredentialsError(error) from exc
 
     return creds
@@ -59,10 +60,10 @@ def save_client_credentials(credentials: ClientCredentials) -> None:
     try:
         _save_setting("client_credentials", credentials.model_dump(mode="json"))
     except SQLAlchemyError as exc:
-        error = "Failed to save client credentials to database."
+        error = E.FAILED_SAVE_CLIENT_CREDENTIALS
         raise DatabaseError(error) from exc
     except PydanticSerializationError as exc:
-        error = "Invalid client credentials to save."
+        error = E.FAILED_DUMP_CLIENT_CREDENTIALS
         raise CredentialsError(error) from exc
 
 
@@ -83,10 +84,10 @@ def get_oauth_token() -> OAuthToken | None:
 
         token = OAuthToken(**setting)
     except SQLAlchemyError as exc:
-        error = "Failed to get OAuth token from database."
+        error = E.FAILED_GET_OAUTH_TOKEN
         raise DatabaseError(error) from exc
     except ValidationError as exc:
-        error = "Invalid OAuth token in service settings."
+        error = E.FAILED_PARSE_OAUTH_TOKEN
         raise OAuthTokenError(error) from exc
 
     return token
@@ -105,10 +106,10 @@ def save_oauth_token(token: OAuthToken) -> None:
     try:
         _save_setting("oauth_token", token.model_dump(mode="json"))
     except SQLAlchemyError as exc:
-        error = "Failed to save OAuth token to database."
+        error = E.FAILED_SAVE_OAUTH_TOKEN
         raise DatabaseError(error) from exc
     except PydanticSerializationError as exc:
-        error = "Invalid OAuth token to save."
+        error = E.FAILED_DUMP_OAUTH_TOKEN
         raise OAuthTokenError(error) from exc
 
 

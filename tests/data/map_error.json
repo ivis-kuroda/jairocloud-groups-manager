@@ -1,0 +1,8 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:mace:example.jp:core:2.0:Error"
+  ],
+  "status": "400",
+  "scimType": "invalidValue",
+  "detail": "'%s' Not Found"
+}

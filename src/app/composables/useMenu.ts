@@ -6,12 +6,13 @@
  * Composable to manage the application menu items
  */
 
-import type { FooterColumn, NavigationMenuItem } from '@nuxt/ui'
+import type { ButtonProps, FooterColumn, NavigationMenuItem } from '@nuxt/ui'
 
 export function useMenu() {
   const route = useRoute()
   const { t: $t } = useI18n()
-  const { currentUser } = useAuth()
+  const { header: { userManualURL } } = useAppConfig()
+  const { currentUser, logout } = useAuth()
 
   const items = computed(() => ([
     {
@@ -44,8 +45,8 @@ export function useMenu() {
 
         },
         {
-          label: $t('cache-groups.title'),
-          to: '/cache-groups',
+          label: $t('group-caches.title'),
+          to: '/group-caches',
           icon: 'i-lucide-database',
           requiredSystemAdmin: true,
         },
@@ -75,5 +76,32 @@ export function useMenu() {
       })),
   })))
 
-  return { navigation, footer }
+  const submenu = computed(() => (
+    [
+      {
+        id: 'profile',
+        label: $t('submenu.profile'),
+        to: `/users/${currentUser.value?.id}`,
+        icon: 'i-lucide-user',
+        color: 'neutral',
+      },
+      userManualURL && {
+        id: 'manual',
+        label: $t('submenu.manual'),
+        target: '_blank',
+        to: userManualURL,
+        icon: 'i-lucide-book-open',
+        color: 'neutral',
+      },
+      {
+        id: 'logout',
+        label: $t('submenu.logout'),
+        icon: 'i-lucide-log-out',
+        color: 'error',
+        onClick: logout,
+      },
+    ] as (ButtonProps & { id: string })[]
+  ).filter(Boolean))
+
+  return { navigation, footer, submenu }
 }

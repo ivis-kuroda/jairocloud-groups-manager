@@ -6,6 +6,9 @@ import { UButton, UDropdownMenu, UIcon, ULink } from '#components'
 
 import type { ButtonProps, DropdownMenuItem, TableColumn, TableRow } from '@nuxt/ui'
 
+const { features: { repositories: { 'sort-columns': sortColumns } } } = useAppConfig()
+
+/** Composable for managing repositories table */
 const useRepositoriesTable = () => {
   const route = useRoute()
 
@@ -42,7 +45,7 @@ const useRepositoriesTable = () => {
   }))
 
   /** Returns action buttons for a repository entry */
-  const creationButtons = computed<ButtonProps[]>(() => [
+  const creationButtons = computed<[ButtonProps, ...ButtonProps[]]>(() => [
     {
       icon: 'i-lucide-plus',
       label: $t('button.create-new'),
@@ -53,7 +56,7 @@ const useRepositoriesTable = () => {
   ])
 
   /** Actions to display when the list is empty */
-  const emptyActions = computed<ButtonProps[]>(() => [
+  const emptyActions = computed<[ButtonProps, ...ButtonProps[]]>(() => [
     {
       icon: 'i-lucide-refresh-cw',
       label: $t('button.reload'),
@@ -67,12 +70,17 @@ const useRepositoriesTable = () => {
   const columns = computed<RepositoryTableColumn[]>(() => [
     {
       accessorKey: 'id',
-      header: () => sortableHeader('id'),
+      header: () => sortColumns
+        ? sortableHeader('id')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.id),
       cell: ({ row }) => row.original.spConnectorId,
+      enableGlobalFilter: false,
     },
     {
       accessorKey: 'serviceName',
-      header: () => sortableHeader('serviceName'),
+      header: () => sortColumns
+        ? sortableHeader('serviceName')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.serviceName),
       cell: ({ row }) => {
         const name: string = row.original.serviceName
         return h(ULink, {
@@ -86,25 +94,40 @@ const useRepositoriesTable = () => {
     },
     {
       accessorKey: 'serviceUrl',
-      header: () => sortableHeader('serviceUrl'),
+      header: () => sortColumns
+        ? sortableHeader('serviceUrl')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.serviceUrl),
       cell: ({ row }) => {
         const url: string = row.original.serviceUrl
         return url
           ? h(ULink, {
               to: url,
               target: '_blank',
-              class: 'hover:underline inline-flex items-center gap-1',
+              class: 'hover:underline inline-flex items-center gap-1 w-full',
             }, () => [
-              h('span', url),
+              h('span', { class: 'truncate' }, url),
               h(UIcon, { name: 'i-lucide-external-link', class: 'size-3 shrink-0' }),
             ])
           : undefined
       },
+      meta: {
+        class: {
+          td: 'max-w-xs',
+        },
+      },
     },
     {
       accessorKey: 'entityIds',
-      header: () => sortableHeader('entityIds'),
+      accessorFn: row => row.entityIds?.[0],
+      header: () => sortColumns
+        ? sortableHeader('entityIds')
+        : h('span', { class: 'text-xs text-default font-medium' }, columnNames.value.entityIds),
       cell: ({ row }) => row.original.entityIds?.[0],
+      meta: {
+        class: {
+          td: 'max-w-xs truncate',
+        },
+      },
     },
     {
       id: 'actions',
@@ -114,7 +137,6 @@ const useRepositoriesTable = () => {
           'div',
           { class: 'text-right' },
           h(
-            // @ts-expect-error: props type mismatch
             UDropdownMenu,
             {
               'content': { align: 'end' },
@@ -172,7 +194,8 @@ const useRepositoriesTable = () => {
           copy(row.original.serviceUrl)
 
           toast.add({
-            title: $t('repository.actions.copy-url-success'),
+            title: $t('toast.success.title'),
+            description: $t('toast.success.copy-url.description'),
             color: 'success',
             icon: 'i-lucide-circle-check',
           })
@@ -185,7 +208,8 @@ const useRepositoriesTable = () => {
           copy(row.original.spConnectorId!)
 
           toast.add({
-            title: $t('repositories.actions.copy-sp-connector-id-success'),
+            title: $t('toast.success.title'),
+            description: $t('toast.success.copy-sp-connector-id.description'),
             color: 'success',
             icon: 'i-lucide-circle-check',
           })
@@ -216,21 +240,36 @@ const useRepositoriesTable = () => {
   }
 
   return {
+    /** Computed reference for the current query */
     query,
+    /** Update query parameters and push to router */
     updateQuery,
+    /** Criteria for filtering and sorting repositories */
     criteria: {
+      /** Reactive object for the search term */
       searchTerm,
+      /** Reactive object for the SP connector ID */
       spConnectorId,
+      /** Computed reference for the sort key */
       sortKey,
+      /** Computed reference for the sort order */
       sortOrder,
+      /** Reactive object for the current page number */
       pageNumber,
+      /** Reactive object for the number of items per page */
       pageSize,
     },
+    /** Button properties for creating new repositories */
     creationButtons,
+    /** Button properties for actions when the list is empty */
     emptyActions,
+    /** Column definitions for the table with translations */
     columns,
+    /** Column names for the table with translations */
     columnNames,
+    /** Reactive object for the visibility of columns */
     columnVisibility,
+    /** Make indicator for the page information */
     makePageInfo,
   }
 }

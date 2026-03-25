@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=24.12
+ARG NODE_VERSION=24
 
 # ==============================
 # Base stage: common setup

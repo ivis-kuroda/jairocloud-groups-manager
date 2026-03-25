@@ -13,6 +13,7 @@ from flask import has_request_context, request
 from flask.logging import default_handler
 from flask_login import current_user
 
+from server.auth import is_user_logged_in
 from server.const import DEFAULT_LOG_DATEFMT, DEFAULT_LOG_FORMAT, DEFAULT_LOG_FORMAT_DEV
 
 
@@ -67,7 +68,7 @@ def _create_formatter(app: Flask, config: RuntimeConfig) -> Formatter:
 
 def _request_context_filter(record: LogRecord) -> t.Literal[True]:
     record.addr = get_remote_addr() or "unknown"
-    record.user = getattr(current_user, "get_id", lambda: "anonymous")()
+    record.user = current_user.eppn if is_user_logged_in(current_user) else "anonymous"
     return True
 
 

@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 
-ARG NGINX_VERSION=1.29.4
-ARG NODE_VERSION=24.12
+ARG NGINX_VERSION=1.29.6
+ARG NODE_VERSION=24
 ARG SHIB_MOD_VERSION=2.0.2
+ARG HEADERS_MORE_VERSION=0.37
 
 # ==============================
 # Build stage:
@@ -12,6 +13,7 @@ FROM debian:trixie-slim AS build
 
 ARG NGINX_VERSION
 ARG SHIB_MOD_VERSION
+ARG HEADERS_MORE_VERSION
 WORKDIR /usr/src
 
 RUN apt-get update && \
@@ -23,9 +25,13 @@ RUN wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
     tar xzf nginx-${NGINX_VERSION}.tar.gz
 RUN wget https://github.com/nginx-shib/nginx-http-shibboleth/archive/v${SHIB_MOD_VERSION}.tar.gz && \
     tar xzf v${SHIB_MOD_VERSION}.tar.gz
+RUN wget https://github.com/openresty/headers-more-nginx-module/archive/v${HEADERS_MORE_VERSION}.tar.gz && \
+    tar xzf v${HEADERS_MORE_VERSION}.tar.gz
 
 WORKDIR /usr/src/nginx-${NGINX_VERSION}
-RUN ./configure --with-compat --add-dynamic-module=../nginx-http-shibboleth-${SHIB_MOD_VERSION} && \
+RUN ./configure --with-compat \
+      --add-dynamic-module=../nginx-http-shibboleth-${SHIB_MOD_VERSION} \
+      --add-dynamic-module=../headers-more-nginx-module-${HEADERS_MORE_VERSION} && \
     make modules
 
 
@@ -69,6 +75,7 @@ RUN mkdir -p /var/run/shibboleth && \
 # nginx-http-shibboleth module
 COPY --from=build \
     /usr/src/nginx-${NGINX_VERSION}/objs/ngx_http_shibboleth_module.so \
+    /usr/src/nginx-${NGINX_VERSION}/objs/ngx_http_headers_more_filter_module.so \
     /etc/nginx/modules/
 
 COPY nginx/supervisord.conf /etc/supervisord.conf
@@ -98,6 +105,9 @@ RUN chmod 644 /etc/shibboleth/server.crt /etc/shibboleth/server.key
 RUN sed -i \
     '1s|^|load_module modules/ngx_http_shibboleth_module.so;\n|' \
     /etc/nginx/nginx.conf
+RUN sed -i \
+    '1s|^|load_module modules/ngx_http_headers_more_filter_module.so;\n|' \
+    /etc/nginx/nginx.conf
 
 
 # ==============================
@@ -107,8 +117,15 @@ RUN sed -i \
 FROM base AS dev
 
 RUN sed -i \
+    '1s|^|upstream app_server {\n  server app:3000;\n}\n\n|' \
+    /etc/nginx/conf.d/default.conf
+RUN sed -i \
     '/# Application resources requests/,/# replace this for dev server/ \
     s|app[.]inc|app.dev.inc|' \
+    /etc/nginx/conf.d/default.conf
+RUN sed -i \
+    '/# Application api requests/,/# replace this for dev server/ \
+    s|api[.]inc|api.dev.inc|' \
     /etc/nginx/conf.d/default.conf
 
 EXPOSE 80 443

@@ -309,10 +309,13 @@ onMounted(() => {
     const iframeElement = document.createElement('iframe')
     iframeElement.id = 'embedded-wayf-iframe'
     iframeElement.srcdoc = embeddedWAYF
-    iframeElement.width = '100%'
-    iframeElement.style.maxWidth = '800px'
-    iframeElement.height = '300px'
+    iframeElement.className
+      = 'w-full max-w-[800px] h-[300px] -mb-[111px] max-[865px]:-mb-[82px]'
 
+    const parentElement = wayfContainer.parentNode
+    if (parentElement instanceof HTMLElement) {
+      parentElement.className = `${parentElement.className} relative z-50`
+    }
     wayfContainer.parentNode.replaceChild(iframeElement, wayfContainer)
   }
 })

@@ -28,7 +28,7 @@ const normalizeRepositoriesQuery = (query: LocationQuery): RepositoriesSearchQue
     k: query.k ? pickSingle(query.k, { camel: true }) : undefined,
     d: query.d ? pickSingle(query.d) as SortOrder : undefined,
     p: Number(query.p) || 1,
-    l: Number(query.l) || pageSize.repositories?.[0],
+    l: Number(query.l) || pageSize.repositories[0],
   }
 }
 
@@ -45,7 +45,7 @@ const normalizeGroupsQuery = (query: LocationQuery): GroupsSearchQuery => {
     k: query.k ? pickSingle(query.k, { camel: true }) : undefined,
     d: query.d ? pickSingle(query.d) as SortOrder : undefined,
     p: Number(query.p) || 1,
-    l: Number(query.l) || pageSize.groups?.[0],
+    l: Number(query.l) || pageSize.groups[0],
   }
 }
 
@@ -65,8 +65,54 @@ const normalizeUsersQuery = (query: LocationQuery): UsersSearchQuery => {
     k: query.k ? pickSingle(query.k, { camel: true }) : undefined,
     d: query.d ? pickSingle(query.d) as SortOrder : undefined,
     p: Number(query.p) || 1,
-    l: Number(query.l) || pageSize.users?.[0],
+    l: Number(query.l) || pageSize.users[0],
   }
 }
 
-export { normalizeRepositoriesQuery, normalizeGroupsQuery, normalizeUsersQuery }
+/**
+  * Normalize location query to cache groups search query
+ */
+const normalizeCacheGroupsQuery = (query: LocationQuery): CacheGroupsSearchQuery => {
+  const { table: { pageSize } } = useAppConfig()
+  return {
+    q: query.q ? pickSingle(query.q) : undefined,
+    f: query.f ? toArray(query.f) as GroupCacheStatus[] : undefined,
+    p: Number(query.p) || 1,
+    l: Number(query.l) || pageSize.cacheGroups?.[0],
+  }
+}
+
+/**
+ * Normalize location query to history
+ */
+const normalizeHistoryQuery = (query: LocationQuery): HistoryQuery => {
+  const { table: { pageSize } } = useAppConfig()
+  return {
+    tab: query.tab ? pickSingle(query.tab) : 'download',
+    p: Number(query.p) || 1,
+    l: Number(query.l) || pageSize.history?.[0],
+    d: query.d ? pickSingle(query.d) : undefined,
+    s: query.s?.toString() || undefined,
+    e: query.e?.toString() || undefined,
+    o: query.o ? toArray(query.o) : undefined,
+    r: query.r ? toArray(query.r) : undefined,
+    g: query.g ? toArray(query.g) : undefined,
+    u: query.u ? toArray(query.u) : undefined,
+    i: query.i ? pickSingle(query.i) : undefined,
+  }
+}
+
+const normalizeUploadQuery = (query: LocationQuery): UploadQuery => {
+  const { table: { pageSize } } = useAppConfig()
+  return {
+    f: query.f ? toArray(query.f) : undefined,
+    p: Number(query.p) || 1,
+    l: Number(query.l) || pageSize.bulks?.[0],
+  }
+}
+
+export {
+  normalizeRepositoriesQuery, normalizeGroupsQuery, normalizeUsersQuery,
+  normalizeHistoryQuery, normalizeUploadQuery,
+  normalizeCacheGroupsQuery,
+}

@@ -4,10 +4,13 @@
 
 """API router for callback endpoints."""
 
-from flask import Blueprint, redirect
-from flask_pydantic import validate
-from werkzeug.wrappers import Response as ResponseBase
+import traceback
+import typing as t
 
+from flask import Blueprint
+from flask_pydantic import validate
+
+from server.exc import CredentialsError, DatabaseError, OAuthTokenError
 from server.services import token
 
 from .schemas import OAuthTokenQuery
@@ -18,7 +21,7 @@ bp = Blueprint("callback", __name__)
 
 @bp.get("/auth-code")
 @validate()
-def auth_code(query: OAuthTokenQuery) -> ResponseBase:
+def auth_code(query: OAuthTokenQuery) -> tuple[t.Literal[""], int]:
     """Handle the authorization code callback.
 
     This endpoint receives the authorization code from the
@@ -27,5 +30,10 @@ def auth_code(query: OAuthTokenQuery) -> ResponseBase:
     Returns:
         Response: Redirect response to the home page.
     """
-    token.issue_access_token(query.code)
-    return redirect("/")
+    try:
+        token.issue_access_token(query.code)
+    except OAuthTokenError, DatabaseError, CredentialsError:
+        traceback.print_exc()
+        return "", 202
+
+    return "", 200

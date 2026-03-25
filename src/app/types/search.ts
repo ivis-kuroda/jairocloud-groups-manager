@@ -50,6 +50,13 @@ interface UsersSearchQuery {
   l?: number
 }
 
+interface CacheGroupsSearchQuery {
+  q?: string
+  f?: GroupCacheStatus[]
+  p?: number
+  l?: number
+}
+
 type RepositoriesSortableKeys = 'id' | 'serviceName' | 'serviceUrl' | 'entityIds'
 
 type GroupsSortableKeys = 'id' | 'displayName' | 'public' | 'memberListVisibility'
@@ -75,6 +82,15 @@ type GroupsSearchResult = SearchResult<GroupSummary>
 /** User search result structure */
 type UsersSearchResult = SearchResult<UserSummary>
 
+/** Global search result structure */
+type GlobalSearchResults = (
+  RepositoriesSearchResult & { type: 'repositories' }
+  | GroupsSearchResult & { type: 'groups' }
+  | UsersSearchResult & { type: 'users' }
+)[]
+
+type GroupCachesSearchResult = SearchResult<RepositoryCache>
+
 export type {
   FilterOption,
   RepositoriesSearchQuery, RepositoriesSortableKeys,
@@ -82,4 +98,6 @@ export type {
   UsersSearchQuery, UsersSortableKeys,
   SortOrder,
   SearchResult, UsersSearchResult, GroupsSearchResult, RepositoriesSearchResult,
+  GlobalSearchResults,
+  CacheGroupsSearchQuery, GroupCachesSearchResult,
 }

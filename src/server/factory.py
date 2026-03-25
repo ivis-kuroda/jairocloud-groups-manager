@@ -8,10 +8,14 @@ import typing as t
 
 from uuid import uuid7
 
+import flask_login
+
 from celery import Celery, Task
 from flask import Flask
+from flask_login import current_user
 
-from .ext import JAIROCloudGroupsManager
+from server.auth import get_user_from_store, is_user_logged_in
+from server.ext import JAIROCloudGroupsManager
 
 
 if t.TYPE_CHECKING:
@@ -65,15 +69,28 @@ def celery_init_app(app: Flask) -> Celery:
         # ruff : noqa: ANN001 ANN002 ANN003 ANN204 ANN202
         @t.override
         def __call__(self, *args, **kwargs):
+            ploxy = flask_login.current_user
+            session_id = kwargs.pop("session_id", None)
+
             with app.app_context():
-                return self.run(*args, **kwargs)
+                if session_id and (user := get_user_from_store(session_id)):
+                    flask_login.current_user = user
+                result = self.run(*args, **kwargs)
+
+            flask_login.current_user = ploxy
+            return result
 
         @t.override
-        def apply_async(self, *args, task_id=None, **kwargs):
+        def apply_async(  # pyright: ignore[reportIncompatibleMethodOverride]
+            self, args, kwargs=None, session_required=None, task_id=None, **options
+        ):
             task_id = task_id or str(uuid7())
-            return super().apply_async(args, kwargs, task_id=task_id)
+            if session_required and is_user_logged_in(current_user):
+                kwargs = kwargs or {}
+                kwargs.setdefault("session_id", current_user.session_id)
+            return super().apply_async(args, kwargs, task_id=task_id, **options)
 
-    celery_app = Celery(app.name, task_cls=FlaskTask)
+    celery_app: Celery = Celery(app.name, task_cls=FlaskTask)
     celery_app.config_from_object(app.config["CELERY"])
     celery_app.set_default()
     app.extensions["celery"] = celery_app

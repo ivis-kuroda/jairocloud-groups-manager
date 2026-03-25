@@ -1,47 +1,66 @@
 <script setup lang="ts">
-import { FetchError } from 'ofetch'
+const toast = useToast()
+const { $api } = useNuxtApp()
 
 const { stateAsCreate: state } = useGroupForm()
 
-const onSubmit = async (data: GroupCreatePayload) => {
-  const toast = useToast()
+const { handleFetchError } = useErrorHandling()
+const onSubmit = async (data: GroupCreateForm) => {
+  const payload: GroupCreatePayload = {
+    ...data,
+    repository: { id: data.repository.value! },
+  }
+
   try {
-    await $fetch('/api/groups', {
+    await $api('/api/groups', {
       method: 'POST',
-      body: data,
+      body: payload,
+      onResponseError: ({ response }) => {
+        switch (response.status) {
+          case 400: {
+            toast.add({
+              title: $t('toast.error.validation.title'),
+              description: $t('toast.error.validation.description'),
+              color: 'error',
+              icon: 'i-lucide-circle-x',
+            })
+            break
+          }
+          case 403: {
+            showError({
+              status: 403,
+              statusText: 'Forbidden',
+              message: $t('error-page.forbidden.group-create'),
+            })
+            break
+          }
+          case 409: {
+            toast.add({
+              title: $t('toast.error.conflict.title'),
+              description: $t('toast.error.conflict.description'),
+              color: 'error',
+              icon: 'i-lucide-circle-x',
+            })
+            break
+          }
+          default: {
+            handleFetchError({ response })
+            break
+          }
+        }
+      },
     })
 
     toast.add({
-      title: $t('success.creation.title'),
-      description: $t('success.group.created-description'),
+      title: $t('toast.success.created.title'),
+      description: $t('toast.success.group-created.description'),
       color: 'success',
+      icon: 'i-lucide-circle-check',
     })
     await navigateTo('/groups')
   }
-  catch (error) {
-    if (error instanceof FetchError) {
-      if (error.status === 400) {
-        toast.add({
-          title: $t('error.validation.title'),
-          description: error?.data?.message ?? $t('error.validation.description'),
-          color: 'error',
-        })
-      }
-      else {
-        toast.add({
-          title: $t('error.server.title'),
-          description: $t('error.server.description'),
-          color: 'error',
-        })
-      }
-    }
-    else {
-      toast.add({
-        title: $t('error.unexpected.title'),
-        description: $t('error.unexpected.description'),
-        color: 'error',
-      })
-    }
+  catch {
+    // Already handled in onResponseError
   }
 }
 </script>
@@ -53,7 +72,7 @@ const onSubmit = async (data: GroupCreatePayload) => {
     :ui="{ root: 'py-2 mb-6', description: 'mt-4' }"
   />
 
-  <div class="max-w-210 m-auto">
+  <div class="max-w-240 m-auto">
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
@@ -65,9 +84,8 @@ const onSubmit = async (data: GroupCreatePayload) => {
       </template>
 
       <GroupForm
-        :model-value="state"
-        mode="new"
-        @submit="(data) => onSubmit(data as GroupCreatePayload)"
+        :model-value="state" mode="new"
+        @submit="(event) => onSubmit(event.data as GroupCreateForm)"
         @cancel="() => navigateTo('/groups')"
       />
     </UCard>

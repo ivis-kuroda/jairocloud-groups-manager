@@ -1,0 +1,38 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:mace:gakunin.jp:core:2.0:Service"
+  ],
+  "id": "019c6fe1-fddb-763d-a5c6-7ed4fecc97a2",
+  "serviceName": "テスト岡大学リポジトリ",
+  "serviceUrl": "https://test-oka.repo.nii.ac.jp/",
+  "suspended": false,
+  "meta": {
+    "resourceType": "Service",
+    "created": "2025-08-28T02:03:40Z",
+    "lastModified": "2025-08-28T02:03:40Z"
+  },
+  "entityIds": [
+    {
+      "value": "https://test-oka.repo.nii.ac.jp/shibboleth-sp"
+    }
+  ],
+  "administrators": [
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Users/019c6fe7-5dec-7d95-9694-3c74d1452cea",
+      "display": "John Doe",
+      "value": "019c6fe7-5dec-7d95-9694-3c74d1452cea"
+    }
+  ],
+  "groups": [
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Groups/019c6fe7-9a58-7200-a5ba-866bf39b8a07",
+      "display": "repository administrator",
+      "value": "019c6fe7-9a58-7200-a5ba-866bf39b8a07"
+    },
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Groups/019c6fe7-9a58-7200-a5ba-866bf39b8a08",
+      "display": "contributor",
+      "value": "019c6fe7-9a58-7200-a5ba-866bf39b8a08"
+    }
+  ]
+}

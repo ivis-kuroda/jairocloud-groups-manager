@@ -1,0 +1,47 @@
+{
+  "schemas": [
+    "urn:ietf:params:scim:schemas:mace:example.jp:core:2.0:Group"
+  ],
+  "id": "c8fdd6b4-35b6-41b8-959b-0e24b9a9700d",
+  "externalId": null,
+  "displayName": "JAIRO test group UPDATED",
+  "public": false,
+  "description": "Created by John Doe",
+  "suspended": false,
+  "memberListVisibility": "Private",
+  "meta": {
+    "resourceType": "Group",
+    "created": "2025-08-28T02:03:40Z",
+    "lastModified": "2025-08-28T02:03:40Z"
+  },
+  "members": [
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Users/00404105-6f3e-47bb-b839-ad093153b34c",
+      "type": "User",
+      "display": "John Doe",
+      "value": "00404105-6f3e-47bb-b839-ad093153b34c",
+      "customRoles": null
+    },
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Groups/jairo_test_lower_group",
+      "type": "Group",
+      "display": "JAIRO test lower group",
+      "value": "jairo_test_lower_group"
+    }
+  ],
+  "administrators": [
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Users/00404105-6f3e-47bb-b839-ad093153b34c",
+      "display": "John Doe",
+      "value": "00404105-6f3e-47bb-b839-ad093153b34c"
+    }
+  ],
+  "services": [
+    {
+      "$ref": "https://sptest.cg.example.jp/api/v2/Services/jairocloud-groups-manager",
+      "display": "JAIRO Cloud Groups Manager",
+      "value": "jairocloud-groups-manager",
+      "administratorOfGroup": 0
+    }
+  ]
+}

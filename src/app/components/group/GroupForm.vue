@@ -4,17 +4,20 @@ import type { FormErrorEvent, FormSubmitEvent } from '@nuxt/ui'
 interface Properties {
   modelValue: GroupCreateForm | GroupUpdateForm
   mode: FormMode
+  onSubmit: (event: FormSubmitEvent<GroupCreateForm | GroupUpdateForm>) => Promise<void>
 }
 const properties = defineProps<Properties>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: GroupCreateForm | GroupUpdateForm]
-  'submit': [data: GroupCreatePayload | GroupUpdatePayload]
   'error': [event: FormErrorEvent]
   'cancel': []
 }>()
 
-const { table: { pageSize } } = useAppConfig()
+const {
+  table: { pageSize },
+  features: { repositories: { 'server-search': serverSearch } },
+} = useAppConfig()
 const { schema, getMaxIdLength } = useGroupSchema(() => properties.mode)
 const { handleFormError } = useFormError()
 
@@ -30,8 +33,8 @@ const { copy } = useClipboard()
 const copyId = (id: string) => {
   copy(id)
   toast.add({
-    title: $t('toast.success-title'),
-    description: $t('groups.actions.copy-id-success'),
+    title: $t('toast.success.title'),
+    description: $t('toast.success.copy-group-id.description'),
     color: 'success',
     icon: 'i-lucide-circle-check',
   })
@@ -47,20 +50,21 @@ const {
 } = useSelectMenuInfiniteScroll<RepositorySummary>({
   url: '/api/repositories',
   limit: pageSize.repositories[0],
-  transform: (repository: RepositorySummary) => ({
+  transform: repository => ({
     label: repository.serviceName,
     value: repository.id,
   }),
+  server: serverSearch,
 })
 setupRepoScroll(repositorySelect)
 
-const maxIdLength = computed(() => getMaxIdLength(state.value.repository.id),
+const maxIdLength = computed(() =>
+  stateAsCreate.value.repository.value
+    ? getMaxIdLength(state.value.repository.value || '')
+    : 0,
 )
 
 const form = useTemplateRef('form')
-const onSubmit = (event: FormSubmitEvent<GroupCreatePayload | GroupUpdatePayload>) => {
-  emit('submit', event.data)
-}
 const onError = (event: FormErrorEvent) => {
   handleFormError(event)
   emit('error', event)
@@ -74,9 +78,9 @@ const onCancel = () => {
 <template>
   <UForm
     ref="form"
-    :schema="schema" :state="state" class="space-y-6"
+    :schema="schema" :state="state" class="space-y-6" :novalidate="true"
     @submit="(event) => onSubmit(
-      event as FormSubmitEvent<GroupCreatePayload | GroupUpdatePayload>,
+      event as FormSubmitEvent<GroupCreateForm | GroupUpdateForm>,
     )"
     @error="onError"
   >
@@ -87,38 +91,43 @@ const onCancel = () => {
     <UFormField
       name="repository" :error-pattern="/repository\..*/"
       :label="$t('group.repository')"
-      :description="$t('group.repository-description')"
-      :ui="{ wrapper: 'mb-2' }" :required="mode !== 'view'"
+      :description="mode === 'new' ? $t('group.repository-description') : ''"
+      :ui="{ wrapper: 'mb-2' }" :required="mode === 'new'"
     >
       <USelectMenu
+        v-if="mode === 'new'"
         ref="repositorySelect"
-        v-model="state.repository.id"
-        :search-term="repoSearchTerm" value-key="value" size="xl"
+        v-model="state.repository as { label: string, value: string }"
+        v-model:search-term="repoSearchTerm" size="xl"
         :placeholder="$t('group.placeholder.repository')"
-        :items="repositoryNames" :loading="repoSearchStatus === 'pending'" ignore-filter
+        :items="repositoryNames" :loading="repoSearchStatus === 'pending'"
+        :ignore-filter="serverSearch"
         :ui="{ base: 'w-full' }" :disabled="mode !== 'new'"
         @update:open="onRepoOpen"
       />
+      <div
+        v-else
+        class="mt-1 px-3 py-2 text-base"
+      >
+        <ULink
+          :to="`/repositories/${state.repository.value}`"
+          class="font-bold hover:underline inline-flex items-center"
+        >
+          {{ state.repository.label || '-' }}
+        </ULink>
+      </div>
     </UFormField>
 
     <UFormField
-      :label="$t('group.id')" :ui="{ wrapper: 'mb-2' }"
+      name="userDefinedId"
+      :label="$t('group.id')"
+      :description="mode === 'new' ? $t('group.id-description') : ''"
+      :ui="{ wrapper: 'mb-2' }"
       :required="mode === 'new'"
     >
-      <div
-        v-if="mode !== 'new'"
-        class="f-ful mt-1 px-3 py-2 text-base"
-      >
-        {{ stateAsEdit.id || '-' }}
-        <UButton
-          icon="i-lucide-copy" variant="ghost" color="neutral"
-          :ui="{ base: 'p-0 ml-2', leadingIcon: 'size-3' }"
-          @click="() => copyId(stateAsEdit.id)"
-        />
-      </div>
       <!-- eslint-disable vue/attribute-hyphenation -->
       <UInput
-        v-else
+        v-if="mode === 'new'"
         v-model="stateAsCreate.userDefinedId" size="xl"
         :ui="{ root: 'w-full' }"
         :placeholder="$t('group.placeholder.id')"
@@ -129,6 +138,23 @@ const onCancel = () => {
           {{ stateAsCreate.userDefinedId.length }} / {{ maxIdLength }}
         </template>
       </UInput>
+
+      <div
+        v-else
+        class="mt-1 px-3 py-2 text-base"
+      >
+        <UBadge
+          v-if="stateAsEdit.type === 'role'"
+          :label="$t('group.type-role')" color="warning" variant="outline"
+          :ui="{ base: 'mr-2' }"
+        />
+        {{ stateAsEdit.id || '-' }}
+        <UButton
+          icon="i-lucide-copy" variant="ghost" color="neutral"
+          :ui="{ base: 'p-0 ml-2', leadingIcon: 'size-3' }"
+          @click="() => copyId(stateAsEdit.id)"
+        />
+      </div>
     </UFormField>
 
     <UFormField
@@ -160,7 +186,7 @@ const onCancel = () => {
       v-if="mode !== 'new'"
       :label="$t('user.created')" :ui="{ wrapper: 'mb-2' }"
     >
-      <div class="f-ful mt-1 px-3 py-2 text-base">
+      <div class="mt-1 px-3 py-2 text-base">
         {{ stateAsEdit.created || '-' }}
       </div>
     </UFormField>
@@ -175,11 +201,13 @@ const onCancel = () => {
         v-if="mode === 'new'"
         :label="$t('button.save')"
         type="submit" icon="i-lucide-save" color="info" variant="subtle"
+        loading-auto
       />
       <UButton
         v-else
         :label="$t('button.update')"
         type="submit" icon="i-lucide-save" color="info" variant="subtle"
+        loading-auto
       />
     </div>
   </UForm>

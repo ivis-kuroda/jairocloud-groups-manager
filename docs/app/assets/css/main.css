@@ -1,0 +1,17 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme static {
+  --font-sans: 'Noto Sans JP', system-ui, sans-serif;
+  --font-mono: 'Source Code Pro', ui-monospace, monospace;
+}
+
+@layer components {
+  :not(h1, h2, h3, h4, h5, h6) > a code {
+    @apply text-primary!;
+  }
+}
+
+:root {
+  --ui-container: 90rem;
+}

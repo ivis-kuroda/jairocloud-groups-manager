@@ -45,6 +45,7 @@ class MapError(BaseModel):
         "noTarget",
         "invalidVers",
         "sensitive",
+        "invalidId",  # additional
     ]
     """The SCIM error type. Alias to 'scimType'."""
 

@@ -1,34 +1,134 @@
 {
+  "bulk": {
+    "about": "About bulk operations",
+    "about-description": "Users included in the file are newly registered or updated.",
+    "about-description2": "Existing users are matched by id and updated if they match.",
+    "about-description3": "You can choose to delete users who are not included in the file.",
+    "about-description4": "Supported formats: TSV, CSV, Excel.",
+    "column": {
+      "eppn": "ePPN",
+      "groups": "Group ID",
+      "row": "row",
+      "status": "status",
+      "user-name": "name"
+    },
+    "completed-at": "End date and time",
+    "description": "You can perform bulk operations on users belonging to a repository by uploading files.",
+    "deselect_all": "Release all",
+    "empty": "empty",
+    "excute": {
+    },
+    "execute": {
+      "failed": "User update failed.",
+      "timeout": "Bulk update process timed out."
+    },
+    "file-format-error": "The file format is not supported. \nChoose TSV, CSV, or Excel file.",
+    "file-required": "Please select file.",
+    "import": {
+    },
+    "import-results": "Batch operation results",
+    "missing-user": {
+      "confirm": "Confirm deletion",
+      "confirm_desc": "The selected ${count} users will be deleted. \nThis operation cannot be undone.",
+      "select": "Please select the user to delete."
+    },
+    "missing_user": "User not included in file",
+    "no-results": "Data not found.",
+    "operator": "Execution user",
+    "repository-required": "Please select a repository.",
+    "select-repository": "Please select a repository.",
+    "select_all": "Select all",
+    "start-at": "Start date and time",
+    "status": {
+      "create": "create",
+      "delete": "delete",
+      "error": "error",
+      "skip": "No updates",
+      "update": "update"
+    },
+    "step": {
+      "complete": "completion",
+      "complete_description": "Upload result",
+      "select_file": "File selection",
+      "select_file_description": "CSV,TSV or Excel file",
+      "validate": "data validation",
+      "validate_description": "Confirm changes"
+    },
+    "title": "Bulk user operations",
+    "upload": {
+      "execute": "Execute upload"
+    },
+    "upload-field": "Select or drag files",
+    "upload-file": "upload file",
+    "upload-file-info": "Batch operation results",
+    "validation": {
+      "error": "Invalid data detected.",
+      "error-detail": "Please correct the file and upload it again.",
+      "failed": "File validation failed.",
+      "fetch_failed": "Failed to obtain verification results.",
+      "fix_error": "Please fix the error.",
+      "results": "data preview",
+      "timeout": "File validation timed out."
+    }
+  },
   "button": {
     "add": "Add",
+    "back": "return",
     "cancel": "Cancel",
     "create-new": "Create new",
     "delete": "Delete",
+    "next": "to the next",
     "reload": "Reload",
+    "remove": "Remove",
     "save": "Save",
     "update": "Update",
-    "upload-users": "Upload"
+    "upload": "Upload"
   },
   "cache-groups": {
-    "description": "You can manage the cache status of group information used by WEKO3.",
-    "title": "Caching Groups"
+    "button": {
+    },
+    "confirm-update-selected-repositories": "Would you like to update the following {count} repositories?",
+    "count": "{current} / {total} items",
+    "filter-placeholder": "Cache status",
+    "select": {
+    },
+    "table": {
+      "column": {
+        "repository-status": "Update status"
+      }
+    },
+    "update-completed": "Update completed ({count} items)",
+    "update-error": "Cache update processing is in progress."
   },
-  "error": {
-    "conflict": {
-      "description": "There was a conflict in the input content.",
-      "title": "Conflict error"
+  "common": {
+    "loading": "Loading..."
+  },
+  "error-page": {
+    "failed": {
+      "load-more": "Failed to retrieve download history again"
     },
-    "server": {
-      "description": "An unexpected error occurred on the server.",
-      "title": "Internal Server Error"
+    "forbidden": {
+      "bulk-edit": "You do not have permission to work with users of this repository.",
+      "bulk-result": "You do not have permission to view upload history.",
+      "group-access": "You do not have permission to access this group.",
+      "group-caches": "You do not have permission to manage group caches.",
+      "group-create": "You do not have permission to create groups in the selected repository.",
+      "group-delete": "You do not have permission to delete this group.",
+      "group-edit": "You do not have permission to change information for this group.",
+      "group-member-edit": "You do not have permission to change the members of this group.",
+      "repository-access": "You do not have permission to access this repository.",
+      "repository-create": "You do not have permission to create a repository.",
+      "repository-edit": "You do not have permission to modify information in this repository.",
+      "user-access": "You do not have permission to access this user.",
+      "user-create": "You do not have permission to make users belong to the selected repository or group.",
+      "user-edit": "You do not have permission to change this user's information."
     },
-    "unexpected": {
-      "description": "An unexpected error has occurred.",
-      "title": "Error"
-    },
-    "validation": {
-      "description": "The input content is invalid. Please check the message in the input field.",
-      "title": "Validation Error"
+    "not-found": {
+      "bulk-result": "No matching upload history was found.",
+      "bulk-validation": "File verification results not found",
+      "group": "No such group found.",
+      "repository": "No such repository found.",
+      "user": "No such user found."
     }
   },
   "footer": {
@@ -43,9 +143,9 @@
     "display-name": "Display Name",
     "display-name-description": "Display name of the group. It is not linked to the group name in the actual repository.",
     "error": {
-      "not-found": "Group not found."
     },
     "id": "Group ID",
+    "id-description": "Group identifier. The string limit changes depending on the selected repository.",
     "member-list-visibility": {
       "hidden": "Hidden",
       "private": "Visible only to members",
@@ -67,30 +167,58 @@
     },
     "repository": "@:repositories.title",
     "repository-description": "Select repository to create group",
+    "type-role": "Role type Group",
     "validation": {
       "displayName": {
         "required": "Display name is required field."
+      },
+      "groupId": {
+        "invalid-format": "Group IDs must consist of half-width alphanumeric characters and symbols (.-_).",
+        "max-length": "Group ID must be less than or equal to {max} characters.",
+        "required": "Group ID is a required field."
       },
       "memberListVisibility": {
         "invalid": "Select the member's visibility status from the dropdown list."
       },
       "repository": {
         "id": {
-          "required": "Repository selection is required"
+          "required": "Repository selection is required."
         }
       }
     }
   },
+  "group-caches": {
+    "button": {
+      "update-all": "Update all repositories",
+      "update-all-repositories": "Update all cache",
+      "update-selected-repositories": "Update cache"
+    },
+    "description": "You can manage the cache status of group information used by WEKO3.",
+    "search-placeholder": "search...",
+    "status": {
+      "cached": "Cached",
+      "no-cached": "Not cached"
+    },
+    "table": {
+      "column": {
+        "repository-name": "Repository name",
+        "repository-updated-at": "Cache update date and time",
+        "repository-url": "Repository URL"
+      },
+      "no-cache": ""
+    },
+    "title": "Caching Groups",
+    "updating": "Updating..."
+  },
   "groups": {
     "actions": {
-      "copy-id": "Copy ID to clipboard",
-      "copy-id-success": "The group ID has been copied to the clipboard."
+      "copy-id": "Copy ID to clipboard"
     },
     "button": {
-      "selected-groups-actions": "Actions for selected users"
     },
     "delete-selected-button": "Delete groups",
     "description": "You can manage groups in your repository.",
+    "selected-groups-actions": "Selected Groups",
     "table": {
       "cell": {
         "public": {
@@ -109,28 +237,111 @@
         "public": "Public Status",
         "users-count": "Users"
       },
-      "search-placeholder": "Seach..."
+      "no-groupss-description": "Your repository does not have any groups. Please create a group first.",
+      "search-placeholder": "Search by group name...",
+      "title": "Groups List"
     },
     "title": "Groups"
   },
   "header": {
+    "global-search": {
+      "matching": "{category} matching \"{searchTerm}\"",
+      "no-results": "No results were found matching \"{searchTerm}\".",
+      "pallet-placeholder": "Search repositories, users, groups...",
+      "placeholder": "Global search...",
+      "search-empty": "Please enter your search word.",
+      "search-loading": "Searching..."
+    },
     "logoAlt": "Header App Logo"
   },
   "history": {
+    "date": "Execution date and time",
     "description": "You can check the history of file uploads and downloads.",
-    "title": "History"
+    "empty-data": "No data.",
+    "expired": "Expired",
+    "failed": "failure",
+    "file_not_available": "File download failed.",
+    "filter": {
+      "title": "filter"
+    },
+    "group-count": "Number of groups",
+    "operator": "Execution user",
+    "private": "make private",
+    "progress": "Processing",
+    "public": "Make it public",
+    "re-download": "re-download",
+    "re-download-count": "Re-DL: {count} times",
+    "reset": "reset",
+    "show-detail": "Show details",
+    "status": "status",
+    "success": "success",
+    "tab": {
+      "download": "Download history",
+      "upload": "Upload history"
+    },
+    "table": {
+      "column": {
+        "download-date": "Download date and time",
+        "upload-date": "Upload date and time"
+      }
+    },
+    "table-title": "History list",
+    "target": "Download target | Upload target",
+    "title": "History",
+    "toggle_public_status_failed": "Failed to update publishing status.",
+    "user-count": "Number of users"
+  },
+  "login": {
+    "dev-account": "Account",
+    "dev-login-button": "Login",
+    "dev-login-error": "login failed.",
+    "dev-login-title": "Developer Lgin",
+    "title": "Login"
   },
   "menu": {
     "management": "Management",
     "other": "Other"
   },
+  "modal": {
+    "add-users-to-group": {
+      "selection": "Please select the group to add to.",
+      "title": "Add the following users to the group."
+    },
+    "delete-group": {
+      "description": "Once a group is deleted, it cannot be restored.",
+      "title": "Are you sure to delete this group?"
+    },
+    "delete-groups": {
+      "description": "Once groups are deleted, they cannot be restored.",
+      "title": "Are you sure to delete these groups?"
+    },
+    "delete-repository": {
+      "confirmation": "To confirm, type \"{name}\" in the box below.",
+      "description": "Once the SP connector is deleted, it cannot be restored.",
+      "title": "Are you sure to delete the SP connector for this repository?\n",
+      "warning": "This action also deletes any groups created in the repository."
+    },
+    "remove-users-from-group": {
+      "selection": "Please select the group to remove.",
+      "title": "Remove the following users from the group."
+    },
+    "update-all-repositories-cache": {
+      "alert": "This process will take a long time to complete. It cannot be stopped at this time.",
+      "title": "Are you sure to update the cache for all repositories?"
+    }
+  },
   "repositories": {
     "actions": {
-      "copy-sp-connector-id": "Copy SP Connecter ID to clipboard\t",
-      "copy-sp-connector-id-success": "The selected repository's URL has been copied to the clipboard."
+      "copy-sp-connector-id": "Copy SP Connecter ID to clipboard\t"
     },
+    "all-repositories-actions": "All Repositories",
     "description": "You can check information about the repositories you manage.",
     "entity-id-label": "Entity ID: ",
+    "list": {
+      "no-repositories-description": "Please change your search criteria and try again.",
+      "no-repositories-title": "Repository not found"
+    },
+    "selected-repositories-actions": "Selected Repositories",
     "table": {
       "column": {
         "entity-ids": "Entity ID",
@@ -140,6 +351,8 @@
       },
       "no-repositories-description": "you have no repositories to manage",
       "no-repositories-title": "No repositories found",
+      "search-placeholder": "Search by repository name, URL, EntityID...",
+      "search-placeholder-service-name-only": "Search by repository name...",
       "title": "Repositories List"
     },
     "title": "Repositories",
@@ -147,8 +360,7 @@
   },
   "repository": {
     "actions": {
-      "copy-url": "Copy URL to clipboard",
-      "copy-url-success": "The selected repository's URL has been copied to the clipboard."
+      "copy-url": "Copy URL to clipboard"
     },
     "created": "Created at",
     "details-basic-section": "Basic Information",
@@ -156,12 +368,6 @@
     "details-title": "Repository Details",
     "entity-ids": "EntityID",
     "entity-ids-description": "EntityID of the SP linked to the repository",
-    "error": {
-      "conflict": {
-      },
-      "forbidden": "You do not have permission to create a repository.",
-      "not-found": "Repository not found."
-    },
     "new-description": "You can create an SP connector for your repository.",
     "new-title": "Create new repository",
     "number-of-groups": "Groups",
@@ -179,7 +385,7 @@
     "sp-connector-description": "Identifier of the SP connector associated with the repository",
     "suspended": "Operating condition",
     "suspended-active": "Active",
-    "suspended-description": "Grant the system administrator role to the user. This requires that the user does not belong to any repository.",
+    "suspended-description": "SP connector operating status.",
     "suspended-inactive": "Suspended",
     "validation": {
       "entityIds": {
@@ -194,28 +400,26 @@
       },
       "serviceUrl": {
         "invalid": "URL is invalid.",
-        "max-length": "The URL must contain {max} characters.",
+        "max-length": "The URL must be less than or equal to {max} characters.",
         "required": "URL is a required field."
       }
     }
   },
+  "submenu": {
+    "logout": "Logout",
+    "manual": "User Manual",
+    "profile": "Profile"
+  },
   "success": {
     "creation": {
-      "title": "Create successful"
     },
     "group": {
-      "created-description": "Successfully created group.",
-      "updated-description": "Successfully updated group information."
     },
     "repository": {
-      "created-description": "Successfully created SP connector for repository.",
-      "updated-description": "Successfully updated repository information."
     },
     "updated": {
-      "title": "Update successful"
     },
     "user": {
-      "created-description": "Successfully created user."
     }
   },
   "table": {
@@ -225,6 +429,9 @@
     },
     "actions-label": "Action",
     "display-columns-label": "Columns",
+    "display-count-label": "Number of items displayed:",
+    "display-info-text": "Displaying {start}～{end} items (all {total} items)",
+    "display-info-text-empty": "Displaying 0 items (all 0 items)",
     "filter-button-label": "Filter",
     "page-size-label": "Page size:",
     "selected": "selected",
@@ -232,19 +439,134 @@
     "switch-to-table-view": "Switch to table view"
   },
   "toast": {
-    "success-title": "Success"
+    "error": {
+      "bad-gateway": {
+        "description": "Communication with the server failed.",
+        "title": "Bad Gateway"
+      },
+      "bad-request": {
+        "description": "The server marked the request as invalid.",
+        "title": "Bad Request"
+      },
+      "cache-update-in-progress": {
+        "description": "The group cache update operation is already in progress."
+      },
+      "conflict": {
+        "description": "There was a conflict in the input content.",
+        "title": "Conflict Error"
+      },
+      "failed-search": {
+        "title": "Search Error"
+      },
+      "forbidden": {
+        "description": "No access rights.",
+        "title": "Forbidden"
+      },
+      "invalid-search-query": {
+        "description": "Contains invalid search criteria."
+      },
+      "no-cache-update-task": {
+        "description": "The cache update process is not currently running."
+      },
+      "not-found": {
+        "description": "Request destination not found.",
+        "title": "Not Found"
+      },
+      "server": {
+        "description": "An unexpected error occurred on the server.",
+        "title": "Internal Server Error"
+      },
+      "service-unavailable": {
+        "description": "Service is temporarily unavailable.",
+        "title": "Service Unavailable"
+      },
+      "unauthorized": {
+        "description": "Certified session has expired. Please login again.",
+        "title": "Unauthorized Error"
+      },
+      "unexpected": {
+        "description": "An unexpected error has occurred.",
+        "title": "Error"
+      },
+      "validation": {
+        "description": "The input content is invalid. Please check the message in the input field.",
+        "title": "Validation Error"
+      }
+    },
+    "success": {
+      "copy-entity-id": {
+        "description": "EntityID has been copied to the clipboard."
+      },
+      "copy-field": {
+        "description": "{field} has been copied to the clipboard."
+      },
+      "copy-group-id": {
+        "description": "The group ID has been copied to the clipboard."
+      },
+      "copy-service-url": {
+        "description": "The repository URL has been copied to the clipboard."
+      },
+      "copy-sp-connector-id": {
+        "description": "The selected repository's URL has been copied to the clipboard."
+      },
+      "copy-url": {
+        "description": "The selected repository's URL has been copied to the clipboard."
+      },
+      "copy-user-eppn": {
+        "description": "The selected user's ePPN has been copied to the clipboard."
+      },
+      "copy-user-id": {
+        "description": "The user ID has been copied to the clipboard."
+      },
+      "created": {
+        "title": "Create successful"
+      },
+      "deleted": {
+        "title": "Delete successful"
+      },
+      "group-cache-update-started": {
+        "description": "The group cache update operation has started."
+      },
+      "group-created": {
+        "description": "Successfully created group."
+      },
+      "group-deleted": {
+        "description": "Successfully deleted group."
+      },
+      "group-updated": {
+        "description": "Successfully updated group information."
+      },
+      "repository-created": {
+        "description": "Successfully created SP connector for repository."
+      },
+      "repository-deleted": {
+        "description": "Successfully deleted SP connector for repository."
+      },
+      "repository-updated": {
+        "description": "Successfully updated repository information."
+      },
+      "title": "Success",
+      "updated": {
+        "title": "Update successful"
+      },
+      "user-created": {
+        "description": "Successfully created user."
+      },
+      "user-updated": {
+        "description": "Successfully updated user information.\t"
+      }
+    }
   },
   "user": {
     "actions": {
       "copy-eppn": "Copy ePPN to clipboard",
-      "copy-eppn-success": "The selected user's ePPN has been copied to the clipboard.",
-      "copy-id": "Copy ID to clipboard",
-      "copy-id-success": "The user ID has been copied to the clipboard."
+      "copy-id": "Copy ID to clipboard"
     },
     "affiliated-repositories": "Affiliated Repositories",
     "affiliated-repositories-description": "Specify the repository and role to assign to the user.",
     "created": "Created",
     "details-affiliation-authority-section": "Affiliation / Authority",
+    "details-affiliation-section": "Affiliation",
     "details-basic-section": "Basic Information",
     "details-title": "User Details",
     "emails": "Email",
@@ -252,9 +574,6 @@
     "eppns": "ePPN",
     "eppns-description": "A unique, persistent identifier assigned to a user by an IdP.",
     "error": {
-      "conflict-description": "There was a conflict in the input content.",
-      "conflict-title": "Conflict error",
-      "not-found": "User not found."
     },
     "groups": "Affiliated Groups",
     "groups-description": "Select the group to which the user belongs.",
@@ -263,19 +582,20 @@
     "new-description": "You can create new users in your repository.",
     "new-title": "Create new user",
     "placeholder": {
-      "emails": "information.taro{'@'}university.ac.jp",
-      "eppns": "information.taro{'@'}idp.university.ac.jp",
+      "emails": "joho.taro{'@'}university.ac.jp",
+      "eppns": "joho.taro{'@'}idp.university.ac.jp",
       "group-name": "Select a group.",
       "preferred-language": "Select a language.",
       "repository-name": "Select a repository.",
       "role": "Select a user role.",
-      "userName": "Information Taro"
+      "userName": "Joho Taro"
     },
     "preferred-language": "Preferred Language",
     "preferred-language-en": "English",
     "preferred-language-ja": "Japanese",
     "privileged": "Privileged",
     "roles-title": "Roles",
+    "self-editing-warning": "If you change your affiliation or role, you will need to login again.",
     "title": "User Details",
     "userName-description": "Display name for this user. It is not linked to the actual user's account name.",
     "username": "Username",
@@ -288,6 +608,9 @@
       "eppns": {
         "at-least-one": "At least one ePPN is required.",
         "required": "ePPN is a required field"
+      },
+      "groups": {
+        "must-be-empty-for-system-admin": "System administrators must not belong to any groups."
       },
       "preferredLanguage": {
         "invalid": "Select the preferred language from the dropdown list."
@@ -308,10 +631,15 @@
     }
   },
   "users": {
+    "all-users-actions": "All Users",
+    "alert": {
+      "filter-by-both-role-group-disabled": "Currently, due to limited functionality, it is not possible to select role and group filters at the same time.",
+      "filter-by-last-modified-disabled": "Due to limited functionality, filtering by last updated time is currently not available."
+    },
     "button": {
-      "selected-users-actions": "Actions for selected users",
+      "all-users-download": "Download all users",
       "selected-users-add-to-group": "Add to group",
-      "selected-users-export": "Export users",
+      "selected-users-download": "Download users",
       "selected-users-remove-from-group": "Remove from group"
     },
     "description": "You can manage users for your repositories.",
@@ -324,6 +652,7 @@
       "repository-admin": "Repository Administrator",
       "system-admin": "System Administrator"
     },
+    "selected-users-actions": "Selected Users",
     "table": {
       "column": {
         "emails": "Email",
@@ -334,7 +663,8 @@
       },
       "no-users-description": "Your repository does not have any users. Please create a user or upload a file first.",
       "no-users-title": "No users found",
-      "search-placeholder": "Search...",
+      "search-placeholder": "Search by username, email, ePPN...",
+      "search-placeholder-username-only": "Search by username...",
       "title": "Users List"
     },
     "title": "Users"
