@@ -205,7 +205,7 @@ def test_issue_access_token_success(app: Flask, mocker: MockerFixture) -> None:
     assert actual == expected
 
 
-def test_issue_access_token_no_creds(mocker: MockerFixture) -> None:
+def test_issue_access_token_no_creds(datastore, mocker: MockerFixture) -> None:
     """Test that issue_access_token raises CredentialsError when credentials are missing."""
     mocker.patch("server.services.token.get_client_credentials", return_value=None)
 

@@ -779,7 +779,6 @@ def test_put_by_id_with_all_params(app: Flask, mocker: MockerFixture, group_data
     result = original_func(group, include=include, exclude=exclude, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_put.call_args
-    print(called_kwargs["params"])
     called_params_attributes = called_kwargs["params"].pop("attributes", None)
     called_params_excluded_attributes = called_kwargs["params"].pop("excluded_attributes")
     expected_result: MapGroup = MapGroup.model_validate(result.model_dump())

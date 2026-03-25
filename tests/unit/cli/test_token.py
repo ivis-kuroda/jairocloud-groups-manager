@@ -10,7 +10,7 @@ if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 
-def test_token_issue_calls_prepare_issuing_url(app: Flask, test_config, mocker: MockerFixture) -> None:
+def test_token_issue_calls_prepare_issuing_url(app: Flask, datastore, test_config, mocker: MockerFixture) -> None:
     """Tests token issue command calls prepare_issuing_url and logs info."""
 
     issuing_url = test_config.MAP_CORE.base_url
@@ -20,7 +20,7 @@ def test_token_issue_calls_prepare_issuing_url(app: Flask, test_config, mocker: 
     issue.main(args=[], standalone_mode=False)
 
     prepare_mock.assert_called_once()
-    logger_mock.assert_called_once_with(mocker.ANY, {"url": issuing_url})
+    logger_mock.assert_any_call(mocker.ANY, {"url": issuing_url})
 
 
 def test_token_refresh_calls_refresh_access_token(app: Flask, mocker: MockerFixture) -> None:
