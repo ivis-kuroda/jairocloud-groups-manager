@@ -116,7 +116,7 @@ class RuntimeConfig(BaseSettings):
 
     @computed_field
     @property
-    def CACHE_DB(self) -> CacheDbSettings:
+    def for_group_caches(self) -> CacheDbSettings:
         """Cache database configuration values."""
         endpoint = (
             self.MAP_CORE.base_url.rstrip("/")

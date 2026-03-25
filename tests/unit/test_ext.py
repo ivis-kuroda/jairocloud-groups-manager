@@ -19,4 +19,4 @@ def test_init_config(mocker: MockerFixture):
     ext = JAIROCloudGroupsManager()
     ext.init_config(mock_app)
     mock_setup_config.assert_called_once()
-    mock_cache_db_setup_config.assert_called_once_with(ext.config.CACHE_DB)
+    mock_cache_db_setup_config.assert_called_once_with(ext.config.for_group_caches)

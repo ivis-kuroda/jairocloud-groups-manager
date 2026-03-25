@@ -84,7 +84,7 @@ class JAIROCloudGroupsManager:
         app.config.from_mapping(self.config.for_flask)
         app.config.from_prefixed_env()
 
-        setup_weko_group_cache_db_config(self.config.CACHE_DB)
+        setup_weko_group_cache_db_config(self.config.for_group_caches)
 
     def init_db_app(self, app: Flask) -> None:  # noqa: PLR6301
         """Initialize the database for the this extension.

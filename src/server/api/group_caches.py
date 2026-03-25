@@ -33,7 +33,7 @@ bp = Blueprint("group-caches", __name__)
 @bp.before_request
 def init_settings() -> None:
     """Initialize settings for the request."""
-    setup_weko_group_cache_db_config(config.CACHE_DB)
+    setup_weko_group_cache_db_config(config.for_group_caches)
 
 
 @bp.get("/", strict_slashes=False)
