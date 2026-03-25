@@ -1,6 +1,5 @@
 import hashlib
 import importlib
-import inspect
 import json
 import time
 import typing as t
@@ -23,7 +22,7 @@ from server.entities.map_error import MapError
 from server.entities.map_service import MapService
 from server.entities.patch_request import PatchOperation, ReplaceOperation
 from server.entities.search_request import SearchRequestParameter, SearchResponse
-from tests.helpers import load_json_data
+from tests.helpers import load_json_data, unwrap
 
 
 if t.TYPE_CHECKING:
@@ -82,7 +81,7 @@ def test_search_success(app: Flask, mocker: MockerFixture) -> None:
     mock_get = mocker.patch("server.clients.services.requests.get")
     mock_get.return_value.text = json.dumps(response)
     mock_get.return_value.status_code = 200
-    original_func = inspect.unwrap(services.search)
+    original_func = unwrap(services.search)
 
     result = original_func(
         query,
@@ -136,7 +135,7 @@ def test_search_with_include(app: Flask, mocker: MockerFixture) -> None:
     mock_get = mocker.patch("server.clients.services.requests.get")
     mock_get.return_value.text = json.dumps(response_data)
     mock_get.return_value.status_code = 200
-    original_func = inspect.unwrap(services.search)
+    original_func = unwrap(services.search)
 
     result = original_func(
         query,
@@ -204,7 +203,7 @@ def test_search_with_exclude(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch.object(services, "alias_generator", side_effect=lambda x: x)
     mock_get.return_value.text = json.dumps(response_data)
     mock_get.return_value.status_code = 200
-    original_func = inspect.unwrap(services.search)
+    original_func = unwrap(services.search)
 
     result = original_func(
         query,
@@ -232,7 +231,7 @@ def test_search_not_found(app: Flask, mocker: MockerFixture) -> None:
     mock_get.return_value.raise_for_status.side_effect = Exception("Not Found")
     mock_get.return_value.text = expected_error.model_dump_json()
     mock_get.return_value.status_code = 404
-    original_func = inspect.unwrap(services.search)
+    original_func = unwrap(services.search)
 
     with pytest.raises(Exception, match="Not Found"):
         original_func(query, access_token=access_token, client_secret=client_secret)
@@ -245,7 +244,7 @@ def test_search_http_error(app: Flask, mocker: MockerFixture) -> None:
     mock_get = mocker.patch("server.clients.services.requests.get")
     mock_get.return_value.status_code = 401
     mock_get.return_value.raise_for_status.side_effect = Exception("401 Unauthorized")
-    original_func = inspect.unwrap(services.search)
+    original_func = unwrap(services.search)
 
     with pytest.raises(Exception, match="401 Unauthorized"):
         original_func(query, access_token="token", client_secret="secret")
@@ -275,7 +274,7 @@ def test_get_by_id_success(app: Flask, mocker: MockerFixture, service_data) -> N
     mock_response.return_value.text = json.dumps(json_data)
     mock_response.return_value.status_code = 200
 
-    original_func = inspect.unwrap(services.get_by_id)
+    original_func = unwrap(services.get_by_id)
     result = original_func(service_id, access_token="token", client_secret="secret")
 
     mock_response.assert_called_once()
@@ -309,7 +308,7 @@ def test_get_by_id_with_include(app: Flask, mocker: MockerFixture, service_data)
     mock_response.return_value.text = json.dumps(response_data)
     mock_response.return_value.status_code = 200
 
-    original_func = inspect.unwrap(services.get_by_id)
+    original_func = unwrap(services.get_by_id)
     result = original_func(service_id, include=include, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_response.call_args
@@ -355,7 +354,7 @@ def test_get_by_id_with_exclude(app: Flask, mocker: MockerFixture, service_data)
     mock_response.return_value.text = json.dumps(response_data)
     mock_response.return_value.status_code = 200
 
-    original_func = inspect.unwrap(services.get_by_id)
+    original_func = unwrap(services.get_by_id)
     result = original_func(service_id, exclude=exclude, access_token="token", client_secret="secret")
 
     mock_response.assert_called_once()
@@ -373,7 +372,7 @@ def test_get_by_id_not_found(app: Flask, mocker: MockerFixture) -> None:
     mock_response.return_value.text = expected_error.model_dump_json()
     mock_response.return_value.status_code = 404
 
-    original_func = inspect.unwrap(services.get_by_id)
+    original_func = unwrap(services.get_by_id)
     result = original_func(service_id, access_token="token", client_secret="secret")
 
     assert isinstance(result, MapError)
@@ -387,7 +386,7 @@ def test_get_by_id_http_error(app: Flask, mocker: MockerFixture, service_data) -
     mock_response.return_value.text = json.dumps(json_data)
     mock_response.return_value.raise_for_status.side_effect = HTTPError("401 Unauthorized")
     mock_response.return_value.status_code = 401
-    original_func = inspect.unwrap(services.get_by_id)
+    original_func = unwrap(services.get_by_id)
 
     with pytest.raises(HTTPError, match="401 Unauthorized"):
         original_func(service_id, access_token="token", client_secret="secret")
@@ -417,7 +416,7 @@ def test_post_success(app: Flask, mocker: MockerFixture, service_data) -> None:
     mock_post.return_value.text = json.dumps(json_data)
     mock_post.return_value.status_code = 200
 
-    original_func = inspect.unwrap(services.post)
+    original_func = unwrap(services.post)
     result = original_func(
         service_obj,
         include=None,
@@ -460,7 +459,7 @@ def test_post_with_include(app: Flask, mocker: MockerFixture, service_data) -> N
     mock_post.return_value.text = json.dumps(response_data)
     mock_post.return_value.status_code = 200
 
-    original_func = inspect.unwrap(services.post)
+    original_func = unwrap(services.post)
     result = original_func(
         service_obj,
         include=include,
@@ -505,7 +504,7 @@ def test_post_with_exclude(app: Flask, mocker: MockerFixture, service_data) -> N
     mock_post.return_value.text = json.dumps(response_data)
     mock_post.return_value.status_code = HTTPStatus.CONFLICT
 
-    original_func = inspect.unwrap(services.post)
+    original_func = unwrap(services.post)
     result = original_func(
         service_obj,
         include=None,
@@ -542,7 +541,7 @@ def test_post_not_found(app: Flask, mocker: MockerFixture, service_data) -> None
     _, service = service_data
 
     service_obj: MapService = service
-    original_func = inspect.unwrap(services.post)
+    original_func = unwrap(services.post)
     result = original_func(
         service_obj,
         include=None,
@@ -572,7 +571,7 @@ def test_post_http_error(app: Flask, mocker: MockerFixture, service_data) -> Non
     json_data, service = service_data
 
     service_obj: MapService = service
-    original_func = inspect.unwrap(services.post)
+    original_func = unwrap(services.post)
     with pytest.raises(HTTPError, match="401 Unauthorized"):
         original_func(service_obj, access_token="token", client_secret="secret")
 
@@ -600,7 +599,7 @@ def test_put_by_id_success(app: Flask, mocker: MockerFixture, service_data) -> N
     mock_put.return_value.status_code = 200
 
     mocker.patch("server.clients.services.repository_updated")
-    original_func = inspect.unwrap(services.put_by_id)
+    original_func = unwrap(services.put_by_id)
     result = original_func(service_obj, access_token="token", client_secret="secret")
 
     mock_put.assert_called_once()
@@ -650,7 +649,7 @@ def test_put_by_id_with_include(app: Flask, mocker: MockerFixture, service_data)
     mock_put.return_value.text = json.dumps(response_data)
     mock_put.return_value.status_code = HTTPStatus.BAD_REQUEST
 
-    original_func = inspect.unwrap(services.put_by_id)
+    original_func = unwrap(services.put_by_id)
     result = original_func(service_obj, include=include, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_put.call_args
@@ -697,7 +696,7 @@ def test_put_by_id_with_exclude(app: Flask, mocker: MockerFixture, service_data)
     mock_put.return_value.text = json.dumps(response_data)
     mock_put.return_value.status_code = 200
 
-    original_func = inspect.unwrap(services.put_by_id)
+    original_func = unwrap(services.put_by_id)
     result = original_func(service_obj, exclude=exclude, access_token="token", client_secret="secret")
 
     call_args, called_kwargs = mock_put.call_args
@@ -762,7 +761,7 @@ def test_patch_by_id_success(app: Flask, mocker: MockerFixture, service_data) ->
     mock_patch.return_value.status_code = 200
 
     mocker.patch("server.clients.services.repository_updated")
-    original_func = inspect.unwrap(services.patch_by_id)
+    original_func = unwrap(services.patch_by_id)
     result = original_func(service_id, operations, access_token="token", client_secret="secret")
 
     mock_patch.assert_called_once()
@@ -812,7 +811,7 @@ def test_patch_by_id_with_include(app: Flask, mocker: MockerFixture, service_dat
     mock_patch.return_value.status_code = 200
 
     mocker.patch("server.clients.services.repository_updated")
-    original_func = inspect.unwrap(services.patch_by_id)
+    original_func = unwrap(services.patch_by_id)
     result = original_func(
         service_id,
         operations,
@@ -865,7 +864,7 @@ def test_patch_by_id_with_exclude(app: Flask, mocker: MockerFixture, service_dat
     mock_patch.return_value.text = json.dumps(response_data)
     mock_patch.return_value.status_code = 200
     mocker.patch("server.clients.services.repository_updated")
-    original_func = inspect.unwrap(services.patch_by_id)
+    original_func = unwrap(services.patch_by_id)
     result = original_func(
         service_id,
         operations,
@@ -897,7 +896,7 @@ def test_patch_by_id_not_found(app: Flask, mocker: MockerFixture) -> None:
     mock_patch.return_value.text = json.dumps(error_data)
     mock_patch.return_value.status_code = 404
 
-    original_func = inspect.unwrap(services.patch_by_id)
+    original_func = unwrap(services.patch_by_id)
     result = original_func(service_id, operations, access_token="token", client_secret="secret")
 
     assert isinstance(result, MapError)

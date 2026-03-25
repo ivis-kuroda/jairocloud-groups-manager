@@ -1,4 +1,3 @@
-import inspect
 import typing as t
 
 from datetime import date
@@ -13,6 +12,7 @@ from server.exc import ConfigurationError, InvalidQueryError
 from server.messages import E
 from server.services.utils import search_queries
 from server.services.utils.affiliations import Affiliations, _Group
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
@@ -602,7 +602,7 @@ def test__path_generator(app, mocker: MockerFixture, model, expected):
 
 def test__get_id_prefix_not_match(app, test_config, mocker: MockerFixture):
     mocker.patch("server.config.config.REPOSITORIES.id_patterns.sp_connector", "invalid_pattern")
-    test_func = inspect.unwrap(search_queries._get_id_prefix)  # noqa: SLF001
+    test_func = unwrap(search_queries._get_id_prefix)  # noqa: SLF001
     with pytest.raises(ConfigurationError) as exc:
         test_func()
     assert str(exc.value) == str(E.INVALID_SERVER_CONFIG)

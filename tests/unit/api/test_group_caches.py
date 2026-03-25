@@ -8,13 +8,14 @@ from server.entities.cache import RepositoryCache, TaskDetail
 from server.entities.search_request import SearchResult
 from server.exc import InvalidQueryError
 from server.messages import E
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 
-def test_get(app, mocker: MockerFixture, gen_summaries, cached_data, unwrap):
+def test_get(app, mocker: MockerFixture, gen_summaries, cached_data):
     query = CacheQuery(q=None, p=1, l=20, f=[])
     repositories: SearchResult = gen_summaries(20)
     search_result = SearchResult(
@@ -34,7 +35,7 @@ def test_get(app, mocker: MockerFixture, gen_summaries, cached_data, unwrap):
     mock_get_cache.assert_called_once_with(query)
 
 
-def test_get_invalid_query(mocker: MockerFixture, unwrap):
+def test_get_invalid_query(mocker: MockerFixture):
     query = CacheQuery(q=None, p=1, l=20, f=[])
     messege = "Invalid query"
     mock_search = mocker.patch("server.api.group_caches.group_caches.get_repository_cache")
@@ -49,7 +50,7 @@ def test_get_invalid_query(mocker: MockerFixture, unwrap):
     mock_search.assert_called_once_with(query)
 
 
-def test_post(app: Flask, mocker: MockerFixture, unwrap):
+def test_post(app: Flask, mocker: MockerFixture):
     mock_update = mocker.patch("server.api.group_caches.group_caches.update")
     ids = ["repo1_example_jp", "repo2_example_jp"]
     operation = "all"
@@ -62,7 +63,7 @@ def test_post(app: Flask, mocker: MockerFixture, unwrap):
     mock_update.assert_called_once_with(operation, ids)
 
 
-def test_post_conflict(app: Flask, mocker: MockerFixture, unwrap):
+def test_post_conflict(app: Flask, mocker: MockerFixture):
     mock_update = mocker.patch("server.api.group_caches.group_caches.update")
     mock_update.side_effect = group_caches.RequestConflict(E.GROUP_CACHE_UPDATE_CONFLICT)
     ids = ["repo1_example_jp", "repo2_example_jp"]
@@ -77,7 +78,7 @@ def test_post_conflict(app: Flask, mocker: MockerFixture, unwrap):
     mock_update.assert_called_once_with(operation, ids)
 
 
-def test_status(app: Flask, mocker: MockerFixture, unwrap, gen_summaries):
+def test_status(app: Flask, mocker: MockerFixture, gen_summaries):
     repository = gen_summaries(1).resources[0]
     repository_cache = RepositoryCache(
         id=repository.id,
@@ -104,7 +105,7 @@ def test_status(app: Flask, mocker: MockerFixture, unwrap, gen_summaries):
     mock_status.assert_called_once_with()
 
 
-def test_status_no_task(app: Flask, mocker: MockerFixture, unwrap):
+def test_status_no_task(app: Flask, mocker: MockerFixture):
     mock_status = mocker.patch("server.api.group_caches.group_caches.get_task_status")
     mock_status.return_value = None
     bad_request = 400

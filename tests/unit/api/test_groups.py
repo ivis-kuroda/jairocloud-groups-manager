@@ -1,4 +1,3 @@
-import inspect
 import types
 import typing as t
 
@@ -19,7 +18,7 @@ from server.entities.group_detail import GroupDetail, Repository
 from server.entities.search_request import SearchResult
 from server.exc import InvalidFormError, InvalidQueryError, RequestConflict, ResourceInvalid, ResourceNotFound
 from server.messages import E
-from tests.helpers import UnexpectedError
+from tests.helpers import UnexpectedError, unwrap
 
 
 if t.TYPE_CHECKING:
@@ -44,7 +43,7 @@ def test_get_success(app: Flask, mocker: MockerFixture) -> None:
     expected_status = 200
     search_mock = mocker.patch("server.services.groups.search", return_value=expected_group)
 
-    original_func = inspect.unwrap(groups_api.get)
+    original_func = unwrap(groups_api.get)
     result, status = original_func(query)
 
     assert result == expected_group
@@ -56,7 +55,7 @@ def test_get_returns_400_on_invalid_query(mocker):
     """Tests get returns ErrorResponse and 400 when InvalidQueryError is raised."""
     expected_status = 400
     mocker.patch("server.services.groups.search", side_effect=InvalidQueryError("invalid query"))
-    original_func = inspect.unwrap(groups_api.get)
+    original_func = unwrap(groups_api.get)
     query = GroupsQuery(q="bad", r=[], u=[], s=0, v=1, k="display_name", d="asc", p=1, l=30)
     result, status = original_func(query)
     assert status == expected_status
@@ -81,7 +80,7 @@ def test_post_success(app: Flask, gen_group_id, mocker: MockerFixture) -> None:
     mocker.patch("server.services.groups.create", return_value=expected_group)
     mocker.patch("server.api.groups.url_for", return_value=url_for_patch)
 
-    original_func = inspect.unwrap(groups_api.post)
+    original_func = unwrap(groups_api.post)
     result, status, headers = original_func(expected_group)
 
     assert result == expected_group
@@ -105,7 +104,7 @@ def test_post_returns_403_when_no_permission(app: Flask, mocker: MockerFixture) 
     mocker.patch("server.api.groups.traceback.print_exc")
     mocker.patch("server.services.groups.create", side_effect=InvalidFormError(E.GROUP_FORBIDDEN_REPOSITORY))
 
-    original_func = inspect.unwrap(groups_api.post)
+    original_func = unwrap(groups_api.post)
     result, status = original_func(group)
 
     assert status == expected_status
@@ -126,7 +125,7 @@ def test_post_failure_returns_error_response_and_400(app: Flask, gen_group_id, m
     error_detail = "repository id is required"
     expected_status = 400
     mocker.patch("server.services.groups.create", side_effect=InvalidFormError(error_detail))
-    original_func = inspect.unwrap(groups_api.post)
+    original_func = unwrap(groups_api.post)
     result, status = original_func(expected_group)
 
     assert isinstance(result, ErrorResponse)
@@ -150,7 +149,7 @@ def test_post_already_exists_returns_error_response_and_409(app: Flask, gen_grou
     mocker.patch("server.services.groups.create", side_effect=ResourceInvalid(error_detail))
     mocker.patch("server.api.groups.url_for", return_value=f"https://host/api/groups/{group.id}")
 
-    original_func = inspect.unwrap(groups_api.post)
+    original_func = unwrap(groups_api.post)
     result, status = original_func(group)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -171,7 +170,7 @@ def test_post_unexpected_error_returns_exception(app: Flask, gen_group_id, mocke
     mocker.patch("server.services.groups.create", side_effect=UnexpectedError(error_detail))
     mocker.patch("server.api.groups.url_for", return_value=f"https://host/api/groups/{group.id}")
 
-    original_func = inspect.unwrap(groups_api.post)
+    original_func = unwrap(groups_api.post)
     with pytest.raises(UnexpectedError, match=error_detail):
         original_func(group)
 
@@ -191,7 +190,7 @@ def test_id_get_success_group_permission(app: Flask, gen_group_id, mocker: Mocke
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.get_by_id", return_value=expected_group)
 
-    original_func = inspect.unwrap(groups_api.id_get)
+    original_func = unwrap(groups_api.id_get)
     result, status = original_func(group_id)
 
     assert result == expected_group
@@ -205,7 +204,7 @@ def test_groups_id_get_affiliation_not_detected(app, mocker):
     expected_status = 404
     mocker.patch("server.api.groups.detect_affiliation", return_value=False)
     mocker.patch("server.api.groups.current_app")
-    original_func = inspect.unwrap(groups_api.id_get)
+    original_func = unwrap(groups_api.id_get)
     result, status = original_func(group_id)
     assert status == expected_status
     assert ErrorResponse(code="E204", message="Group resource (id: unknown-group) not found.") == result
@@ -226,7 +225,7 @@ def test_id_get_forbidden_no_permission(app: Flask, gen_group_id, mocker: Mocker
     mocker.patch("server.api.groups.has_permission", return_value=False)
     mocker.patch("server.services.groups.get_by_id", return_value=group)
 
-    original_func = inspect.unwrap(groups_api.id_get)
+    original_func = unwrap(groups_api.id_get)
     result, status = original_func(group_id)
 
     assert isinstance(result, ErrorResponse)
@@ -242,7 +241,7 @@ def test_id_get_not_found(app: Flask, gen_group_id, mocker: MockerFixture) -> No
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.get_by_id", return_value=None)
 
-    original_func = inspect.unwrap(groups_api.id_get)
+    original_func = unwrap(groups_api.id_get)
     result, status = original_func(group_id)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -257,7 +256,7 @@ def test_id_get_unexpected_error(app: Flask, gen_group_id, mocker: MockerFixture
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.get_by_id", side_effect=UnexpectedError(error_detail))
 
-    original_func = inspect.unwrap(groups_api.id_get)
+    original_func = unwrap(groups_api.id_get)
     with pytest.raises(UnexpectedError, match=error_detail):
         original_func(group_id)
 
@@ -277,7 +276,7 @@ def test_id_put_success_admin(app: Flask, gen_group_id, mocker: MockerFixture) -
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update", return_value=expected_group)
 
-    original_func = inspect.unwrap(groups_api.id_put)
+    original_func = unwrap(groups_api.id_put)
     result, status = original_func(group_id, expected_group)
 
     assert result == expected_group
@@ -292,7 +291,7 @@ def test_id_put_affiliation_not_detected(app, mocker):
     mocker.patch("server.api.groups.detect_affiliation", return_value=False)
     mocker.patch("server.api.groups.current_app")
     dummy = object()
-    original_func = inspect.unwrap(groups_api.id_put)
+    original_func = unwrap(groups_api.id_put)
     result, status = original_func(group_id, dummy)
     assert status == expected_status
     assert ErrorResponse(code="E204", message="Group resource (id: unknown-group) not found.") == result
@@ -314,7 +313,7 @@ def test_id_put_forbidden_no_permission(app: Flask, gen_group_id, mocker: Mocker
     mocker.patch("server.api.groups.has_permission", return_value=False)
     mocker.patch("server.services.groups.update", return_value=group)
 
-    original_func = inspect.unwrap(groups_api.id_put)
+    original_func = unwrap(groups_api.id_put)
     result, status = original_func(group_id, group)
 
     assert isinstance(result, ErrorResponse)
@@ -336,7 +335,7 @@ def test_id_put_returns_400_on_invalid_form_error(app: Flask, mocker: MockerFixt
         repository=Repository(id="r1", service_name="repo1"),
         type="group",
     )
-    original_func = inspect.unwrap(groups_api.id_put)
+    original_func = unwrap(groups_api.id_put)
     result, status = original_func("g1", group)
     assert status == expected_status
     assert "invalid form" in result.message
@@ -358,7 +357,7 @@ def test_id_put_not_found_returns_404(app: Flask, gen_group_id, mocker: MockerFi
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update", side_effect=ResourceNotFound(error_detail))
 
-    original_func = inspect.unwrap(groups_api.id_put)
+    original_func = unwrap(groups_api.id_put)
     result, status = original_func(group_id, group)
 
     assert isinstance(result, ErrorResponse)
@@ -381,7 +380,7 @@ def test_id_put_unexpected_error(app: Flask, gen_group_id, mocker: MockerFixture
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update", side_effect=UnexpectedError(error_detail))
 
-    original_func = inspect.unwrap(groups_api.id_put)
+    original_func = unwrap(groups_api.id_put)
     with pytest.raises(UnexpectedError, match=error_detail):
         original_func(group_id, group)
 
@@ -402,7 +401,7 @@ def test_id_patch_success_admin(app: Flask, gen_group_id, mocker: MockerFixture)
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update_member", return_value=expected_group)
 
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func(group_id, patch_body)
 
     assert result == expected_group
@@ -425,7 +424,7 @@ def test_id_patch_success_group_permission(app: Flask, gen_group_id, mocker: Moc
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update_member", return_value=expected_group)
 
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func(group_id, patch_body)
 
     assert result == expected_group
@@ -439,7 +438,7 @@ def test_groups_id_patch_affiliation_not_detected(app, mocker):
     mocker.patch("server.api.groups.detect_affiliation", return_value=False)
     mocker.patch("server.api.groups.current_app")
     dummy = object()
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func(group_id, dummy)
     assert status == expected_status
     assert ErrorResponse(code="E204", message="Group resource (id: unknown-group) not found.") == result
@@ -461,7 +460,7 @@ def test_id_patch_forbidden_no_permission(app: Flask, gen_group_id, mocker: Mock
     mocker.patch("server.api.groups.has_permission", return_value=False)
     mocker_update_member = mocker.patch("server.services.groups.update_member", return_value=group)
 
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func(group_id, patch_body)
 
     assert isinstance(result, ErrorResponse)
@@ -476,7 +475,7 @@ def test_id_patch_fake_op_direct_call(app: Flask, gen_group_id, mocker: MockerFi
     dummy_body = types.SimpleNamespace(operations=[fake_op])
     mocker.patch("server.api.groups.has_permission", return_value=True)
     update_mock = mocker.patch("server.api.groups.groups.update_member", return_value=None)
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     _ = original_func(group_id, dummy_body)
     called_args = update_mock.call_args.kwargs
     assert called_args["add"] == set()
@@ -493,7 +492,7 @@ def test_id_patch_update_error_returns_409(app: Flask, gen_group_id, mocker: Moc
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update_member", side_effect=RequestConflict(error_detail))
 
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func(group_id, patch_body)
 
     assert isinstance(result, ErrorResponse)
@@ -511,7 +510,7 @@ def test_id_patch_not_found_returns_404(app: Flask, gen_group_id, mocker: Mocker
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update_member", side_effect=ResourceNotFound(error_detail))
 
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func(group_id, patch_body)
 
     assert isinstance(result, ErrorResponse)
@@ -528,7 +527,7 @@ def test_id_patch_unexpected_error(app: Flask, gen_group_id, mocker: MockerFixtu
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.update_member", side_effect=UnexpectedError(error_detail))
 
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     with pytest.raises(UnexpectedError, match=error_detail):
         original_func(group_id, patch_body)
 
@@ -541,7 +540,7 @@ def test_id_patch_returns_400_on_unsupported_attribute(app: Flask, mocker: Mocke
     mocker.patch("server.api.groups.detect_affiliation", return_value=True)
     mocker.patch("server.api.groups.has_permission", return_value=True)
     patch_body = GroupPatchRequest(operations=[GroupPatchOperation(op="add", path="not_supported", value=["user1"])])
-    original_func = inspect.unwrap(groups_api.id_patch)
+    original_func = unwrap(groups_api.id_patch)
     result, status = original_func("g1", patch_body)
     assert status == expected_status
     assert isinstance(result, ErrorResponse)
@@ -554,7 +553,7 @@ def test_id_delete_success_admin(app: Flask, gen_group_id, mocker: MockerFixture
     expected_status: int = 204
     mocker.patch("server.api.groups.has_permission", return_value=True)
     delete_mock = mocker.patch("server.services.groups.delete_by_id", return_value=None)
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     result, status = original_func(group_id)
     assert not result
     assert status == expected_status
@@ -567,7 +566,7 @@ def test_id_delete_success_group_permission(app: Flask, gen_group_id, mocker: Mo
     expected_status: int = 204
     mocker.patch("server.api.groups.has_permission", return_value=True)
     delete_mock = mocker.patch("server.services.groups.delete_by_id", return_value=None)
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     result, status = original_func(group_id)
     assert not result
     assert status == expected_status
@@ -581,7 +580,7 @@ def test_groups_id_delete_affiliation_not_detected(app, mocker):
     expected_status = 404
     mocker.patch("server.api.groups.detect_affiliation", return_value=False)
     mocker.patch("server.api.groups.current_app")
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     result, status = original_func(group_id)
     assert status == expected_status
     assert ErrorResponse(code="E204", message="Group resource (id: unknown-group) not found.") == result
@@ -595,7 +594,7 @@ def test_id_delete_role_type_group_returns_error_and_400(app: Flask, gen_group_i
     expected_status = 400
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.api.groups.detect_affiliations", return_value=(rolegroups, []))
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     result, status = original_func(group_id)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -607,7 +606,7 @@ def test_id_delete_forbidden_no_permission(app: Flask, gen_group_id, mocker: Moc
     group_id: str = gen_group_id("g3")
     expected_status: int = 403
     mocker.patch("server.api.groups.has_permission", return_value=False)
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     result, status = original_func(group_id)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -622,7 +621,7 @@ def test_id_delete_not_found_returns_error_and_404(app: Flask, gen_group_id, moc
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.api.groups.detect_affiliations", return_value=(rolegroups, []))
     mocker.patch("server.services.groups.delete_by_id", side_effect=ResourceNotFound(error_message))
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     result, status = original_func(group_id)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -635,7 +634,7 @@ def test_id_delete_unexpected_error(app: Flask, gen_group_id, mocker: MockerFixt
     error_detail: str = "unexpected error in id_delete"
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.delete_by_id", side_effect=UnexpectedError(error_detail))
-    original_func = inspect.unwrap(groups_api.id_delete)
+    original_func = unwrap(groups_api.id_delete)
     with pytest.raises(UnexpectedError, match=error_detail):
         original_func(group_id)
 
@@ -648,7 +647,7 @@ def test_delete_post_success_admin(app: Flask, gen_group_id, mocker: MockerFixtu
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.delete_multiple", return_value=None)
 
-    original_func = inspect.unwrap(groups_api.delete_post)
+    original_func = unwrap(groups_api.delete_post)
     result, status = original_func(body)
 
     assert not result
@@ -665,7 +664,7 @@ def test_delete_post_partial_failure_admin(app: Flask, gen_group_id, mocker: Moc
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.delete_multiple", return_value=ErrorResponse(code="", message=error_message))
 
-    original_func = inspect.unwrap(groups_api.delete_post)
+    original_func = unwrap(groups_api.delete_post)
     result, status = original_func(body)
 
     assert isinstance(result, ErrorResponse)
@@ -681,7 +680,7 @@ def test_delete_post_role_type_group_returns_error_and_400(app: Flask, gen_group
     expected_status = 400
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.api.groups.detect_affiliations", return_value=(rolegroups, []))
-    original_func = inspect.unwrap(groups_api.delete_post)
+    original_func = unwrap(groups_api.delete_post)
     result, status = original_func(body)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -695,7 +694,7 @@ def test_groups_delete_post_affiliation_not_detected(app, mocker):
     mocker.patch("server.api.groups.detect_affiliation", side_effect=lambda _: False)
     mocker.patch("server.api.groups.current_app")
     dummy = type("Dummy", (), {"group_ids": group_ids})()
-    original_func = inspect.unwrap(groups_api.delete_post)
+    original_func = unwrap(groups_api.delete_post)
     result, status = original_func(dummy)
     assert status == expected_status
     expected_msg = ErrorResponse(
@@ -715,7 +714,7 @@ def test_delete_post_partial_permission(app: Flask, gen_group_id, mocker: Mocker
     mocker.patch("server.services.utils.filter_permitted_group_ids", return_value=[group_id1])
     mocker.patch("server.api.groups.is_current_user_system_admin", return_value=False)
     with app.test_request_context():
-        original_func = inspect.unwrap(groups_api.delete_post)
+        original_func = unwrap(groups_api.delete_post)
         result, status = original_func(body)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -730,7 +729,7 @@ def test_delete_post_unexpected_error(app: Flask, gen_group_id, mocker: MockerFi
     mocker.patch("server.api.groups.has_permission", return_value=True)
     mocker.patch("server.services.groups.delete_multiple", side_effect=UnexpectedError(error_detail))
 
-    original_func = inspect.unwrap(groups_api.delete_post)
+    original_func = unwrap(groups_api.delete_post)
     with pytest.raises(UnexpectedError, match=error_detail):
         original_func(body)
 
@@ -744,7 +743,7 @@ def test_filter_options(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch("server.services.token.get_access_token", return_value="dummy_token")
     mocker.patch("server.services.repositories.search", return_value=search_result)
 
-    original_func = inspect.unwrap(groups_api.filter_options)
+    original_func = unwrap(groups_api.filter_options)
     result = original_func()
 
     assert isinstance(result, list)

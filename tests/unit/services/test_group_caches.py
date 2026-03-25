@@ -26,6 +26,7 @@ from server.services.group_caches import (
     update,
     update_task,
 )
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
@@ -35,6 +36,14 @@ if t.TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def setup_config(app):
     setup_wgcd_config(config.CACHE_GROUPS)
+
+
+@pytest.fixture
+def cache_keys():
+    def _keys(fqdn_list: list[str]) -> list[bytes]:
+        return [f"{fqdn.replace('-', '_').replace('.', '_')}_gakunin_groups".encode() for fqdn in fqdn_list]
+
+    return _keys
 
 
 def test_get_repository_cache(app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore):
@@ -440,7 +449,7 @@ def test_update_raises_failed_task_running(app, mocker: MockerFixture, datastore
     mocker.stopall()
 
 
-def test_update_task_all(app, mocker: MockerFixture, gen_summaries, unwrap):
+def test_update_task_all(app, mocker: MockerFixture, gen_summaries):
     repositories = gen_summaries(1).resources
     mock_fetch_all = mocker.patch("server.services.group_caches.wgcd.fetch_all")
 
@@ -499,7 +508,7 @@ def test_is_update_task_running_not_exists(app, datastore):
     app_cache.hget.assert_called_once_with("jcgroups-test-weko-group-cache-db", "status")
 
 
-def test_handle_progress(app, mocker: MockerFixture, unwrap, datastore):
+def test_handle_progress(app, mocker: MockerFixture, datastore):
     data = ProgressData(status="in_progress", total=10, done=5, current="example.com")
     app_cache, _, _ = datastore
 
@@ -509,7 +518,7 @@ def test_handle_progress(app, mocker: MockerFixture, unwrap, datastore):
     app_cache.hset.assert_called_once_with(cache_key, mapping=data.model_dump(mode="json"))
 
 
-def test_handle_progress_redis_error(app, mocker: MockerFixture, unwrap, datastore, caplog):
+def test_handle_progress_redis_error(app, mocker: MockerFixture, datastore, caplog):
     data = ProgressData(status="in_progress", total=10, done=5, current="example.com")
     app_cache, _, _ = datastore
     app_cache.hset.side_effect = RedisError("Redis error")
@@ -522,7 +531,7 @@ def test_handle_progress_redis_error(app, mocker: MockerFixture, unwrap, datasto
     assert str(W.FAILED_UPDATE_TASK_PROGRESS % {"done": 5, "total": 10}) in caplog.text
 
 
-def test_handle_excuted(app, mocker: MockerFixture, unwrap, datastore):
+def test_handle_excuted(app, mocker: MockerFixture, datastore):
     data = ExecutedData(
         fqdn="example.com",
         status="success",
@@ -540,7 +549,7 @@ def test_handle_excuted(app, mocker: MockerFixture, unwrap, datastore):
     app_cache.hset.assert_called_once_with(cache_key, mapping={field_name: data.model_dump_json()})
 
 
-def test_handle_excuted_redis_error(app, mocker: MockerFixture, unwrap, datastore, caplog):
+def test_handle_excuted_redis_error(app, mocker: MockerFixture, datastore, caplog):
     data = ExecutedData(
         fqdn="example.com",
         status="success",
@@ -564,7 +573,7 @@ def test_handle_excuted_redis_error(app, mocker: MockerFixture, unwrap, datastor
     )
 
 
-def test_get_task_status(app, mocker: MockerFixture, unwrap, datastore):
+def test_get_task_status(app, mocker: MockerFixture, datastore):
     task_data = {
         b"current": b"example.com",
         b"status": b"in_progress",
@@ -604,7 +613,7 @@ def test_get_task_status(app, mocker: MockerFixture, unwrap, datastore):
     app_cache.delete.assert_not_called()
 
 
-def test_get_task_status_not_running(app, unwrap, datastore):
+def test_get_task_status_not_running(app, datastore):
     app_cache, _, _ = datastore
     app_cache.hgetall.return_value = {}
     app_cache.hget.return_value = "completed"
@@ -614,7 +623,7 @@ def test_get_task_status_not_running(app, unwrap, datastore):
     assert result is None
 
 
-def test_get_task_status_no_task(app, unwrap, datastore):
+def test_get_task_status_no_task(app, datastore):
     app_cache, _, _ = datastore
     app_cache.hgetall.return_value = {}
 
@@ -623,7 +632,7 @@ def test_get_task_status_no_task(app, unwrap, datastore):
     assert result is None
 
 
-def test_get_task_status_redis_error(app, unwrap, datastore):
+def test_get_task_status_redis_error(app, datastore):
     app_cache, _, _ = datastore
     app_cache.hgetall.side_effect = RedisError("Redis error")
 
@@ -631,7 +640,7 @@ def test_get_task_status_redis_error(app, unwrap, datastore):
         unwrap(get_task_status)()
 
 
-def test_get_task_status_parse_error(app, unwrap, datastore):
+def test_get_task_status_parse_error(app, datastore):
     app_cache, _, _ = datastore
 
     cache_data = {

@@ -1,4 +1,3 @@
-import inspect
 import typing as t
 
 from http import HTTPStatus
@@ -13,6 +12,7 @@ from server.entities.history_detail import DownloadHistoryData, HistoryQuery, Up
 from server.entities.search_request import FilterOption, SearchResult
 from server.exc import InvalidQueryError, RecordNotFound
 from server.messages import E
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
@@ -20,7 +20,7 @@ if t.TYPE_CHECKING:
 
 
 def test_filter_options(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.filter_options)
+    test_func = unwrap(history.filter_options)
     with (
         app.test_request_context("/"),
     ):
@@ -42,7 +42,7 @@ def test_filter_options(app, mocker: MockerFixture):
 
 
 def test_filter_options_operators(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.filter_options_operators)
+    test_func = unwrap(history.filter_options_operators)
     expected = SearchResult(total=0, page_size=20, offset=1, resources=[])
     with (
         app.test_request_context(),
@@ -58,7 +58,7 @@ def test_filter_options_operators(app, mocker: MockerFixture):
 
 
 def test_filter_options_operators_invalid_query(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.filter_options_operators)
+    test_func = unwrap(history.filter_options_operators)
     with (
         app.test_request_context(),
     ):
@@ -81,7 +81,7 @@ def test_filter_options_operators_invalid_query(app, mocker: MockerFixture):
     ],
 )
 def test_get(app, mocker: MockerFixture, tab, expected):
-    test_func = inspect.unwrap(history.get)
+    test_func = unwrap(history.get)
     with (
         app.test_request_context(),
     ):
@@ -105,7 +105,7 @@ def test_get(app, mocker: MockerFixture, tab, expected):
 
 
 def test_public_status(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.public_status)
+    test_func = unwrap(history.public_status)
     request_body = HistoryPublic(public=True)
     history_id = "019c794e-0ac6-7380-8cbf-eac8175f9b21"
     with app.test_request_context():
@@ -123,7 +123,7 @@ def test_public_status(app, mocker: MockerFixture):
 
 
 def test_public_status_record_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.public_status)
+    test_func = unwrap(history.public_status)
     request_body = HistoryPublic(public=True)
     history_id = "019c794e-b6a7-77eb-bad9-2d1f2a561222"
     with app.test_request_context():
@@ -141,7 +141,7 @@ def test_public_status_record_not_found(app, mocker: MockerFixture):
 
 
 def test_files(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.files)
+    test_func = unwrap(history.files)
     file_id = "019c794e-0cae-7020-b297-16831f57b71b"
     file_path = __file__
     mock_send_file = mocker.patch("server.api.history.send_file", return_value="mocked response")
@@ -154,7 +154,7 @@ def test_files(app, mocker: MockerFixture):
 
 
 def test_files_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.files)
+    test_func = unwrap(history.files)
     file_id = "019c794e-b9af-7444-9474-123bcef06dfe"
     file_path = "/non/existent/file/path"
     mock_get_file_path = mocker.patch("server.services.history.get_file_path", return_value=file_path)
@@ -166,7 +166,7 @@ def test_files_not_found(app, mocker: MockerFixture):
 
 
 def test_files_record_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(history.files)
+    test_func = unwrap(history.files)
     file_id = "019c794e-b84f-76bf-91af-a07616a7abf1"
     exception_message = f"{file_id} is not found"
     mock_get_file_path = mocker.patch(

@@ -1,9 +1,9 @@
-import inspect
 import typing as t
 
 from server.api.callback import auth_code
 from server.api.schemas import OAuthTokenQuery
 from server.exc import CredentialsError, DatabaseError, OAuthTokenError
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
@@ -17,7 +17,7 @@ def test_auth_code_redirect(mocker: MockerFixture):
     expected_status_code = 200
     expected_result = ""
 
-    original_func = inspect.unwrap(auth_code)
+    original_func = unwrap(auth_code)
     result, status = original_func(query)
 
     assert result == expected_result
@@ -31,7 +31,7 @@ def test_auth_code_oauth_token_error(mocker: MockerFixture):
     expected_status_code = 202
     expected_result = ""
 
-    original_func = inspect.unwrap(auth_code)
+    original_func = unwrap(auth_code)
     result, status = original_func(query)
 
     assert result == expected_result
@@ -46,7 +46,7 @@ def test_auth_code_database_error(mocker: MockerFixture):
     expected_status_code = 202
     expected_result = ""
 
-    original_func = inspect.unwrap(auth_code)
+    original_func = unwrap(auth_code)
     result, status = original_func(query)
 
     assert result == expected_result
@@ -61,7 +61,7 @@ def test_auth_code_credentials_error(mocker: MockerFixture):
     expected_status_code = 202
     expected_result = ""
 
-    original_func = inspect.unwrap(auth_code)
+    original_func = unwrap(auth_code)
     result, status = original_func(query)
 
     assert result == expected_result

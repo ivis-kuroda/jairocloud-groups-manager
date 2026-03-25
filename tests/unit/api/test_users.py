@@ -1,4 +1,3 @@
-import inspect
 import typing as t
 
 from flask import Flask
@@ -12,6 +11,7 @@ from server.entities.search_request import SearchResult
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.exc import InvalidExportError, InvalidFormError, InvalidQueryError, ResourceInvalid, ResourceNotFound
 from server.messages import E
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
@@ -24,7 +24,7 @@ def test_get_success(app, mocker):
     query = UsersQuery(q="", r=[], k="display_name", d="asc", p=1, l=30)
     expected_result = SearchResult(total=1, page_size=10, offset=0, resources=[])
     mocke_serch = mocker.patch("server.services.users.search", return_value=expected_result)
-    original_func = inspect.unwrap(users_api.get)
+    original_func = unwrap(users_api.get)
     _, status = original_func(query)
     assert status == expected_status
     mocke_serch.assert_called_once_with(query)
@@ -36,7 +36,7 @@ def test_get_invalid_query_error(app: Flask, mocker: MockerFixture) -> None:
     query = mocker.Mock()
     error_message = "invalid query!"
     mocker.patch("server.clients.users.search", side_effect=InvalidQueryError(error_message))
-    original_func = inspect.unwrap(users_api.get)
+    original_func = unwrap(users_api.get)
     result, status = original_func(query)
     assert isinstance(result, ErrorResponse)
     assert status == expected_status
@@ -58,7 +58,7 @@ def test_post_success(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch("server.services.users.create", return_value=user)
     mocker.patch("server.api.users.url_for", return_value=expected_headers["Location"])
 
-    original_func = inspect.unwrap(users_api.post)
+    original_func = unwrap(users_api.post)
     result, status, headers = original_func(user)
     assert result == user
     assert status == expected_status
@@ -78,7 +78,7 @@ def test_post_returns_400_on_invalid_form_error(app, mocker):
     )
     mocker.patch("server.services.users.create", side_effect=InvalidFormError(error_detail))
 
-    original_func = inspect.unwrap(users_api.post)
+    original_func = unwrap(users_api.post)
     result, status = original_func(user)
 
     assert isinstance(result, ErrorResponse)
@@ -101,7 +101,7 @@ def test_post_id_conflict(app: Flask, mocker: MockerFixture) -> None:
     expected_status = 409
     mocker.patch("server.services.users.create", side_effect=ResourceInvalid(error_detail))
 
-    original_func = inspect.unwrap(users_api.post)
+    original_func = unwrap(users_api.post)
     result, status = original_func(user)
 
     assert isinstance(result, ErrorResponse)
@@ -124,7 +124,7 @@ def test_id_get_success(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch("server.services.users.get_by_id", return_value=user)
     mocker.patch("server.api.users.has_permission", return_value=True)
 
-    original_func = inspect.unwrap(users_api.id_get)
+    original_func = unwrap(users_api.id_get)
     result, status = original_func("u10")
     assert result == user
     assert status == expected_status
@@ -135,7 +135,7 @@ def test_id_get_not_found(app: Flask, mocker: MockerFixture) -> None:
     expected_status = 404
     mocker.patch("server.services.users.get_by_id", return_value=None)
 
-    original_func = inspect.unwrap(users_api.id_get)
+    original_func = unwrap(users_api.id_get)
     result, status = original_func("u12")
 
     assert isinstance(result, ErrorResponse)
@@ -158,7 +158,7 @@ def test_id_get_no_permission(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch("server.services.users.get_by_id", return_value=user)
     mocker.patch("server.api.users.has_permission", return_value=False)
 
-    original_func = inspect.unwrap(users_api.id_get)
+    original_func = unwrap(users_api.id_get)
     result, status = original_func("u11")
 
     assert isinstance(result, ErrorResponse)
@@ -190,7 +190,7 @@ def test_id_put_success(app: Flask, mocker: MockerFixture) -> None:
     )
     mocker.patch("server.api.users.current_user", dummy_user)
 
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u20", user)
     assert result == user
     assert status == expected_status
@@ -221,7 +221,7 @@ def test_id_put_success_self(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch("server.api.users.logout", return_value=("", 204))
     mocker.patch("server.api.users.current_user", dummy_user)
 
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u20", user)
     assert result == user
     assert status == expected_status
@@ -250,7 +250,7 @@ def test_id_put_invalid_form_error_403(app: Flask, mocker: MockerFixture) -> Non
         session_id="dummy",
     )
     mocker.patch("server.api.users.current_user", dummy_user)
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u99", user)
     assert status == expected_status
     assert result == expected_result
@@ -280,7 +280,7 @@ def test_id_put_invalid_form_error_400(app: Flask, mocker: MockerFixture) -> Non
         session_id="dummy",
     )
     mocker.patch("server.api.users.current_user", dummy_user)
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u99", user)
     assert status == expected_status
     assert result == expected_result
@@ -309,7 +309,7 @@ def test_id_put_not_found(app: Flask, mocker: MockerFixture) -> None:
     mocker.patch("server.api.users.current_user", dummy_user)
     mocker.patch("server.services.users.update", side_effect=ResourceNotFound("not found"))
 
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u24", user)
 
     assert isinstance(result, ErrorResponse)
@@ -341,7 +341,7 @@ def test_id_put_resource_invalid(app: Flask, mocker: MockerFixture) -> None:
     )
     mocker.patch("server.api.users.current_user", dummy_user)
 
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u25", user)
 
     assert isinstance(result, ErrorResponse)
@@ -372,7 +372,7 @@ def test_id_put_sys_exc_info_branch(app: Flask, mocker: MockerFixture):
     mocker.patch("server.services.users.update", return_value=user)
     mocker.patch("sys.exc_info", return_value=(Exception, None, None))
     print_exc_mock = mocker.patch("traceback.print_exc")
-    original_func = inspect.unwrap(users_api.id_put)
+    original_func = unwrap(users_api.id_put)
     result, status = original_func("u20", user)
     assert result == user
     assert status == expected_status
@@ -432,7 +432,7 @@ def test_filter_options_returns_search_users_options_unit(mocker: MockerFixture)
     """Unit test: filter_options returns the mocked search_users_options result."""
     mock_return = [object()]
     mocker.patch("server.api.users.search_users_options", return_value=mock_return)
-    original_func = inspect.unwrap(users_api.filter_options)
+    original_func = unwrap(users_api.filter_options)
 
     result = original_func()
     assert result == mock_return
@@ -447,7 +447,7 @@ def test_export_get_success(app, mocker: MockerFixture) -> None:
     mock_file = object()
     mocker.patch("server.api.users.users.make_export_file", return_value=mock_file)
     mock_send_file = mocker.patch("server.api.users.send_file", return_value="sent-file-response")
-    original_func = inspect.unwrap(users_api.export_get)
+    original_func = unwrap(users_api.export_get)
     with app.test_request_context():
         resp = original_func(query)
     mock_send_file.assert_called_once_with(mock_file)
@@ -461,7 +461,7 @@ def test_export_get_invalid_export_error(app, mocker: MockerFixture) -> None:
     mock_current_user.map_id = "mapid"
     mock_current_user.name = "username"
     mocker.patch("server.api.users.users.make_export_file", side_effect=InvalidExportError("failmsg"))
-    original_func = inspect.unwrap(users_api.export_get)
+    original_func = unwrap(users_api.export_get)
     with app.test_request_context():
         result, state = original_func(query)
     assert state == excepted_status
@@ -476,7 +476,7 @@ def test_export_post_success(app, mocker: MockerFixture) -> None:
     mock_file = object()
     mocker.patch("server.api.users.users.make_export_file", return_value=mock_file)
     mock_send_file = mocker.patch("server.api.users.send_file", return_value="sent-file-response")
-    original_func = inspect.unwrap(users_api.export_post)
+    original_func = unwrap(users_api.export_post)
     with app.test_request_context():
         resp = original_func(query)
     mock_send_file.assert_called_once_with(mock_file)
@@ -490,7 +490,7 @@ def test_export_post_invalid_export_error(app, mocker: MockerFixture) -> None:
     mock_current_user.map_id = "mapid"
     mock_current_user.name = "username"
     mocker.patch("server.api.users.users.make_export_file", side_effect=InvalidExportError("failmsg"))
-    original_func = inspect.unwrap(users_api.export_post)
+    original_func = unwrap(users_api.export_post)
     with app.test_request_context():
         result, state = original_func(query)
     assert state == excepted_status

@@ -1,4 +1,3 @@
-import inspect
 import typing as t
 
 from pathlib import Path
@@ -109,27 +108,6 @@ def test_config():
     )
 
 
-def mock_redis(mocker: MockerFixture):
-    mock_redis = mocker.patch("server.datastore.Redis")
-    mock_redis_instance = mock_redis.from_url.return_value
-    mock_redis_instance.ping.return_value = True
-    return mock_redis_instance
-
-
-@pytest.fixture
-def unwrap():
-    def _unwrap(f: t.Callable) -> t.Callable:
-        return inspect.unwrap(f)
-
-    return _unwrap
-
-
-@pytest.fixture(autouse=True)
-def redis_disable(mocker: MockerFixture):
-    mocker.patch("server.datastore.Redis")
-    mocker.patch("server.datastore.sentinel")
-
-
 @pytest.fixture
 def datastore(mocker: MockerFixture):
     app_cache = mocker.MagicMock()
@@ -178,14 +156,6 @@ def gen_summaries():
         return SearchResult(resources=resources, total=num, page_size=20, offset=1)
 
     return _data
-
-
-@pytest.fixture
-def cache_keys():
-    def _keys(fqdn_list: list[str]) -> list[bytes]:
-        return [f"{fqdn.replace('-', '_').replace('.', '_')}_gakunin_groups".encode() for fqdn in fqdn_list]
-
-    return _keys
 
 
 @pytest.fixture

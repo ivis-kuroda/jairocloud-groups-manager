@@ -1,4 +1,3 @@
-import inspect
 import typing as t
 
 from datetime import UTC, datetime
@@ -13,6 +12,7 @@ from server.entities.bulk import ExecuteResults, ResultSummary, ValidateResults
 from server.entities.login_user import LoginUser
 from server.exc import FileNotFound, FileValidationError, RecordNotFound, TaskExecutionError
 from server.messages import E
+from tests.helpers import unwrap
 
 
 if t.TYPE_CHECKING:
@@ -20,7 +20,7 @@ if t.TYPE_CHECKING:
 
 
 def test_upload_file(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.upload_file)
+    test_func = unwrap(bulk.upload_file)
     repository_id = "repo1"
     operator_id = "user1"
     operator_name = "test_user"
@@ -51,7 +51,7 @@ def test_upload_file(app, mocker: MockerFixture):
 
 
 def test_upload_file_repository_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.upload_file)
+    test_func = unwrap(bulk.upload_file)
     mocker.patch("server.services.repositories.get_by_id", return_value=None)
     repository_id = "repo1"
     form = TargetRepositoryForm(repository_id=repository_id)
@@ -63,7 +63,7 @@ def test_upload_file_repository_not_found(app, mocker: MockerFixture):
 
 
 def test_upload_file_repository_forbidden(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.upload_file)
+    test_func = unwrap(bulk.upload_file)
     mocker.patch("server.services.repositories.get_by_id", return_value=mocker.Mock())
     repository_id = "repo1"
     form = TargetRepositoryForm(repository_id=repository_id)
@@ -78,7 +78,7 @@ def test_upload_file_repository_forbidden(app, mocker: MockerFixture):
 
 def test_validate_status(app, mocker: MockerFixture):
     task_id = "task_id"
-    test_func = inspect.unwrap(bulk.validate_status)
+    test_func = unwrap(bulk.validate_status)
     mocker.patch("server.services.bulks.get_validate_task_result", return_value=mocker.Mock(state="SUCCESS"))
     expected = BulkBody(status="SUCCESS")
     with app.test_request_context():
@@ -89,7 +89,7 @@ def test_validate_status(app, mocker: MockerFixture):
 
 def test_validate_status_not_found(app, mocker: MockerFixture):
     task_id = "task_id"
-    test_func = inspect.unwrap(bulk.validate_status)
+    test_func = unwrap(bulk.validate_status)
     expected_message = E.TASK_NOT_FOUND % {"task_id": task_id}
     mocker.patch("server.services.bulks.get_validate_task_result", side_effect=TaskExecutionError(expected_message))
     expected = ErrorResponse(message=expected_message)
@@ -102,7 +102,7 @@ def test_validate_status_not_found(app, mocker: MockerFixture):
 def test_validate_result(app, mocker: MockerFixture):
     task_id = "task_id"
     history_id = uuid7()
-    test_func = inspect.unwrap(bulk.validate_result)
+    test_func = unwrap(bulk.validate_result)
     mocker.patch("server.services.bulks.get_validate_task_result", return_value=mocker.Mock(result=history_id))
     mocker.patch("server.api.bulk.is_user_logged_in", return_value=True)
     mocker.patch("server.services.bulks.chack_permission_to_operation", return_value=True)
@@ -125,7 +125,7 @@ def test_validate_result(app, mocker: MockerFixture):
 def test_validate_result_not_permission(app, mocker: MockerFixture):
     task_id = "task_id"
     history_id = uuid7()
-    test_func = inspect.unwrap(bulk.validate_result)
+    test_func = unwrap(bulk.validate_result)
     mocker.patch("server.services.bulks.get_validate_task_result", return_value=mocker.Mock(result=history_id))
     mocker.patch("server.api.bulk.is_user_logged_in", return_value=False)
     expected = ErrorResponse(message=E.OPERATION_FORBIDDEN)
@@ -137,7 +137,7 @@ def test_validate_result_not_permission(app, mocker: MockerFixture):
 
 def test_validate_result_failed(app, mocker: MockerFixture):
     task_id = "task_id"
-    test_func = inspect.unwrap(bulk.validate_result)
+    test_func = unwrap(bulk.validate_result)
     mocker.patch("server.services.bulks.get_validate_task_result", return_value=mocker.Mock(successful=False))
     expected_message = E.UNEXPECTED_SERVER_ERROR
     with app.test_request_context():
@@ -148,7 +148,7 @@ def test_validate_result_failed(app, mocker: MockerFixture):
 
 def test_validate_result_with_exception(app, mocker: MockerFixture):
     task_id = "task_id"
-    test_func = inspect.unwrap(bulk.validate_result)
+    test_func = unwrap(bulk.validate_result)
     history_id = uuid7()
     mocker.patch("server.services.bulks.get_validate_task_result", return_value=mocker.Mock(result=history_id))
     mocker.patch("server.api.bulk.is_user_logged_in", return_value=True)
@@ -165,7 +165,7 @@ def test_validate_result_with_exception(app, mocker: MockerFixture):
 
 def test_validate_result_not_found(app, mocker: MockerFixture):
     task_id = "task_id"
-    test_func = inspect.unwrap(bulk.validate_result)
+    test_func = unwrap(bulk.validate_result)
     expected_message = E.FILE_EXPIRED % {"path": "file_path"}
     mocker.patch(
         "server.services.bulks.get_validate_task_result",
@@ -179,7 +179,7 @@ def test_validate_result_not_found(app, mocker: MockerFixture):
 
 def test_validate_result_file_error(app, mocker: MockerFixture):
     task_id = "task_id"
-    test_func = inspect.unwrap(bulk.validate_result)
+    test_func = unwrap(bulk.validate_result)
     expected_message = E.INVALID_FILE_STRUCTURE
     mock_return_value = FileValidationError(expected_message)
     mocker.patch("server.services.bulks.get_validate_task_result", return_value=mocker.Mock(result=mock_return_value))
@@ -190,7 +190,7 @@ def test_validate_result_file_error(app, mocker: MockerFixture):
 
 
 def test_execute(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.execute)
+    test_func = unwrap(bulk.execute)
     temp_id = uuid7()
     repository_id = "repo1"
     task_id = "task_id"
@@ -221,7 +221,7 @@ def test_execute(app, mocker: MockerFixture):
 
 
 def test_execute_history_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.execute)
+    test_func = unwrap(bulk.execute)
     temp_id = uuid7()
     body = ExcuteRequest(temp_file_id=temp_id)
     mocker.patch(
@@ -236,7 +236,7 @@ def test_execute_history_not_found(app, mocker: MockerFixture):
 
 
 def test_execute_not_permission(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.execute)
+    test_func = unwrap(bulk.execute)
     temp_id = uuid7()
     repository_id = "repo1"
     body = ExcuteRequest(temp_file_id=temp_id, repository_id=repository_id)
@@ -255,7 +255,7 @@ def test_execute_not_permission(app, mocker: MockerFixture):
 
 
 def test_execute_status(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.execute_status)
+    test_func = unwrap(bulk.execute_status)
     task_id = "task_id"
     mocker.patch("server.services.bulks.update_users.AsyncResult", return_value=mocker.Mock(state="SUCCESS"))
     expected = BulkBody(status="SUCCESS")
@@ -266,7 +266,7 @@ def test_execute_status(app, mocker: MockerFixture):
 
 
 def test_execute_status_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.execute_status)
+    test_func = unwrap(bulk.execute_status)
     task_id = "task_id"
     expected_message = E.TASK_NOT_FOUND % {"task_id": task_id}
     mocker.patch("server.services.bulks.get_execute_task_result", side_effect=TaskExecutionError(expected_message))
@@ -277,7 +277,7 @@ def test_execute_status_not_found(app, mocker: MockerFixture):
 
 
 def test_result(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.result)
+    test_func = unwrap(bulk.result)
     history_id = uuid7()
     expected_summary = ExecuteResults(
         items=[],
@@ -303,7 +303,7 @@ def test_result(app, mocker: MockerFixture):
 
 
 def test_result_not_found(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.result)
+    test_func = unwrap(bulk.result)
     history_id = uuid7()
     expected_message = E.UPDATE_HISTORY_RECORD_NOT_FOUND % {"id": history_id}
     mocker.patch("server.services.bulks.chack_permission_to_view", return_value=True)
@@ -318,7 +318,7 @@ def test_result_not_found(app, mocker: MockerFixture):
 
 
 def test_result_not_permission(app, mocker: MockerFixture):
-    test_func = inspect.unwrap(bulk.result)
+    test_func = unwrap(bulk.result)
     history_id = uuid7()
     expected_message = E.OPERATION_FORBIDDEN
     mocker.patch("server.services.bulks.chack_permission_to_view", return_value=False)
