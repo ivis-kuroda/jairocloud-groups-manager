@@ -44,7 +44,8 @@ jairocloud-groups-manager = "server.app:cli"
 "lint" = "uvx ruff check"
 "lint:fix" = "uvx ruff check --fix"
 "format" = "uvx ruff format"
-"typecheck" = "pyright"
+"generate-stubs" = "python src/contrib/messages.py"
+"typecheck" = "task generate-stubs && pyright"
 "check-updates" = "uvx --from=pip-check-updates pcu pyproject.toml"
 
 
