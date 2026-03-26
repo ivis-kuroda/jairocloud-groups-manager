@@ -11,8 +11,13 @@ import pkgutil
 
 from datetime import UTC, datetime
 
-from src.server import messages
-from src.server.messages.base import LogMessage
+
+try:
+    from src.server import messages
+    from src.server.messages.base import LogMessage
+except ImportError:
+    from server import messages
+    from server.messages.base import LogMessage
 
 
 def generate_type_stub() -> None:
