@@ -67,7 +67,7 @@ class JAIROCloudGroupsManager:
         register_cli_commands(app)
         self.init_storage()
 
-        if app.debug or app.config.get("ENV") == "development":
+        if app.debug and app.config.get("ENV") == "development":
             self.dev_contrib(app)
 
         app.extensions["jairocloud-groups-manager"] = self
@@ -93,7 +93,6 @@ class JAIROCloudGroupsManager:
 
         Args:
             app (Flask): The Flask application instance.
-
         """
         db_uri = app.config["SQLALCHEMY_DATABASE_URI"]
         if not database_exists(db_uri):
@@ -105,8 +104,8 @@ class JAIROCloudGroupsManager:
     def init_storage(self) -> None:
         """Initialize the storage for this extension."""
         if self.config.STORAGE.type == "local":
-            temp_dir = Path(self.config.STORAGE.local.temporary)
-            temp_dir.mkdir(parents=True, exist_ok=True)
+            tmp_dir = Path(self.config.STORAGE.local.temporary)
+            tmp_dir.mkdir(parents=True, exist_ok=True)
             storage_dir = Path(self.config.STORAGE.local.storage)
             storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -132,7 +131,6 @@ class JAIROCloudGroupsManager:
             ConfigurationError: If the configuration has not been initialized.
         """
         if isinstance(self._config, str):
-            error = E.UNINIT_SERVER_CONFIG
-            raise ConfigurationError(error)
+            raise ConfigurationError(E.UNINIT_SERVER_CONFIG)
 
         return self._config

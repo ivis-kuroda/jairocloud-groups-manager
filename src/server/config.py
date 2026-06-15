@@ -30,7 +30,7 @@ from pydantic_settings import (
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
-from sqlalchemy.engine import URL, make_url
+from sqlalchemy.engine import URL
 from weko_group_cache_db.config import (
     Sentinel,
     Settings as CacheDbSettings,
@@ -106,13 +106,14 @@ class RuntimeConfig(BaseSettings):
     CACHE_GROUPS: CacheGroupsConfig
     """Cache groups task configuration values."""
 
-    DEVELOP: DevelopConfig | None = None
-
     FEATURES: FeaturesConfig
     """Feature flags for enabling/disabling application features.
 
-        These are due to temporary constraints
-        in the future, all features will be enabled and the settings will be deleted."""
+    These are due to temporary constraints
+    in the future, all features will be enabled and the settings will be deleted.
+    """
+
+    DEVELOP: DevelopConfig | None = None
 
     @computed_field
     @property
@@ -143,8 +144,8 @@ class RuntimeConfig(BaseSettings):
     def SQLALCHEMY_DATABASE_URI(self) -> URL:
         """Database connection URI for SQLAlchemy."""
         pg = self.POSTGRES
-        return make_url(
-            f"postgresql+psycopg://{pg.user}:{pg.password}@{pg.host}:{pg.port}/{pg.db}"
+        return URL.create(
+            "postgresql+psycopg", pg.user, pg.password, pg.host, pg.port, pg.db
         )
 
     @computed_field
@@ -215,6 +216,7 @@ class RuntimeConfig(BaseSettings):
                 "REMEMBER_COOKIE_REFRESH_EACH_REQUEST",
             }
         ) | {
+            "PREFERRED_URL_SCHEME": "https",
             "SQLALCHEMY_DATABASE_URI": self.SQLALCHEMY_DATABASE_URI,
             "SESSION_COOKIE_SECURE": True,
             "SESSION_COOKIE_SAMESITE": "Lax",
@@ -607,6 +609,21 @@ It should include `{repository_id}` followed by `{user_defined_id}` placeholders
 """
 
 
+class FeaturesConfig(BaseModel):
+    """Schema for feature flags configuration."""
+
+    search_only_username: bool = True
+    """Whether user search by user name only in users.
+    If false, Enable search by username, email, or ePPN.
+    """
+
+    enable_bulk_operation: bool = False
+    """Whether mAP Core API bulk operation is enabled or disabled."""
+
+
+type Features = t.Literal["search_only_username", "enable_bulk_operation"]
+
+
 class DevelopConfig(BaseModel):
     """Schema for development environment configuration."""
 
@@ -631,18 +648,6 @@ class DevAccountConfig(BaseModel):
 
     user_name: str
     """User name of the development account."""
-
-
-class FeaturesConfig(BaseModel):
-    """Schema for feature flags configuration."""
-
-    search_only_username: bool = True
-    """Whether user search by user name only in users.
-    If false, Enable search by username, email, or ePPN.
-    """
-
-    enable_bulk_operation: bool = False
-    """Whether mAP Core API bulk operation is enabled or disabled."""
 
 
 def safe_eval(expr: str) -> int | str:
@@ -706,12 +711,9 @@ def setup_config(path_or_obj: str | RuntimeConfig) -> RuntimeConfig:
     return path_or_obj
 
 
-@LocalProxy
 def _get_config() -> RuntimeConfig:
     return current_app.extensions["jairocloud-groups-manager"].config
 
 
-config = t.cast("RuntimeConfig", _get_config)
+config = t.cast("RuntimeConfig", LocalProxy(lambda: _get_config()))  # noqa: PLW0108
 """The global server configuration instance."""
-
-del _get_config

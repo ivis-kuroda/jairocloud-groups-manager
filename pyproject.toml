@@ -117,7 +117,7 @@ skip-magic-trailing-comma = false
 
 
 [tool.pyright]
-include = ["src"]
+include = ["src", "tests"]
 extraPaths = ["src"]
 typeCheckingMode =  "standard"
 

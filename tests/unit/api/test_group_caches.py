@@ -1,119 +1,112 @@
 import typing as t
 
+from http import HTTPStatus
+
 from flask import Flask
+
+import server.api.group_caches
 
 from server.api import group_caches
 from server.api.schemas import CacheQuery, CacheRequest, ErrorResponse
-from server.entities.cache import RepositoryCache, TaskDetail
+from server.entities.cache import TaskDetail
 from server.entities.search_request import SearchResult
-from server.exc import InvalidQueryError
+from server.exc import InvalidQueryError, RequestConflict
 from server.messages import E
 
-from tests.helpers import unwrap
+from tests.helpers import assert_message, unwrap
 
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from server.config import RuntimeConfig
 
-def test_get(app, mocker: MockerFixture, gen_summaries, cached_data):
-    query = CacheQuery(q=None, p=1, l=20, f=[])
-    repositories: SearchResult = gen_summaries(20)
-    search_result = SearchResult(
-        resources=cached_data(repositories.resources, None, every_other=False),
-        total=20,
-        page_size=20,
-        offset=1,
-    )
-    mock_get_cache = mocker.patch("server.api.group_caches.group_caches.get_repository_cache")
-    mock_get_cache.return_value = search_result
-    success = 200
 
-    result, status = unwrap(group_caches.get)(query)
+def test_init_settings(config: RuntimeConfig, mocker: MockerFixture):
+    mock_setup_config = mocker.patch.object(server.api.group_caches, "setup_weko_group_cache_db_config")
 
-    assert result == search_result
-    assert status == success
+    unwrap(group_caches.init_settings)()
+
+    mock_setup_config.assert_called_once_with(config.for_group_caches)
+
+
+def test_get(repository_summaries, cached_data, mocker: MockerFixture):
+    page, length, total = 1, 20, 20
+    query = CacheQuery(q=None, p=page, l=length)
+    summaries = repository_summaries * 2
+    cache_result = SearchResult(resources=cached_data(summaries), total=total, page_size=length, offset=page)
+    mock_get_cache = mocker.patch.object(server.api.group_caches.group_caches, "get_repository_cache")
+    mock_get_cache.return_value = cache_result
+
+    res, status = unwrap(group_caches.get)(query)
+
+    assert res == cache_result
+    assert status == HTTPStatus.OK
     mock_get_cache.assert_called_once_with(query)
 
 
 def test_get_invalid_query(mocker: MockerFixture):
-    query = CacheQuery(q=None, p=1, l=20, f=[])
-    messege = "Invalid query"
-    mock_search = mocker.patch("server.api.group_caches.group_caches.get_repository_cache")
-    mock_search.side_effect = InvalidQueryError(messege)
-    bad_request = 400
+    page, length = 1, 20
+    query = CacheQuery(q=None, p=page, l=length)
+    mock_search = mocker.patch.object(server.api.group_caches.group_caches, "get_repository_cache")
+    mock_search.side_effect = InvalidQueryError(E.UNSUPPORTED_SEARCH_FILTER)
 
-    result, status = unwrap(group_caches.get)(query)
+    res, status = unwrap(group_caches.get)(query)
 
-    assert isinstance(result, ErrorResponse)
-    assert result.message == messege
-    assert status == bad_request
+    assert status == HTTPStatus.BAD_REQUEST
+    assert isinstance(res, ErrorResponse)
+    assert_message(res.message, E.UNSUPPORTED_SEARCH_FILTER)
     mock_search.assert_called_once_with(query)
 
 
-def test_post(app: Flask, mocker: MockerFixture):
-    mock_update = mocker.patch("server.api.group_caches.group_caches.update")
-    ids = ["repo1_example_jp", "repo2_example_jp"]
-    operation = "all"
-    accepted = 202
+def test_post(mocker: MockerFixture):
+    mock_update = mocker.patch.object(server.api.group_caches.group_caches, "update")
+    body = CacheRequest(op=(operation := "all"), ids=(ids := ["test_1_repo_ac_jp", "test_2_repo_ac_jp"]))
 
-    result, status = unwrap(group_caches.post)(body=CacheRequest(ids=ids, op=operation))
+    res, status = unwrap(group_caches.post)(body)
 
-    assert not result
-    assert status == accepted
+    assert status == HTTPStatus.ACCEPTED
+    assert not res
     mock_update.assert_called_once_with(operation, ids)
 
 
-def test_post_conflict(app: Flask, mocker: MockerFixture):
-    mock_update = mocker.patch("server.api.group_caches.group_caches.update")
-    mock_update.side_effect = group_caches.RequestConflict(E.GROUP_CACHE_UPDATE_CONFLICT)
-    ids = ["repo1_example_jp", "repo2_example_jp"]
-    operation = "all"
-    conflict = 409
+def test_post_conflict(mocker: MockerFixture):
+    mock_update = mocker.patch.object(server.api.group_caches.group_caches, "update")
+    mock_update.side_effect = RequestConflict(E.GROUP_CACHE_UPDATE_CONFLICT)
+    body = CacheRequest(op=(operation := "all"), ids=(ids := ["test_1_repo_ac_jp", "test_2_repo_ac_jp"]))
 
-    result, status = unwrap(group_caches.post)(body=CacheRequest(ids=ids, op=operation))
+    res, status = unwrap(group_caches.post)(body)
 
-    assert isinstance(result, ErrorResponse)
-    assert result.message in str(E.GROUP_CACHE_UPDATE_CONFLICT)
-    assert status == conflict
+    assert status == HTTPStatus.CONFLICT
+    assert isinstance(res, ErrorResponse)
+    assert_message(res.message, E.GROUP_CACHE_UPDATE_CONFLICT)
     mock_update.assert_called_once_with(operation, ids)
 
 
-def test_status(app: Flask, mocker: MockerFixture, gen_summaries):
-    repository = gen_summaries(1).resources[0]
-    repository_cache = RepositoryCache(
-        id=repository.id,
-        service_name=repository.service_name,  # pyright: ignore[reportArgumentType],
-        service_url=repository.service_url,
-        updated=None,
-    )
-    task_detail = TaskDetail(
-        results=[repository_cache],
-        status="in_progress",
-        current="repo1_example_jp",
-        done=10,
-        total=20,
+def test_status(repository_summaries, cached_data, mocker: MockerFixture):
+    done, total = 10, 20
+    repository_cache = cached_data(repository_summaries[:1])[0]
+    expected = TaskDetail(
+        results=[repository_cache], status="in_progress", current="test_1_repo_ac_jp", done=done, total=total
     )
 
-    mock_status = mocker.patch("server.api.group_caches.group_caches.get_task_status")
-    mock_status.return_value = task_detail
-    success = 200
+    mock_status = mocker.patch.object(server.api.group_caches.group_caches, "get_task_status")
+    mock_status.return_value = expected
 
-    result, status = unwrap(group_caches.status)()
+    res, status = unwrap(group_caches.status)()
 
-    assert result == task_detail
-    assert status == success
+    assert status == HTTPStatus.OK
+    assert res == expected
     mock_status.assert_called_once_with()
 
 
 def test_status_no_task(app: Flask, mocker: MockerFixture):
-    mock_status = mocker.patch("server.api.group_caches.group_caches.get_task_status")
+    mock_status = mocker.patch.object(server.api.group_caches.group_caches, "get_task_status")
     mock_status.return_value = None
-    bad_request = 400
 
-    result, status = unwrap(group_caches.status)()
+    res, status = unwrap(group_caches.status)()
 
-    assert isinstance(result, ErrorResponse)
-    assert result.message in str(E.UPDATE_TASK_NOT_RUNNING)
-    assert status == bad_request
+    assert status == HTTPStatus.BAD_REQUEST
+    assert isinstance(res, ErrorResponse)
+    assert_message(res.message, E.UPDATE_TASK_NOT_RUNNING)
     mock_status.assert_called_once_with()

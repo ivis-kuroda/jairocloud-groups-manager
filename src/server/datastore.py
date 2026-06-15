@@ -4,6 +4,7 @@
 
 """Redis connection module for weko-group-cache-db."""
 
+import traceback
 import typing as t
 
 from flask import Flask, current_app
@@ -11,13 +12,14 @@ from redis import Redis, sentinel
 from redis.exceptions import ConnectionError as RedisConnectionError
 from werkzeug.local import LocalProxy
 
-from server.config import config as config_
+from server.config import config as server_config
 from server.exc import ConfigurationError
 from server.messages import E, W
 
 
 if t.TYPE_CHECKING:
-    from .config import RuntimeConfig
+    from server.config import RuntimeConfig
+    from server.ext import JAIROCloudGroupsManager
 
 
 def setup_datastore(app: Flask, config: RuntimeConfig) -> dict[str, Redis]:
@@ -54,41 +56,51 @@ def connection(
 
     """
     app = app or current_app
-    config = config or config_
-    timeout = config.REDIS.socket_timeout
+    config = config or server_config
     try:
         if config.REDIS.cache_type == "RedisCache":
-            base_url = config.REDIS.single.base_url
-            store = Redis.from_url(f"{base_url}/{db}")
+            store = __single_connection(config, db)
         else:
-            sentinels = sentinel.Sentinel(
-                [(node.host, node.port) for node in config.REDIS.sentinel.nodes],
-                socket_timeout=timeout,
-                socket_connect_timeout=timeout,
-                decode_responses=False,
-            )
-            store = sentinels.master_for(
-                config.REDIS.sentinel.master_name,
-                db=db,
-                socket_timeout=timeout,
-                socket_connect_timeout=timeout,
-            )
+            store = __sentinel_connection(config, db)
 
     except ValueError as exc:
-        error = E.INVALID_REDIS_CONFIG % {"error": str(exc)}
-        raise ConfigurationError(error) from exc
+        raise ConfigurationError(E.INVALID_REDIS_CONFIG) from exc
 
     try:
         store.ping()
-    except RedisConnectionError as exc:
-        error = W.FAILED_CONNECT_REDIS % {"error": str(exc)}
-        app.logger.warning(error)
+    except RedisConnectionError:
+        app.logger.warning(W.FAILED_CONNECT_REDIS)
+        traceback.print_exc()
 
     return store
 
 
+def __single_connection(config: RuntimeConfig, db: int) -> Redis:
+    base_url = config.REDIS.single.base_url
+    return Redis.from_url(
+        f"{base_url}/{db}",
+        socket_timeout=config.REDIS.socket_timeout,
+        socket_connect_timeout=config.REDIS.socket_timeout,
+    )
+
+
+def __sentinel_connection(config: RuntimeConfig, db: int) -> Redis:
+    sentinels = sentinel.Sentinel(
+        [(node.host, node.port) for node in config.REDIS.sentinel.nodes],
+        socket_timeout=config.REDIS.socket_timeout,
+        socket_connect_timeout=config.REDIS.socket_timeout,
+        decode_responses=False,
+    )
+    return sentinels.master_for(
+        config.REDIS.sentinel.master_name,
+        db=db,
+        socket_timeout=config.REDIS.socket_timeout,
+        socket_connect_timeout=config.REDIS.socket_timeout,
+    )
+
+
 def _stores(name: str) -> Redis:
-    ext = current_app.extensions["jairocloud-groups-manager"]
+    ext: JAIROCloudGroupsManager = current_app.extensions["jairocloud-groups-manager"]
     return ext.datastore[name]
 
 

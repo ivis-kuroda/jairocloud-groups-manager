@@ -14,6 +14,7 @@ from flask_pydantic import validate
 from server.const import USER_ROLES
 from server.entities.search_request import SearchResult
 from server.exc import InvalidQueryError
+from server.messages import E
 from server.services import groups, repositories, users
 from server.services.utils import make_criteria_object
 
@@ -70,6 +71,6 @@ def get(
             errors.append(exc)
 
     if errors and not results:
-        return ErrorResponse(code="", message="Failed to get search results"), 400
+        return ErrorResponse(message=E.FAILED_GLOBAL_SEARCH), 400
 
     return GlobalSearchResult(root=results), 200

@@ -252,13 +252,13 @@ def id_delete(group_id: str) -> tuple[t.Literal[""], int] | tuple[ErrorResponse,
         - If logged-in user does not have permission, status code 403
         - If group not found, status code 404
     """
-    if not detect_affiliation(group_id):
+    detected = detect_affiliation(group_id)
+    if not detected:
         # out of this service's scope.
         current_app.logger.error(E.GROUP_UNRECOGNIZED_ID, {"id": group_id})
         return ErrorResponse(message=E.GROUP_NOT_FOUND % {"id": group_id}), 404
 
-    rolegroups, _ = detect_affiliations(list(group_id))
-    if rolegroups:
+    if detected.type == "role":
         current_app.logger.error(E.ROLEGROUP_CANNOT_DELETE)
         return ErrorResponse(message=E.ROLEGROUP_CANNOT_DELETE), 400
 
@@ -311,12 +311,14 @@ def delete_post(
         ), 400
 
     if not has_permission(*group_ids):
-        return ErrorResponse(code="", message=""), 403
+        current_app.logger.error(E.GROUP_FORBIDDEN, {"id": ", ".join(group_ids)})
+        return ErrorResponse(message=E.GROUP_FORBIDDEN), 403
 
     group_list = groups.delete_multiple(group_ids)
     if group_list:
-        message = f"{group_list} is failed"
-        return ErrorResponse(code="", message=message), 202
+        return ErrorResponse(
+            message=E.FAILED_PARTIAL_DELETE_GROUPS % {"ids": ", ".join(group_list)}
+        ), 202
     return "", 204
 
 

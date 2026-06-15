@@ -5,7 +5,7 @@
 """Provides utilities for service."""
 
 from .affiliations import detect_affiliation, detect_affiliations, detect_repository
-from .decoraters import require_enabled, session_required
+from .decorators import require_enabled, session_required
 from .filter_options import (
     search_groups_options,
     search_history_filter_options,

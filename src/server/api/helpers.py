@@ -9,7 +9,7 @@ import typing as t
 
 from functools import wraps
 
-from flask import abort, jsonify, make_response, request
+from flask import Response, jsonify, make_response, request
 from flask_pydantic.core import _sanitize_ctx_errors  # noqa: PLC2701
 from pydantic import BaseModel, ValidationError
 from werkzeug.datastructures import FileStorage
@@ -18,6 +18,8 @@ from server.config import config
 from server.const import USER_ROLES
 from server.messages import E
 from server.services.utils import get_current_user_affiliations, get_highest_role
+
+from .schemas import ErrorResponse
 
 
 def roles_required[**P, R](
@@ -32,8 +34,13 @@ def roles_required[**P, R](
         Callable: A decorator that returns a decorated function.
     """
 
-    def decorator(func: t.Callable[P, R]) -> t.Callable[P, R]:
+    def decorator(
+        func: t.Callable[P, R],
+    ) -> t.Callable[P, R]:
         """Inner decorator that handles the function wrapping.
+
+        If the current user's highest role is not in the required roles,
+        it returns a 403 Forbidden response.
 
         Args:
             func (t.Callable[P, R]): The function to be decorated.
@@ -43,7 +50,7 @@ def roles_required[**P, R](
         """
 
         @wraps(func)
-        def decorated_view(*args: P.args, **kwargs: P.kwargs) -> R:
+        def decorated_view(*args: P.args, **kwargs: P.kwargs) -> R | Response:
             """The actual view function that performs the role check.
 
             Args:
@@ -57,11 +64,12 @@ def roles_required[**P, R](
             highest = get_highest_role([repository.role for repository in user_roles])
 
             if highest not in required:
-                abort(403)
+                error = ErrorResponse(message=E.FORBIDDEN)
+                return make_response(jsonify(error.model_dump(mode="json")), 403)
 
             return func(*args, **kwargs)
 
-        return decorated_view
+        return decorated_view  # pyright: ignore[reportReturnType]
 
     return decorator
 
@@ -95,7 +103,6 @@ def validate_files(func: t.Callable) -> t.Callable:  # noqa: C901
                     if origin is list
                     else [request.files.get(field_name)]
                 )
-
                 size_errors = _check_file_size(field_name, *uploaded_files)
                 if size_errors:
                     if "file_size" not in err:
@@ -140,7 +147,7 @@ def _check_file_size(field_name: str, *files: FileStorage | None) -> list:
         if file_length > max_size:
             errors.append({
                 "loc": [field_name],
-                "msg": E.FILE_TOO_LARGE % {"max": max_size},
+                "msg": (E.FILE_TOO_LARGE % {"max": max_size}).data,  # pyright: ignore[reportAttributeAccessIssue]
                 "type": "value_error.filesize_limit",
                 "ctx": {"limit_value": max_size, "actual_value": file_length},
             })

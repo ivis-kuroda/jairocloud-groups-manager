@@ -144,7 +144,10 @@ GROUP_DEFAULT_MEMBER_LIST_VISIBILITY: Final = "Private"
 
 
 class USER_ROLES(StrEnum):
-    """Constants for user roles."""
+    """Constants for user roles.
+
+    Note: These are listed in descending order of authority.
+    """
 
     SYSTEM_ADMIN = "system_admin"
     """Role identifier for System Administrators."""

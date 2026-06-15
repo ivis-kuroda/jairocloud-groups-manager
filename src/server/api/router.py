@@ -19,7 +19,7 @@ from server.exc import (
     InfrastructureError,
     JAIROCloudGroupsManagerError,
     ServiceSettingsError,
-    SystemAdminNotFound,
+    UnsafeOperationError,
 )
 from server.messages import E
 
@@ -59,10 +59,10 @@ def create_api_blueprint() -> Blueprint:
 
     @bp_api.errorhandler(InfrastructureError)
     @bp_api.errorhandler(ServiceSettingsError)
-    @bp_api.errorhandler(SystemAdminNotFound)
+    @bp_api.errorhandler(UnsafeOperationError)
     @validate()
     def handle_service_settings_error(
-        error: ServiceSettingsError | SystemAdminNotFound | InfrastructureError,
+        error: ServiceSettingsError | UnsafeOperationError | InfrastructureError,
     ) -> tuple[ErrorResponse, int]:
         """Handle service settings errors for the API.
 

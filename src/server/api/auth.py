@@ -128,8 +128,8 @@ def login() -> Response:  # noqa: PLR0914
         error = E.FAILED_SET_LOGIN_SESSION % {"eppn": user.eppn}
         raise DatastoreError(error) from exc
 
-    next_location = request.args.get("next")
-    location = "/" if not next_location else f"/?next={next_location}"
+    next_val = request.args.get("next")
+    location = "/" if not next_val else f"/?{urlparse.urlencode({'next': next_val})}"
 
     current_app.logger.info(I.USER_LOGGED_IN, {"eppn": user.eppn})
     return make_response(redirect(location))

@@ -65,166 +65,166 @@ class OAuthTokenError(ServiceSettingsError):
 class UnsafeOperationError(JAIROCloudGroupsManagerError):
     """Exception for unsafe operations.
 
-    Errors caused by operations that are considered unsafe.
+    Error caused by operations considered unsafe calling unexpectedly.
     """
 
 
-class SystemAdminNotFound(JAIROCloudGroupsManagerError):  # noqa: N818
+class SystemAdminNotFound(UnsafeOperationError):  # noqa: N818
     """Exception for system administrator not found.
 
-    Errors caused by the absence of a system administrator in the system.
+    Error caused by the absence of a system administrator in the system.
     """
 
 
 class InfrastructureError(JAIROCloudGroupsManagerError):
     """Exception for infrastructure errors.
 
-    Errors caused by issues in the underlying infrastructure.
+    Error caused by issues in the underlying infrastructure.
     """
 
 
 class DatabaseError(InfrastructureError):
     """Exception for database errors.
 
-    Errors caused by database operation issues.
+    Error caused by database operation issues.
     """
 
 
 class DatastoreError(InfrastructureError):
     """Exception for datastore errors.
 
-    Errors caused by datastore operation issues.
+    Error caused by datastore operation issues.
     """
 
 
 class TaskExecutionError(DatastoreError):
     """Exception for task execution errors.
 
-    Errors caused by issues during task execution.
+    Error caused by issues during task execution.
     """
 
 
 class RecordNotFound(JAIROCloudGroupsManagerError):  # noqa: N818
     """Exception for record not found errors.
 
-    Errors caused by requests for non-existing records.
+    Error caused by requests for non-existing records.
     """
 
 
 class InvalidRecordError(JAIROCloudGroupsManagerError):
     """Exception for invalid record errors.
 
-    Errors caused by invalid record data or structure.
+    Error caused by invalid record data or structure.
     """
 
 
 class ApiClientError(JAIROCloudGroupsManagerError):
     """Exception for mAP Core API errors.
 
-    Errors caused by mAP Core API server issues.
+    Error caused by mAP Core API server issues.
     """
 
 
 class ResourceInvalid(ApiClientError):  # noqa: N818
     """Exception for resource invalid errors from mAP Core API server.
 
-    Errors caused by invalid resource data in requests.
+    Error caused by invalid resource data in requests.
     """
 
 
 class ResourceNotFound(ApiClientError):  # noqa: N818
     """Exception for resource not found errors from mAP Core API server.
 
-    Errors caused by requests for non-existing resources.
+    Error caused by requests for non-existing resources.
     """
 
 
 class UnexpectedResponseError(ApiClientError):
     """Exception for unexpected responses from mAP Core API server.
 
-    Errors caused by unexpected response structure or data from mAP Core API server.
+    Error caused by unexpected response structure or data from mAP Core API server.
     """
 
 
 class ApiRequestError(JAIROCloudGroupsManagerError):
     """Exception for the server application API errors.
 
-    Errors caused by API request issues.
+    Error caused by API request issues.
     """
 
 
 class RequestConflict(ApiRequestError):  # noqa: N818
     """Exception for the request conflict errors.
 
-    Errors caused by conflicts in the request content.
+    Error caused by conflicts in the request content.
     """
 
 
 class InvalidQueryError(ApiRequestError):
     """Exception for unexpected query construction errors.
 
-    Errors caused by unexpected query structure or data during query construction.
+    Error caused by unexpected query structure or data during query construction.
     """
 
 
 class InvalidFormError(ApiRequestError):
     """Exception for invalid form data errors.
 
-    Errors caused by invalid form data in API requests.
+    Error caused by invalid form data in API requests.
     """
 
 
 class ImmutableError(JAIROCloudGroupsManagerError):
     """Exception for immutable attribute modification errors.
 
-    Errors caused by attempts to modify immutable attributes.
+    Error caused by attempts to modify immutable attributes.
     """
 
 
 class BulkOperationError(JAIROCloudGroupsManagerError):
     """Exception for bulk operation errors.
 
-    Errors caused by issues during bulk operations.
+    Error caused by issues during bulk operations.
     """
 
 
 class FileValidationError(BulkOperationError):
     """Exception for validation errors in bulk operations.
 
-    Errors caused by validation failures during bulk operations.
+    Error caused by validation failures during bulk operations.
     """
 
 
 class FileNotFound(BulkOperationError):  # noqa: N818
     """Exception for file not found errors in bulk operations.
 
-    Errors caused by missing files during bulk operations.
+    Error caused by missing files during bulk operations.
     """
 
 
 class FileFormatError(BulkOperationError):
     """Exception for file format errors in bulk operations.
 
-    Errors caused by invalid file formats during bulk operations.
+    Error caused by invalid file formats during bulk operations.
     """
 
 
 class FileUploadError(BulkOperationError):
     """Exception for file upload errors in bulk operations.
 
-    Errors caused by issues during file upload in bulk operations.
+    Error caused by issues during file upload in bulk operations.
     """
 
 
 class InvalidExportError(BulkOperationError):
     """Exception for invalid export errors.
 
-    Errors caused by issues during export operations.
+    Error caused by issues during export operations.
     """
 
 
 class GroupCacheError(JAIROCloudGroupsManagerError):
     """Exception for group cache errors.
 
-    Errors caused by issues in group cache operations.
+    Error caused by issues in group cache operations.
     """

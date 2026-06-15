@@ -4,24 +4,26 @@
 
 """API router for bulk endpoints."""
 
+import traceback
+import typing as t
+
 from uuid import UUID
 
 from flask import Blueprint, current_app
 from flask_login import current_user, login_required
 from flask_pydantic import validate
 
-from server.auth import is_user_logged_in
-from server.const import DEFAULT_SEARCH_COUNT, USER_ROLES
+from server.config import config
+from server.const import USER_ROLES
 from server.entities.bulk import (
     ExecuteResults,
     ValidateResults,
 )
+from server.entities.login_user import LoginUser
 from server.exc import (
-    FileFormatError,
-    FileNotFound,
-    FileValidationError,
+    ApiRequestError,
+    BulkOperationError,
     RecordNotFound,
-    TaskExecutionError,
 )
 from server.messages import E
 from server.services import bulks, history_table, repositories
@@ -31,10 +33,10 @@ from .helpers import roles_required, validate_files
 from .schemas import (
     BulkBody,
     BulkFileForm,
+    BulkResultQuery,
     ErrorResponse,
     ExcuteRequest,
     TargetRepositoryForm,
-    UploadQuery,
 )
 
 
@@ -63,93 +65,83 @@ def upload_file(
         BulkBody: The response containing task ID
         ErrorResponse: The response containing task ID or error message.
     """
-    if repositories.get_by_id(form.repository_id) is None:
-        current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"id": form.repository_id})
+    user = t.cast("LoginUser", current_user)
+    repository_id = form.repository_id
+
+    if repositories.get_by_id(repository_id) is None:
+        current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"id": repository_id})
         return ErrorResponse(
-            message=E.REPOSITORY_NOT_FOUND % {"id": form.repository_id}
+            message=E.REPOSITORY_NOT_FOUND % {"id": repository_id}
         ), 404
-    if (
-        not current_user.is_system_admin
-        and form.repository_id not in get_permitted_repository_ids()
-    ):
-        current_app.logger.error(E.REPOSITORY_FORBIDDEN, {"id": form.repository_id})
+
+    if not user.is_system_admin and repository_id not in get_permitted_repository_ids():
+        current_app.logger.error(E.REPOSITORY_FORBIDDEN, {"id": repository_id})
         return ErrorResponse(
-            message=E.REPOSITORY_FORBIDDEN % {"id": form.repository_id}
+            message=E.REPOSITORY_FORBIDDEN % {"id": repository_id}
         ), 403
-    temp_file_id = bulks.upload_file(form.repository_id, files.bulk_file)
-    task = bulks.validate_upload_data.apply_async(
-        (current_user.map_id, current_user.user_name, temp_file_id),
-        session_required=True,  # pyright: ignore[reportCallIssue]
-    )
-    return BulkBody(task_id=task.id, temp_file_id=temp_file_id), 200
+
+    tmp_file_id = bulks.upload_file(repository_id, files.bulk_file)
+    task = bulks.validate_upload_data.delay(user.map_id, user.user_name, tmp_file_id)
+
+    return BulkBody(task_id=task.id, tmp_file_id=tmp_file_id), 200
 
 
-@bp.get("/validate/status/<string:task_id>")
+@bp.get("/validate/status/<uuid:task_id>")
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
 @require_enabled("enable_bulk_operation")
-def validate_status(task_id: str) -> tuple[BulkBody | ErrorResponse, int]:
+def validate_status(task_id: UUID) -> BulkBody:
     """Get the status of a validation task.
 
     Args:
-        task_id (str): The ID of the validation task.
+        task_id (UUID): The ID of the validation task.
 
     Returns:
         BulkBody: The response containing task status
-        ErrorResponse: The response containing task status or error message
     """
-    try:
-        res = bulks.get_validate_task_result(task_id)
-    except TaskExecutionError as exc:
-        return ErrorResponse(message=exc.message), 404
-    return BulkBody(status=res.state), 200
+    task = bulks.get_validate_task_result(task_id)
+    return BulkBody(status=task.state)
 
 
-@bp.get("/validate/result/<string:task_id>")
+@bp.get("/validate/result/<uuid:task_id>")
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
 @require_enabled("enable_bulk_operation")
 def validate_result(
-    query: UploadQuery,
-    task_id: str,
+    query: BulkResultQuery,
+    task_id: UUID,
 ) -> tuple[ValidateResults | ErrorResponse, int]:
     """Get the result of a validation task.
 
     Args:
-        query (UploadQuery): Query parameters for filtering results.
-        task_id (str): The ID of the validation task.
+        query (BulkResultQuery): Query parameters for filtering results.
+        task_id (UUID): The ID of the validation task.
 
     Returns:
         ValidateSummary: The response containing validation result
         ErrorResponse: The response containing validation result or error message.
     """
+    user = t.cast("LoginUser", current_user)
+
     try:
-        res = bulks.get_validate_task_result(task_id)
-        match res.result:
-            case FileNotFound():
-                return ErrorResponse(message=res.result.message), 404
-            case FileValidationError() | FileFormatError():
-                return ErrorResponse(message=res.result.message), 400
-            case UUID():
-                pass
-            case _:
-                return ErrorResponse(message=E.UNEXPECTED_SERVER_ERROR), 500
-        history_id = res.result
-        status_filter = [STATUS_MAP[status] for status in query.f] if query.f else []
-        offset = query.p or 1
-        size = query.l or DEFAULT_SEARCH_COUNT
-        if not is_user_logged_in(
-            current_user
-        ) or not bulks.chack_permission_to_operation(history_id, current_user.map_id):
+        task = bulks.get_validate_task_result(task_id)
+        history_id = task.get(config.REDIS.socket_timeout)
+
+        if not bulks.chack_permission_to_operation(history_id, user.map_id):
             current_app.logger.error(E.OPERATION_FORBIDDEN)
             return ErrorResponse(message=E.OPERATION_FORBIDDEN), 403
-        result = bulks.get_validate_result(
-            history_id=history_id, status_filter=status_filter, offset=offset, size=size
-        )
-    except (RecordNotFound, TaskExecutionError) as exc:
+
+        result = bulks.get_validate_result(history_id, query)
+    except RecordNotFound as exc:
+        traceback.print_exc()
         return ErrorResponse(message=exc.message), 404
+
+    except (ApiRequestError, BulkOperationError) as exc:
+        traceback.print_exc()
+        return ErrorResponse(message=exc.message), 400
+
     return result, 200
 
 
@@ -170,46 +162,39 @@ def execute(body: ExcuteRequest) -> tuple[BulkBody | ErrorResponse, int]:
         BulkBody: The response containing task ID
         ErrorResponse: The response containing task ID or error message
     """
+    user = t.cast("LoginUser", current_user)
     try:
-        history_id = history_table.get_history_by_file_id(body.temp_file_id).id
-        if not is_user_logged_in(
-            current_user
-        ) or not bulks.chack_permission_to_operation(history_id, current_user.map_id):
+        history_id = history_table.get_history_by_file_id(body.tmp_file_id).id
+
+        if not bulks.chack_permission_to_operation(history_id, user.map_id):
             current_app.logger.error(E.OPERATION_FORBIDDEN)
             return ErrorResponse(message=E.OPERATION_FORBIDDEN), 403
-        task = bulks.update_users.apply_async(
-            kwargs={
-                "history_id": history_id,
-                "temp_file_id": body.temp_file_id,
-                "delete_users": body.delete_users,
-            },
-        )
+
+        task = bulks.update_users.delay(history_id, body.tmp_file_id, body.delete_users)
     except RecordNotFound as exc:
+        traceback.print_exc()
         return ErrorResponse(message=exc.message), 404
+
     return BulkBody(task_id=task.id, history_id=history_id), 200
 
 
-@bp.get("/execute/status/<string:task_id>")
+@bp.get("/execute/status/<uuid:task_id>")
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
 @validate()
 @require_enabled("enable_bulk_operation")
-def execute_status(task_id: str) -> tuple[BulkBody | ErrorResponse, int]:
+def execute_status(task_id: UUID) -> BulkBody:
     """Get the status of an execution task.
 
     Args:
-        task_id (str): The ID of the execution task.
+        task_id (UUID): The ID of the execution task.
 
     Returns:
-        str: The response containing task status
-        ErrorResponse: The response containing task status or error message
+        BulkBody: The response containing task status.
     """
-    try:
-        res = bulks.get_execute_task_result(task_id)
-    except TaskExecutionError as exc:
-        return ErrorResponse(message=exc.message), 404
-    return BulkBody(status=res.state), 200
+    task = bulks.get_execute_task_result(task_id)
+    return BulkBody(status=task.state)
 
 
 @bp.get("/result/<string:history_id>")
@@ -218,28 +203,24 @@ def execute_status(task_id: str) -> tuple[BulkBody | ErrorResponse, int]:
 @validate(response_by_alias=True)
 @require_enabled("enable_bulk_operation")
 def result(
-    history_id: UUID, query: UploadQuery
+    history_id: UUID, query: BulkResultQuery
 ) -> tuple[ExecuteResults | ErrorResponse, int]:
     """Get the result of a bulk upload.
 
     Args:
         history_id (UUID):ID of the history to get.
-        query(UploadQuery): Query parameters for filtering results.
+        query(BulkResultQuery): Query parameters for filtering results.
 
     Returns:
         ExecuteResults: Summary of displayed history If the get is successful
         ErrorResponse: If the get is failed
     """
-    status_filter = [STATUS_MAP[status] for status in query.f] if query.f else []
-    offset = query.p or 1
-    size = query.l or DEFAULT_SEARCH_COUNT
     try:
         if not bulks.chack_permission_to_view(history_id):
             current_app.logger.error(E.OPERATION_FORBIDDEN)
             return ErrorResponse(message=E.OPERATION_FORBIDDEN), 403
-        result = bulks.get_upload_result(
-            history_id=history_id, status_filter=status_filter, offset=offset, size=size
-        )
+
+        result = bulks.get_upload_result(history_id, query)
     except RecordNotFound as exc:
         return ErrorResponse(message=exc.message), 404
 

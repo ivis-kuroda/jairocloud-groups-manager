@@ -81,5 +81,9 @@ def load_models() -> None:
         import_module(f"{__package__}.{name}")
 
 
-db = cast("SQLAlchemy", LocalProxy(lambda: current_app.extensions["sqlalchemy"]))
+def _db() -> SQLAlchemy:
+    return current_app.extensions["sqlalchemy"]
+
+
+db = cast("SQLAlchemy", LocalProxy(lambda: _db()))  # noqa: PLW0108
 """Database instance proxy."""

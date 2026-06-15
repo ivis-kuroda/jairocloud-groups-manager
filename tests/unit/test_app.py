@@ -1,8 +1,9 @@
-from server.app import app
+from flask import Flask
 
 
 def test_app_initialization():
-    """Tests that the Flask app is initialized correctly."""
+    from server.app import app  # noqa: PLC0415
 
-    assert app is not None
-    assert hasattr(app, "config")
+    assert isinstance(app, Flask)
+    assert app.extensions["sqlalchemy"] is not None
+    assert app.extensions["jairocloud-groups-manager"] is not None

@@ -310,7 +310,7 @@ class BulkFileForm(BaseModel):
 class BulkBody(BaseModel):
     """Schema for response body of bulk upload processing."""
 
-    temp_file_id: UUID | None = None
+    tmp_file_id: UUID | None = None
     """Temporary ID for the bulk upload session."""
 
     history_id: UUID | None = None
@@ -329,7 +329,7 @@ class BulkBody(BaseModel):
 class ExcuteRequest(BaseModel):
     """Schema for requset body of bulk upload execution."""
 
-    temp_file_id: UUID
+    tmp_file_id: UUID
     """Temporary ID for the upload session."""
 
     repository_id: str | None = None
@@ -342,12 +342,14 @@ class ExcuteRequest(BaseModel):
     """Configure to use camelCase aliasing."""
 
 
-class UploadQuery(BaseModel):
-    """Query parameters for upload history data."""
+class BulkResultQuery(BaseModel):
+    """Query parameters for bulk operation results."""
 
-    f: t.Annotated[list[int] | None, "filter"] = None
+    f: t.Annotated[list[t.Literal[0, 1, 2, 3, 4]] | None, "filter"] = None
     """Filter by status.
-    0:create, 1:delete, 2:error, 3:skip, 4:update"""
+
+    0 (create), 1 (update), 2 (delete), 3 (skip), 4 (error).
+    """
 
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""

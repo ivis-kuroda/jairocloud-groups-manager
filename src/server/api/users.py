@@ -210,7 +210,7 @@ def filter_options() -> list[FilterOption]:
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
-def export_get(query: FileQuery) -> Response | tuple[ErrorResponse, int]:
+def export_get(query: FileQuery) -> tuple[Response | ErrorResponse, int]:
     """Export users to a file for bulk processing.
 
     Args:
@@ -220,18 +220,15 @@ def export_get(query: FileQuery) -> Response | tuple[ErrorResponse, int]:
         Response: The response containing the exported file
         ErrorResponse: The response containing an error message if the export fails
     """
-    try:
-        files = users.make_export_file(current_user.map_id, current_user.name, query)
-    except InvalidExportError as exc:
-        return ErrorResponse(message=exc.message), 403
-    return send_file(files)
+    operator = t.cast("LoginUser", current_user)
+    return __export(operator, query)
 
 
 @bp.post("/export")
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
-def export_post(body: FileQuery) -> Response | tuple[ErrorResponse, int]:
+def export_post(body: FileQuery) -> tuple[Response | ErrorResponse, int]:
     """Export users to a file for bulk processing.
 
     Args:
@@ -241,8 +238,15 @@ def export_post(body: FileQuery) -> Response | tuple[ErrorResponse, int]:
         Response: The response containing the exported file
         ErrorResponse: The response containing an error message if the export fails
     """
+    operator = t.cast("LoginUser", current_user)
+    return __export(operator, body)
+
+
+def __export(operator: LoginUser, query: FileQuery):  # noqa: ANN202
     try:
-        files = users.make_export_file(current_user.map_id, current_user.name, body)
+        files = users.make_export_file(operator.map_id, operator.user_name, query)
+    except InvalidQueryError as exc:
+        return ErrorResponse(message=exc.message), 400
     except InvalidExportError as exc:
         return ErrorResponse(message=exc.message), 403
-    return send_file(files)
+    return send_file(files), 200

@@ -180,8 +180,13 @@ UNRECOGNIZED_SEARCH_CRITERIA = LogMessage(
     "Unrecognized search criteria.",
 )
 
-CANNOT_RESOLVE_DIFFERENCE = LogMessage(
+FAILED_GLOBAL_SEARCH = LogMessage(
     "E092",
+    "Failed to perform global search all categories.",
+)
+
+CANNOT_RESOLVE_DIFFERENCE = LogMessage(
+    "E095",
     "Cannot resolve differences between different types "
     "(original: %(original)s, updated: %(updated)s).",
 )
@@ -572,6 +577,11 @@ FAILED_CREATE_DOWNLOAD_HISTORY_RECORD = LogMessage(
 UNAUTHORIZED = LogMessage(
     "E401",
     "Login required to access this resource.",
+)
+
+FORBIDDEN = LogMessage(
+    "E403",
+    "You do not have permission to access this resource.",
 )
 
 FILE_TOO_LARGE = LogMessage(

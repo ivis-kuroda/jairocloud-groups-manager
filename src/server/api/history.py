@@ -6,7 +6,6 @@
 
 import typing as t
 
-from pathlib import Path
 from uuid import UUID
 
 from flask import Blueprint, Response, current_app, send_file
@@ -108,15 +107,13 @@ def public_status(
         int: HTTP status code
     """
     try:
-        result: bool = history.update_public_status(
-            tab=tab, history_id=history_id, public=body.public
-        )
+        result: bool = history.update_public_status(tab, history_id, public=body.public)
     except RecordNotFound as exc:
         return ErrorResponse(message=exc.message), 404
     return HistoryPublic(public=result), 200
 
 
-@bp.get("/files/<file_id>")
+@bp.get("/files/<uuid:file_id>")
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
@@ -130,11 +127,12 @@ def files(file_id: UUID) -> Response | tuple[ErrorResponse, int]:
         Response: Flask response object to send the file
     """
     try:
-        path_str = history.get_file_path(file_id)
-        file_path = Path(path_str)
+        file_path = history.get_file_path(file_id)
     except RecordNotFound as exc:
         return ErrorResponse(message=exc.message), 404
+
     if not file_path.exists():
         current_app.logger.error(E.FILE_NOT_FOUND, {"path": file_path})
         return ErrorResponse(message=E.FILE_NOT_FOUND % {"path": file_path}), 404
-    return send_file(path_or_file=file_path)
+
+    return send_file(file_path)

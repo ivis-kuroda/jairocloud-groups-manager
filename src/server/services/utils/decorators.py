@@ -10,7 +10,7 @@ from functools import wraps
 
 from flask import abort
 
-from server.config import config
+from server.config import Features, config
 
 
 def session_required[**P, R](func: t.Callable[P, R]) -> t.Callable[..., R]:
@@ -30,7 +30,7 @@ def session_required[**P, R](func: t.Callable[P, R]) -> t.Callable[..., R]:
     return wrapper
 
 
-def require_enabled[**P, R](setting: t.Literal["enable_bulk_operation"]):  # noqa: ANN201, D103
+def require_enabled[**P, R](setting: Features):  # noqa: ANN201, D103
 
     def decorator(func):  # noqa: ANN001, ANN202
 

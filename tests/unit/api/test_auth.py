@@ -1,6 +1,7 @@
 import typing as t
 
 from http import HTTPStatus
+from urllib.parse import urlparse
 
 import pytest
 
@@ -8,212 +9,270 @@ from flask import session
 from flask_login import current_user, login_user
 from redis import RedisError
 
+import server.api.auth
+
 from server.api import auth
+from server.api.schemas import LoginUserState
 from server.const import USER_ROLES
-from server.entities.login_user import LoginUser
-from server.entities.summaries import GroupSummary
-from server.entities.user_detail import UserDetail
 from server.exc import DatastoreError
-from server.messages import E
-from server.services.utils.affiliations import Affiliations, _RoleGroup
+from server.messages import E, I, W
+
+from tests.helpers import assert_message, regex, unwrap
 
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-mock_repoadmin_login_user = LoginUser(
-    eppn="test_eppn",
-    is_member_of="https://cg.gakunin.jp/gr/jc_test_roles_repoadm;https://cg.gakunin.jp/gr/group1",
-    user_name="Test User",
-    map_id="test_user_id",
-    session_id="",
-)
-mock_repoadmin_user_detail = UserDetail(
-    id="test_user_id",
-    user_name="Test User",
-    eppns=["test_eppn"],
-    groups=[GroupSummary(id="jc_test_roles_repoadm"), GroupSummary(id="group1")],
-)
+    from server.config import RuntimeConfig
 
 
-def test_check(app):
-    with app.test_request_context("/api/auth/check"):
-        login_user(mock_repoadmin_login_user)
-        resp = auth.check()
-    assert resp.status_code == HTTPStatus.OK
-    data = resp.get_json()
-    assert data["id"] == mock_repoadmin_login_user.map_id
-    assert data["eppn"] == mock_repoadmin_login_user.eppn
-    assert data["userName"] == mock_repoadmin_login_user.user_name
-    assert data["isSystemAdmin"] is False
-
-
-def test_login_no_eppn(app):
-    with app.test_request_context(
-        "/api/auth/login",
-        headers={
-            "IsMemberOf": "https://cg.gakunin.jp/gr/jc_test_roles_repoadm;https://cg.gakunin.jp/gr/group1",
-            "DisplayName": "Test User",
-        },
-    ):
-        resp = auth.login()
-        assert current_user.is_anonymous
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/?error=401")
-
-
-def test_login_not_get_user(app, mocker: MockerFixture):
-    with app.test_request_context(
-        "/api/auth/login",
-        headers={
-            "eppn": "test_eppn",
-            "IsMemberOf": "https://cg.gakunin.jp/gr/jc_test_roles_repoadm;https://cg.gakunin.jp/gr/group1",
-            "DisplayName": "Test User",
-        },
-    ):
-        mocker.patch("server.services.users.get_by_eppn", return_value=None)
-        resp = auth.login()
-        assert current_user.is_anonymous
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/?error=401")
-
-
-def test_login_not_is_member_of(app, mocker: MockerFixture):
-    mock_affiliations = Affiliations(
-        roles=[_RoleGroup(repository_id="test", role=USER_ROLES.REPOSITORY_ADMIN)], groups=[]
+def test_check(app, login_users):
+    user = login_users[USER_ROLES.REPOSITORY_ADMIN]
+    expected = LoginUserState(
+        id=user.map_id,
+        eppn=user.eppn,
+        user_name=user.user_name,
+        is_system_admin=False,
     )
-    excepted_is_member_of = "/gr/jc_test_roles_repoadm;/gr/group1"
-    with app.test_request_context(
-        "/api/auth/login",
-        headers={
-            "eppn": "test_eppn",
-            "DisplayName": "Test User",
-        },
-    ):
-        mocker.patch("server.services.users.get_by_eppn", return_value=mock_repoadmin_user_detail)
-        mocker.patch("server.api.auth.detect_affiliations", return_value=mock_affiliations)
-        resp = auth.login()
+
+    with app.test_request_context():
+        login_user(user)
+        res, status = unwrap(auth.check)()
+
+    assert status == HTTPStatus.OK
+    assert res == expected
+
+
+def test_login_no_eppn(app, login_users, caplog):
+    user = login_users[USER_ROLES.REPOSITORY_ADMIN]
+    headers = {
+        "IsMemberOf": user.is_member_of,
+        "DisplayName": user.user_name,
+    }
+
+    with app.test_request_context(headers=headers):
+        res = unwrap(auth.login)()
+
+        assert current_user.is_anonymous
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path == "/"
+    assert query == "error=401"
+    assert_message(caplog.records[0], W.DENIED_LOGIN_MISSING_EPPN)
+
+
+def test_login_user_not_found(app, login_users, mocker: MockerFixture, caplog):
+    user = login_users[USER_ROLES.REPOSITORY_ADMIN]
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=None)
+    headers = {
+        "EPPN": user.eppn,
+        "IsMemberOf": user.is_member_of,
+        "DisplayName": user.user_name,
+    }
+
+    with app.test_request_context(headers=headers):
+        res = unwrap(auth.login)()
+
+        assert current_user.is_anonymous
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path, query == ("/", "error=401")
+    assert_message(caplog.records[0], W.DENIED_LOGIN_USER_NOT_FOUND, {"eppn": user.eppn})
+
+
+def test_login_no_is_member_of(app, user_affils, login_users, user_details, mocker: MockerFixture, caplog):
+    affilis = user_affils[USER_ROLES.REPOSITORY_ADMIN]
+    detail = user_details[USER_ROLES.REPOSITORY_ADMIN]
+    user = login_users[USER_ROLES.REPOSITORY_ADMIN]
+
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=detail)
+    mocker.patch.object(server.api.auth, "detect_affiliations", return_value=affilis)
+
+    excepted_is_member_of = ";".join(f"/gr/{group.id}" for group in detail.groups)
+    headers = {
+        "EPPN": user.eppn,
+        "DisplayName": user.user_name,
+    }
+
+    with app.test_request_context(headers=headers):
+        res = unwrap(auth.login)()
+
         assert current_user.is_member_of == excepted_is_member_of
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/")
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path, query == ("/", "")
+    assert_message(caplog.records[0], I.USER_LOGGED_IN, {"eppn": user.eppn})
 
 
-def test_login_not_user_name(app, mocker: MockerFixture):
-    mock_affiliations = Affiliations(
-        roles=[_RoleGroup(repository_id="test", role=USER_ROLES.REPOSITORY_ADMIN)], groups=[]
-    )
-    with app.test_request_context(
-        "/api/auth/login",
-        headers={
-            "eppn": "test_eppn",
-            "IsMemberOf": "https://cg.gakunin.jp/gr/jc_test_roles_repoadm;https://cg.gakunin.jp/gr/group1",
-        },
-    ):
-        mocker.patch("server.services.users.get_by_eppn", return_value=mock_repoadmin_user_detail)
-        mocker.patch("server.api.auth.detect_affiliations", return_value=mock_affiliations)
-        resp = auth.login()
-        assert current_user.user_name == mock_repoadmin_login_user.user_name
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/")
+def test_login_not_user_name(app, user_affils, login_users, user_details, mocker: MockerFixture, caplog):
+    affilis = user_affils[USER_ROLES.REPOSITORY_ADMIN]
+    user = login_users[USER_ROLES.REPOSITORY_ADMIN]
+    detail = user_details[USER_ROLES.REPOSITORY_ADMIN]
+
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=detail)
+    mocker.patch.object(server.api.auth, "detect_affiliations", return_value=affilis)
+
+    headers = {
+        "EPPN": user.eppn,
+        "IsMemberOf": user.is_member_of,
+    }
+
+    with app.test_request_context(headers=headers):
+        res = unwrap(auth.login)()
+
+        assert current_user.user_name == user.user_name
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path, query == ("/", "")
+    assert_message(caplog.records[0], I.USER_LOGGED_IN, {"eppn": user.eppn})
 
 
-def test_login_not_admin(app, mocker: MockerFixture):
-    with app.test_request_context(
-        "/api/auth/login",
-        headers={
-            "eppn": "test_eppn",
-            "IsMemberOf": "https://cg.gakunin.jp/gr/group1;https://cg.gakunin.jp/gr/group2",
-            "DisplayName": "Test User",
-        },
-    ):
-        mocker.patch("server.services.users.get_by_eppn", return_value=mock_repoadmin_user_detail)
-        mocker.patch("server.services.utils.permissions.extract_group_ids", return_value=["group1", "group2"])
-        resp = auth.login()
+def test_login_under_admin(app, login_users, user_details, mocker: MockerFixture, caplog):
+    user = login_users[USER_ROLES.CONTRIBUTOR]
+    detail = user_details[USER_ROLES.CONTRIBUTOR]
+
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=detail)
+    mocker.patch.object(server.api.auth, "extract_group_ids", return_value=["group1"])
+
+    headers = {
+        "EPPN": user.eppn,
+        "IsMemberOf": user.is_member_of,
+        "DisplayName": user.user_name,
+    }
+
+    with app.test_request_context(headers=headers):
+        res = unwrap(auth.login)()
+
         assert current_user.is_anonymous
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/?error=403")
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path, query == ("/", "error=403")
+    assert_message(caplog.records[0], W.DENIED_LOGIN_INSUFFICIENT_ROLE, {"role": "N/A"})
 
 
-def test_login_no_session_ttl(app, mocker: MockerFixture, test_config):
-    mock_affiliations = Affiliations(
-        roles=[_RoleGroup(repository_id="test", role=USER_ROLES.REPOSITORY_ADMIN)], groups=[]
-    )
-    with app.test_request_context(
-        "/api/auth/login",
-        headers={
-            "eppn": "test_eppn",
-            "IsMemberOf": "https://cg.gakunin.jp/gr/jc_test_roles_repoadm;https://cg.gakunin.jp/gr/group1",
-            "DisplayName": "Test User",
-        },
+def test_login_no_session_ttl(
+    app, user_affils, config: RuntimeConfig, login_users, user_details, mocker: MockerFixture, caplog
+):
+    affilis = user_affils[USER_ROLES.REPOSITORY_ADMIN]
+    user = login_users[USER_ROLES.REPOSITORY_ADMIN]
+    detail = user_details[USER_ROLES.REPOSITORY_ADMIN]
+
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=detail)
+    mocker.patch.object(server.api.auth, "detect_affiliations", return_value=affilis)
+    config.SESSION.sliding_lifetime = -1
+
+    headers = {
+        "EPPN": user.eppn,
+        "IsMemberOf": user.is_member_of,
+        "DisplayName": user.user_name,
+    }
+
+    with app.test_request_context(headers=headers):
+        res = unwrap(auth.login)()
+
+        assert current_user.user_name == user.user_name
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path, query == ("/", "")
+    assert_message(caplog.records[0], I.USER_LOGGED_IN, {"eppn": user.eppn})
+
+
+def test_login_next(app, login_users, user_affils, user_details, mocker: MockerFixture, caplog):
+    user = login_users[USER_ROLES.SYSTEM_ADMIN]
+    affilis = user_affils[USER_ROLES.SYSTEM_ADMIN]
+    detail = user_details[USER_ROLES.SYSTEM_ADMIN]
+
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=detail)
+    mocker.patch.object(server.api.auth, "extract_group_ids", return_value=["group1", "jc_roles_sysadm"])
+    mocker.patch.object(server.api.auth, "detect_affiliations", return_value=affilis)
+
+    headers = {
+        "EPPN": user.eppn,
+        "IsMemberOf": user.is_member_of,
+        "DisplayName": user.user_name,
+    }
+
+    with app.test_request_context(headers=headers, query_string={"next": "/users"}):
+        res = unwrap(auth.login)()
+
+        assert current_user.eppn == user.eppn
+
+    assert res.status_code == HTTPStatus.FOUND
+    _, _, path, _, query, _ = urlparse(res.location)
+    assert path, query == ("/", "next=%2Fusers")
+    assert_message(caplog.records[0], I.USER_LOGGED_IN, {"eppn": user.eppn})
+
+
+def test_login_with_redis_error(app, datastore, user_affils, login_users, user_details, mocker: MockerFixture, caplog):
+    affilis = user_affils[USER_ROLES.SYSTEM_ADMIN]
+    user = login_users[USER_ROLES.SYSTEM_ADMIN]
+    detail = user_details[USER_ROLES.SYSTEM_ADMIN]
+    _, account_store, _ = datastore
+    account_store.hset.side_effect = RedisError
+
+    mocker.patch.object(server.api.auth.users, "get_by_eppn", return_value=detail)
+    mocker.patch.object(server.api.auth, "extract_group_ids", return_value=["group1", "jc_roles_sysadm"])
+    mocker.patch.object(server.api.auth, "detect_affiliations", return_value=affilis)
+
+    headers = {
+        "EPPN": user.eppn,
+        "IsMemberOf": user.is_member_of,
+        "DisplayName": user.user_name,
+    }
+
+    with (
+        pytest.raises(DatastoreError, match=regex(E.FAILED_SET_LOGIN_SESSION)),
+        app.test_request_context(headers=headers),
     ):
-        mocker.patch("server.services.users.get_by_eppn", return_value=mock_repoadmin_user_detail)
-        mocker.patch("server.api.auth.detect_affiliations", return_value=mock_affiliations)
-        mocker.patch.object(test_config.SESSION, "sliding_lifetime", -1)
-        resp = auth.login()
-        assert current_user.user_name == mock_repoadmin_login_user.user_name
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/")
+        unwrap(auth.login)()
+
+    assert_message(caplog.records[0], E.FAILED_SET_LOGIN_SESSION, {"eppn": user.eppn})
 
 
-def test_login_next(app, mocker: MockerFixture):
-    mock_affiliations = Affiliations(roles=[_RoleGroup(repository_id=None, role=USER_ROLES.SYSTEM_ADMIN)], groups=[])
-    with app.test_request_context(
-        "/api/auth/login?next=users",
-        headers={
-            "eppn": "test_eppn",
-            "IsMemberOf": "https://cg.gakunin.jp/gr/group1;https://cg.gakunin.jp/gr/jc_roles_sysadm",
-            "DisplayName": "Test User",
-        },
-    ):
-        mocker.patch("server.services.users.get_by_eppn", return_value=mock_repoadmin_user_detail)
-        mocker.patch("server.api.auth.extract_group_ids", return_value=["group1", "jc_roles_sysadm"])
-        mocker.patch("server.api.auth.detect_affiliations", return_value=mock_affiliations)
-        resp = auth.login()
-        assert current_user.eppn == mock_repoadmin_login_user.eppn
-        assert resp.status_code == HTTPStatus.FOUND
-        assert resp.location.endswith("/?next=users")
+def test_logout(app, login_users, mocker):
+    user = login_users[USER_ROLES.SYSTEM_ADMIN]
+    mock_logout = mocker.patch.object(server.api.auth, "logout_user")
+
+    with app.test_request_context():
+        login_user(user)
+
+        res, status = unwrap(auth.logout)()
+
+    assert not res
+    assert status == HTTPStatus.NO_CONTENT
+    mock_logout.assert_called_once()
 
 
-def test_login_with_redis_error(app, datastore, mocker: MockerFixture):
-    mock_affiliations = Affiliations(roles=[_RoleGroup(repository_id=None, role=USER_ROLES.SYSTEM_ADMIN)], groups=[])
-    with app.test_request_context(
-        "/api/auth/login?next=users",
-        headers={
-            "eppn": "test_eppn",
-            "IsMemberOf": "https://cg.gakunin.jp/gr/group1;https://cg.gakunin.jp/gr/jc_roles_sysadm",
-            "DisplayName": "Test User",
-        },
-    ):
-        _, account_store, _ = datastore
-        account_store.hset.side_effect = RedisError
-        mocker.patch("server.services.users.get_by_eppn", return_value=mock_repoadmin_user_detail)
-        mocker.patch("server.api.auth.extract_group_ids", return_value=["group1", "jc_roles_sysadm"])
-        mocker.patch("server.api.auth.detect_affiliations", return_value=mock_affiliations)
-        expected_code = (E.FAILED_SET_LOGIN_SESSION % {"eppn": "test_eppn"}).code
-        expected_message = (E.FAILED_SET_LOGIN_SESSION % {"eppn": "test_eppn"}).data
-        with pytest.raises(DatastoreError) as exc_info:
-            auth.login()
-        assert str(exc_info.value.code) == expected_code
-        assert str(exc_info.value.string) == expected_message
+def test_logout_no_session_id(app, login_users, mocker):
+    user = login_users[USER_ROLES.SYSTEM_ADMIN]
+    mock_logout = mocker.patch.object(server.api.auth, "logout_user")
+
+    with app.test_request_context():
+        login_user(user)
+        session["_id"] = None
+
+        res, status = unwrap(auth.logout)()
+
+    assert status == HTTPStatus.NO_CONTENT
+    assert not res
+    mock_logout.assert_called_once()
 
 
-@pytest.mark.parametrize("session_id", ["test_eppn", None])
-def test_logout(app, session_id):
-    app.secret_key = "test-secret"
-    with app.test_request_context("/api/auth/logout"):
-        login_user(mock_repoadmin_login_user)
-        session["_id"] = session_id
-        resp, code = auth.logout()
-    assert resp == ""  # noqa: PLC1901
-    assert code == HTTPStatus.NO_CONTENT
-
-
-def test_logout_with_redis_error(app, datastore, mocker: MockerFixture):
+def test_logout_with_redis_error(app, datastore, login_users):
+    user = login_users[USER_ROLES.SYSTEM_ADMIN]
     _, account_store, _ = datastore
     account_store.delete.side_effect = RedisError
-    with app.test_request_context("/api/auth/logout"):
-        login_user(mock_repoadmin_login_user)
+
+    with app.test_request_context():
+        login_user(user)
         session["_id"] = "test_session_id"
-        resp, code = auth.logout()
-    assert resp == ""  # noqa: PLC1901
-    assert code == HTTPStatus.NO_CONTENT
+        res, status = unwrap(auth.logout)()
+
+    assert status == HTTPStatus.NO_CONTENT
+    assert not res

@@ -9,13 +9,17 @@ ignore = [
   "S105",
   "S106",
   "CPY001",
+  "SLF001",
   "TC006",
   "ARG001",
+  "DOC",
   "D",
   "PLC2701",
   "PLR0914",
   "PLR0913",
-  "PLR0917"
+  "PLR0917",
+  "PLR6301",
+  "RUF076",
 ]
 
 [lint.isort]
