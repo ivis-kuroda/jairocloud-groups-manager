@@ -3,7 +3,7 @@
 install_deps() {
     # Install Python dependencies
     pip install --upgrade pip && pip install uv
-    uv sync && uv pip install -e .
+    uv sync
 
     if ! grep -q "venv_activate_reload" ~/.bashrc 2>/dev/null; then
         {

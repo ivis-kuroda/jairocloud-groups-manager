@@ -34,7 +34,7 @@ USER ${USERNAME}
 FROM base AS dev
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+RUN uv sync --frozen --no-install-project
 
 COPY --chown=${USERNAME}:${GROUPNAME} . .
 RUN uv pip install -e .
@@ -67,7 +67,7 @@ RUN uv pip install uwsgi --system
 
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --frozen
+RUN uv sync --no-dev --frozen --no-install-project
 
 COPY . .
 RUN uv pip install .
