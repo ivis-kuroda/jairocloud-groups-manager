@@ -12,6 +12,7 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "preview": "nuxt preview",
+    "preinstall": "npx only-allow pnpm",
     "postinstall": "nuxt prepare",
     "prepare": "husky",
     "lint": "eslint .",
@@ -47,8 +48,7 @@
   },
   "engines": {
     "node": "^24.14.0",
-    "pnpm": "^10.33.0",
-    "npm": "please_use_pnpm_instead"
+    "pnpm": "^11.6.0"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@11.6.0"
 }

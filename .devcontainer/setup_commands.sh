@@ -16,7 +16,7 @@ install_deps() {
     fi
 
     # Install Node.js dependencies
-    npm install -g npm && npm install -g pnpm
+    npm install -g npm && npm install -g pnpm@11.6.0
     pnpm config set global-bin-dir "$HOME/.local/bin"
     pnpm config set store-dir "$HOME/.pnpm-store"
     pnpm install -r
