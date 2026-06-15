@@ -29,12 +29,12 @@ export const createFetchErrorHandler = (
         break
       }
       case 401: {
-        toast.add({
-          ...baseToast,
-          title: $t('toast.error.unauthorized.title'),
-          description: $t('toast.error.unauthorized.description'),
-        })
         if (!publicRoutes.has(route.path.replace(/\/$/, ''))) {
+          toast.add({
+            ...baseToast,
+            title: $t('toast.error.unauthorized.title'),
+            description: $t('toast.error.unauthorized.description'),
+          })
           const next = encodeURIComponent(route.fullPath.replace(/\/$/, ''))
           await checkout({ next })
         }
