@@ -22,6 +22,7 @@ const config: UserConfig = {
         'style',
         'test',
         // additional types
+        'deps',
         'update',
         'remove',
         'hotfix',
