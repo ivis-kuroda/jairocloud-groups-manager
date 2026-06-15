@@ -32,6 +32,15 @@ export default defineNuxtConfig({
       },
     },
 
+    optimizeDeps: {
+      include: [
+        '@vue/devtools-core',
+        '@vue/devtools-kit',
+        '@internationalized/date',
+        'zod',
+        'tailwind-merge',
+      ],
+    },
   },
 
   eslint: {
