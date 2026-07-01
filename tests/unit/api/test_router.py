@@ -68,7 +68,7 @@ def test__handle_unexpected_error(mocker: MockerFixture):
 
     assert callable(handler)
 
-    res, status = t.cast(tuple, unwrap(handler)(error))
+    res, status = t.cast("tuple", unwrap(handler)(error))
 
     assert status == HTTPStatus.INTERNAL_SERVER_ERROR
     assert isinstance(res, ErrorResponse)
@@ -89,7 +89,7 @@ def test__handle_service_settings_error(mocker: MockerFixture, error_cls):
     error = error_cls(E.INVALID_SERVER_CONFIG)
 
     assert callable(handler)
-    res, status = t.cast(tuple, unwrap(handler)(error))
+    res, status = t.cast("tuple", unwrap(handler)(error))
 
     assert status == HTTPStatus.SERVICE_UNAVAILABLE
     assert isinstance(res, ErrorResponse)
@@ -108,7 +108,7 @@ def test__handle_api_request_error(mocker: MockerFixture):
     error = ApiRequestError(E.REPOSITORY_REQUIRES_SERVICE_NAME)
 
     assert callable(handler)
-    res, status = t.cast(tuple, unwrap(handler)(error))
+    res, status = t.cast("tuple", unwrap(handler)(error))
 
     assert status == HTTPStatus.BAD_REQUEST
     assert isinstance(res, ErrorResponse)
@@ -125,7 +125,7 @@ def test__unauthorized(mocker: MockerFixture):
     (handler,), _ = mock_decorator.call_args
 
     assert callable(handler)
-    res, status = t.cast(tuple, unwrap(handler)())
+    res, status = t.cast("tuple", unwrap(handler)())
 
     assert status == HTTPStatus.UNAUTHORIZED
     assert isinstance(res, ErrorResponse)

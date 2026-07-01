@@ -762,6 +762,12 @@ UPDATE_TASK_NOT_RUNNING = LogMessage(
 )
 
 
+AUTHENTICATION_NOT_YET = LogMessage(
+    "E900",
+    "Authentication has not been performed yet. "
+    "Please use the `@login_required` decorator in advance to check user roles.",
+)
+
 UNNECESSARY_CONTRIB = LogMessage(
     "E999", "Contrib utilities can only be used in development mode."
 )

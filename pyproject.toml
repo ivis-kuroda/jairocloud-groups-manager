@@ -38,7 +38,7 @@ dev = [
 ]
 
 [project.scripts]
-jairocloud-groups-manager = "server.app:cli"
+jairocloud-groups-manager = "server.main:cli"
 
 
 [tool.uv.build-backend]

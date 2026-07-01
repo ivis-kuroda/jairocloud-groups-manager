@@ -6,14 +6,14 @@
 
 import typing as t
 
+from functools import cache
 from http import HTTPStatus
 
 import requests
 
-from flask_login import current_user
 from pydantic import TypeAdapter
+from pydantic.alias_generators import to_camel
 
-from server.auth import is_user_logged_in
 from server.config import config
 from server.const import MAP_GROUPS_ENDPOINT
 from server.entities.map_error import MapError
@@ -22,7 +22,7 @@ from server.entities.patch_request import PatchOperation, PatchRequestPayload
 from server.entities.search_request import SearchRequestParameter, SearchResponse
 from server.signals import group_created, group_deleted, group_updated
 
-from .decoraters import cache_resource
+from .decorators import cache_resource, default_id_generator
 from .utils import compute_signature, get_time_stamp
 
 
@@ -36,16 +36,7 @@ type GroupsSearchResponse = SearchResponse[MapGroup] | MapError
 adapter_search: TypeAdapter[GroupsSearchResponse] = TypeAdapter(GroupsSearchResponse)
 
 
-def _search_cache_identifier(*args, **kwargs) -> str:  # noqa: ANN002, ANN003, ARG001
-    if not is_user_logged_in(current_user):
-        return "by_anonymous"
-    if current_user.is_system_admin:
-        return "by_system_admin"
-    permitted = sorted(current_user.permitted_repositories)
-    return ",".join(permitted)
-
-
-@cache_resource(identifier_generator=_search_cache_identifier)
+@cache_resource(id_generator=default_id_generator)
 def search(
     query: SearchRequestParameter,
     /,
@@ -75,21 +66,8 @@ def search(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
-
-    query_params = query.model_dump(
-        mode="json",
-        by_alias=True,
-    )
+    attributes_params = _build_attribute_params(include, exclude)
+    query_params = query.model_dump(mode="json", by_alias=True)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}",
@@ -136,16 +114,7 @@ def get_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
+    attributes_params = _build_attribute_params(include, exclude)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}/{group_id}",
@@ -159,7 +128,7 @@ def get_by_id(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def post(
@@ -192,23 +161,15 @@ def post(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = group.model_dump(
         mode="json",
-        exclude=set(exclude or ()),
+        include=include | {"id"} if include else None,
+        exclude=exclude,
         by_alias=True,
         exclude_unset=True,
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.post(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}",
@@ -220,10 +181,11 @@ def post(
         timeout=config.MAP_CORE.timeout,
     )
 
-    if response.status_code > HTTPStatus.BAD_REQUEST:
+    status_code = response.status_code
+    if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def put_by_id(
@@ -256,23 +218,15 @@ def put_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = group.model_dump(
         mode="json",
-        exclude=set(exclude or ()),
+        include=include | {"id"} if include else None,
+        exclude=exclude,
         by_alias=True,
         exclude_unset=True,
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.put(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}/{group.id}",
@@ -284,20 +238,21 @@ def put_by_id(
         timeout=config.MAP_CORE.timeout,
     )
 
-    if response.status_code > HTTPStatus.BAD_REQUEST:
+    status_code = response.status_code
+    if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text)
+    resource = adapter.validate_json(response.text, extra="ignore")
 
     if isinstance(resource, MapGroup):
-        group_updated.send(None, group=resource)
+        group_updated.send(put_by_id, group=resource)
 
     return resource
 
 
 def patch_by_id(
     group_id: str,
-    operations: list[PatchOperation[MapGroup]],
+    operations: t.Sequence[PatchOperation[MapGroup]],
     /,
     include: set[str] | None = None,
     exclude: set[str] | None = None,
@@ -309,7 +264,7 @@ def patch_by_id(
 
     Args:
         group_id (str): ID of the Group resource.
-        operations (list[PatchOperation]): List of patch operations to apply.
+        operations (Sequence[PatchOperation]): List of patch operations to apply.
         include (set[str] | None):
             Attribute names to include in update. Optional.
         exclude (set[str] | None):
@@ -327,22 +282,11 @@ def patch_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = PatchRequestPayload(operations=operations).model_dump(
-        mode="json",
-        by_alias=True,
-        exclude_unset=False,
+        mode="json", by_alias=True, exclude_none=False
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.patch(
         f"{config.MAP_CORE.base_url}{MAP_GROUPS_ENDPOINT}/{group_id}",
@@ -357,10 +301,10 @@ def patch_by_id(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text)
+    resource = adapter.validate_json(response.text, extra="ignore")
 
     if isinstance(resource, MapGroup):
-        group_updated.send(None, group=resource)
+        group_updated.send(patch_by_id, group=resource)
 
     return resource
 
@@ -402,90 +346,105 @@ def delete_by_id(
         response.raise_for_status()
 
     if not response.text:
-        group_updated.send(None, group=MapGroup(id=group_id))
+        group_deleted.send(delete_by_id, group_id=group_id)
         return None
 
-    return MapError.model_validate_json(response.text)
+    return MapError.model_validate_json(response.text, extra="ignore")
 
 
-def _get_alias_generator() -> t.Callable[[str], str]:
-    generator = MapGroup.model_config.get("alias_generator")
-    if generator and not callable(generator):
-        generator = generator.serialization_alias
-    if generator is None:
-        generator = lambda x: x  # noqa: E731
-
-    return generator
+@cache
+def _a(o: str) -> str:
+    ag = MapGroup.model_config.get("alias_generator")
+    fnc = ag if callable(ag) else ag.serialization_alias if ag else None
+    return fnc(o) if fnc else o
 
 
-alias_generator: t.Callable[[str], str] = _get_alias_generator()
-del _get_alias_generator
+def _build_attribute_params(
+    include: set[str] | None, exclude: set[str] | None
+) -> dict[str, str]:
+    attributes_params = {}
+    if include:
+        attributes_params[to_camel("attributes")] = ",".join([
+            _a(name) for name in include | {"id"}
+        ])
+    if exclude:
+        attributes_params[to_camel("excluded_attributes")] = ",".join([
+            _a(name) for name in exclude
+        ])
+    return attributes_params
 
 
 @group_updated.connect
 @group_deleted.connect
 def handle_group_updated(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     group: MapGroup | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle group_updated signal to clear cache of the updated group.
 
     Args:
+        sender: The sender of the signal.
         group (MapGroup): The updated Group resource.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if group:
-        get_by_id.clear_cache(group.id)  # pyright: ignore[reportFunctionMemberAccess]
+    if not isinstance(group, MapGroup) or not group.id:
+        return
+
+    get_by_id.clear_cache(group.id)
 
 
 @group_updated.connect
 @group_deleted.connect
 def handle_group_updated_by_id(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     group_id: str | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle group_updated signal to clear cache of the updated group by ID.
 
     Args:
         sender: The sender of the signal.
         group_id (str): ID of the updated Group resource.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if group_id:
-        get_by_id.clear_cache(group_id)  # pyright: ignore[reportFunctionMemberAccess]
+    if not group_id:
+        return
+
+    get_by_id.clear_cache(group_id)
 
 
 @group_updated.connect
 @group_deleted.connect
 def handle_group_updated_by_ids(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     group_ids: list[str] | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle group_updated signal to clear cache of the updated groups by IDs.
 
     Args:
         sender: The sender of the signal.
         group_ids (list): IDs of the updated Group resources.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if group_ids:
-        get_by_id.clear_cache(*group_ids)  # pyright: ignore[reportFunctionMemberAccess]
+    if not group_ids:
+        return
+
+    get_by_id.clear_cache(*group_ids)
 
 
 @group_created.connect
 @group_updated.connect
 @group_deleted.connect
 def handle_reset_search_cache(
-    _sender: object,
-    **kwargs,  # noqa: ANN003, ARG001
+    _sender: object = None,
+    *_args,  # noqa: ANN002
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle users signals to clear cache of the search results.
 
     Args:
         sender: The sender of the signal.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    search.clear_cache(_search_cache_identifier())  # pyright: ignore[reportFunctionMemberAccess]
+    search.clear_cache(default_id_generator())

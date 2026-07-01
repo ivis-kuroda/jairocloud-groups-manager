@@ -13,7 +13,7 @@ from pkgutil import iter_modules
 from flask import Blueprint
 from flask_pydantic import validate
 
-from server.auth import login_manager, refresh_session
+from server.auth import login_manager
 from server.exc import (
     ApiRequestError,
     InfrastructureError,
@@ -22,6 +22,7 @@ from server.exc import (
     UnsafeOperationError,
 )
 from server.messages import E
+from server.signals import before_request
 
 from .schemas import ErrorResponse
 
@@ -90,7 +91,10 @@ def create_api_blueprint() -> Blueprint:
         traceback.print_exc()
         return ErrorResponse(message=error.message), 400
 
-    bp_api.before_request(refresh_session)
+    @bp_api.before_request
+    def emit_before_request_signal() -> None:
+        """Emit signal at API before-request timing."""
+        before_request.send(bp_api)  # pragma: no cover
 
     @login_manager.unauthorized_handler
     @validate()

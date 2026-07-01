@@ -10,6 +10,19 @@ from enum import StrEnum
 from typing import Final
 
 
+class RUNTIME_ROLE(StrEnum):
+    """Constants for runtime roles of the application."""
+
+    SERVER = "server"
+    """Role identifier for the server application."""
+
+    WORKER = "worker"
+    """Role identifier for the worker application."""
+
+    CLI = "cli"
+    """Role identifier for the command-line interface application."""
+
+
 DEFAULT_CONFIG_PATH: Final = "configs/server.config.toml"
 """Default path to the server configuration TOML file."""
 
@@ -181,24 +194,31 @@ USER_EXPORT_HEADERS_V1 = [
 """List of fields to include in user export files for version 1.0."""
 
 
-HAS_REPO_ID_PATTERN: Final = r".*\{repository_id\}.*"
+HAS_REPO_ID_PATTERN: Final = r"^(?!(?:.*\{repository_id\}){2}).*\{repository_id\}.*$"
 """Regular expression pattern for role-type group IDs.
 
-It should include `{repository_id}` placeholder.
+It should include one `{repository_id}` placeholder.
 """
 
 HAS_REPO_ID_AND_USER_DEFINED_ID_PATTERN: Final = (
-    r".*\{repository_id\}.*\{user_defined_id\}.*"
+    r"^"
+    r"(?!.*\{repository_id\}.*\{repository_id\})"
+    r"(?!.*\{user_defined_id\}.*\{user_defined_id\})"
+    r".*\{repository_id\}.*"
+    r"\{user_defined_id\}.*$"
 )
 """Regular expression pattern for user-defined group IDs.
 
-It should include `{repository_id}`, followed by `{user_defined_id}` placeholders.
+It should include one `{repository_id}`, followed by one `{user_defined_id}`
+placeholders.
 """
 
-HAS_REPO_NAME_PATTERN: Final = r".*\{repository_name\}.*"
+HAS_REPO_NAME_PATTERN: Final = (
+    r"^(?!(?:.*\{repository_name\}){2}).*\{repository_name\}.*$"
+)
 """Regular expression pattern for role-type group names.
 
-It should include `{repository_name}` placeholder.
+It should include one `{repository_name}` placeholder.
 """
 
 IS_MEMBER_OF_PATTERN: Final = r"/gr/([^/;]+)(?=;|$)(?!/admin)"

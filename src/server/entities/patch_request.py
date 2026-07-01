@@ -20,7 +20,7 @@ class PatchRequestPayload[T: BaseModel](BaseModel):
     """Schema URIs that define the attributes present in the PATCH request payload."""
 
     operations: t.Annotated[
-        list[PatchOperation[T]], Field(..., serialization_alias="Operations")
+        t.Sequence[PatchOperation[T]], Field(..., serialization_alias="Operations")
     ]
     """List of patch operations to be applied to the target resource.
     Alias for 'Operations'.
@@ -38,7 +38,10 @@ type PatchOperation[T: BaseModel] = t.Annotated[
 
 
 class AddOperation[T: BaseModel](BaseModel):
-    """Model for 'add' patch operations."""
+    """Model for SCIM 'add' patch operations.
+
+    The :attr:`op` field is always set to 'add'.
+    """
 
     op: t.Literal["add"] = "add"
     """The operation type. Always 'add'."""
@@ -54,7 +57,10 @@ class AddOperation[T: BaseModel](BaseModel):
 
 
 class RemoveOperation[T: BaseModel](BaseModel):
-    """Model for 'remove' patch operations."""
+    """Model for SCIM 'remove' patch operations.
+
+    The :attr:`op` field is always set to 'remove'.
+    """
 
     op: t.Literal["remove"] = "remove"
     """The operation type. Always 'remove'."""
@@ -67,7 +73,10 @@ class RemoveOperation[T: BaseModel](BaseModel):
 
 
 class ReplaceOperation[T: BaseModel](BaseModel):
-    """Model for 'replace' patch operations."""
+    """Model for SCIM 'replace' patch operations.
+
+    The :attr:`op` field is always set to 'replace'.
+    """
 
     op: t.Literal["replace"] = "replace"
     """The operation type. Always 'replace'."""

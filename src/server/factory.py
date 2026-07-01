@@ -15,6 +15,7 @@ from flask import Flask
 from flask_login import current_user
 
 from server.auth import get_user_from_store, is_user_logged_in
+from server.const import RUNTIME_ROLE
 from server.ext import JAIROCloudGroupsManager
 
 
@@ -23,17 +24,30 @@ if t.TYPE_CHECKING:
 
 
 @t.overload
-def create_app(import_name: str) -> Flask: ...
+def create_app(
+    import_name: str,
+    *,
+    runtime_role: RUNTIME_ROLE = RUNTIME_ROLE.SERVER,
+) -> Flask: ...
 @t.overload
-def create_app(import_name: str, *, config_path: str) -> Flask: ...
+def create_app(
+    import_name: str,
+    *,
+    config_path: str,
+    runtime_role: RUNTIME_ROLE = RUNTIME_ROLE.SERVER,
+) -> Flask: ...
 @t.overload
-def create_app(import_name: str, *, config: RuntimeConfig) -> Flask: ...
-
-
+def create_app(
+    import_name: str,
+    *,
+    config: RuntimeConfig,
+    runtime_role: RUNTIME_ROLE = RUNTIME_ROLE.SERVER,
+) -> Flask: ...
 def create_app(
     import_name: str,
     config_path: str | None = None,
     config: RuntimeConfig | None = None,
+    runtime_role: RUNTIME_ROLE = RUNTIME_ROLE.SERVER,
 ) -> Flask:
     """Factory function to create and configure the Flask application.
 
@@ -41,12 +55,13 @@ def create_app(
         import_name (str): The name of the application package.
         config_path (str | None): The path to the configuration TOML file.
         config (RuntimeConfig | None): The runtime configuration instance.
+        runtime_role (RUNTIME_ROLE): The role of the application at runtime.
 
     Returns:
         Flask: The configured Flask application instance.
-
     """
     app = Flask(import_name)
+    app.config["RUNTIME_ROLE"] = runtime_role
     JAIROCloudGroupsManager(app, config=config or config_path)
     celery_init_app(app)
 

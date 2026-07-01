@@ -55,7 +55,7 @@ export default withNuxt(
     files: ['**/app/**/*.vue'],
     rules: {
       'unicorn/filename-case': [
-        'error', { case: 'pascalCase', ignore: ['app.vue'] },
+        'error', { case: 'pascalCase', ignore: ['app.vue'], checkDirectories: false },
       ],
       'vue/no-multiple-template-root': 'off',
     },

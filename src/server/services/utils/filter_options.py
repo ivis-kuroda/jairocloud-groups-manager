@@ -7,6 +7,9 @@
 import re
 import typing as t
 
+from functools import cache
+from typing import get_args, get_origin, get_type_hints
+
 from server.const import USER_ROLES
 from server.entities.search_request import FilterOption
 
@@ -14,6 +17,7 @@ from .permissions import is_current_user_system_admin
 from .search_queries import (
     Criteria,
     GroupsCriteria,
+    HistoryCriteria,
     UsersCriteria,
     group_sortable_keys,
     repository_sortable_keys,
@@ -31,18 +35,16 @@ def search_repositories_options() -> list[FilterOption[RepositorySummary]]:
     Returns:
         list[FilterOption]: List of filter options for repository search.
     """
-    alias = FilterOption._alias_generator  # noqa: SLF001
-
     options = _initial_options()
 
     options.extend((
-        # sort key
+        # sort attribute key
         FilterOption(
             key="k",
-            description=_get_description(Criteria, "k"),
-            type=_get_type(Criteria, "k"),
-            multiple=_allow_multiple(Criteria, "k"),
-            items=[{"value": alias(key)} for key in repository_sortable_keys],
+            description=__get_description(Criteria, "k"),
+            type=__get_type(Criteria, "k"),
+            multiple=__allow_multiple(Criteria, "k"),
+            items=[{"value": _a(key)} for key in repository_sortable_keys],
         ),
     ))
 
@@ -57,38 +59,34 @@ def search_groups_options() -> list[FilterOption[GroupSummary]]:
     Returns:
         list[FilterOption]: List of filter options for group search.
     """
-    alias = FilterOption._alias_generator  # noqa: SLF001
-
     options = _initial_options()
 
-    repos: list[dict[str, str]] = [
-        # lazy load repositories.
-    ]
-    options.append(
-        # affiliated repositories
+    options.extend((
+        # affiliated repository IDs
         FilterOption(
             key="r",
-            description=_get_description(GroupsCriteria, "r"),
-            type=_get_type(GroupsCriteria, "r"),
-            multiple=_allow_multiple(GroupsCriteria, "r"),
-            items=repos,
-        )
-    )
-
-    options.extend((
-        # affiliated users
+            description=__get_description(GroupsCriteria, "r"),
+            type=__get_type(GroupsCriteria, "r"),
+            multiple=__allow_multiple(GroupsCriteria, "r"),
+            # repositories are lazy loaded.
+        ),
+        # affiliated user IDs
         FilterOption(
             key="u",
-            description=_get_description(GroupsCriteria, "u"),
-            type=_get_type(GroupsCriteria, "u"),
-            multiple=_allow_multiple(GroupsCriteria, "u"),
+            description=__get_description(GroupsCriteria, "u"),
+            type=__get_type(GroupsCriteria, "u"),
+            multiple=__allow_multiple(GroupsCriteria, "u"),
+            # users are lazy loaded.
         ),
+    ))
+
+    options.extend((
         # public status
         FilterOption(
             key="s",
-            description=_get_description(GroupsCriteria, "s"),
-            type=_get_type(GroupsCriteria, "s"),
-            multiple=_allow_multiple(GroupsCriteria, "s"),
+            description=__get_description(GroupsCriteria, "s"),
+            type=__get_type(GroupsCriteria, "s"),
+            multiple=__allow_multiple(GroupsCriteria, "s"),
             items=[
                 {"value": 0, "label": "public"},
                 {"value": 1, "label": "private"},
@@ -97,22 +95,22 @@ def search_groups_options() -> list[FilterOption[GroupSummary]]:
         # member list visibility
         FilterOption(
             key="v",
-            description=_get_description(GroupsCriteria, "v"),
-            type=_get_type(GroupsCriteria, "v"),
-            multiple=_allow_multiple(GroupsCriteria, "v"),
+            description=__get_description(GroupsCriteria, "v"),
+            type=__get_type(GroupsCriteria, "v"),
+            multiple=__allow_multiple(GroupsCriteria, "v"),
             items=[
                 {"value": 0, "label": "Public"},
                 {"value": 1, "label": "Private"},
                 {"value": 2, "label": "Hidden"},
             ],
         ),
-        # sort key
+        # sort attribute key
         FilterOption(
             key="k",
-            description=_get_description(Criteria, "k"),
-            type=_get_type(Criteria, "k"),
-            multiple=_allow_multiple(Criteria, "k"),
-            items=[{"value": alias(key)} for key in group_sortable_keys],
+            description=__get_description(Criteria, "k"),
+            type=__get_type(Criteria, "k"),
+            multiple=__allow_multiple(Criteria, "k"),
+            items=[{"value": _a(key)} for key in group_sortable_keys],
         ),
     ))
 
@@ -127,76 +125,62 @@ def search_users_options() -> list[FilterOption[UserSummary]]:
     Returns:
         list[FilterOption]: List of filter options for user search.
     """
-    alias = FilterOption._alias_generator  # noqa: SLF001
     is_system_admin = is_current_user_system_admin()
-
     options = _initial_options()
 
-    repos: list[dict[str, str]] = [
-        # lazy load repositories.
-    ]
-    options.append(
-        # affiliated repositories
+    options.extend((
+        # affiliated repository IDs
         FilterOption(
             key="r",
-            description=_get_description(UsersCriteria, "r"),
-            type=_get_type(UsersCriteria, "r"),
-            multiple=_allow_multiple(UsersCriteria, "r"),
-            items=repos,
-        )
-    )
-    gros: list[dict[str, str]] = [
-        # lazy load groups.
-    ]
-    options.append(
-        # affiliated groups
+            description=__get_description(UsersCriteria, "r"),
+            type=__get_type(UsersCriteria, "r"),
+            multiple=__allow_multiple(UsersCriteria, "r"),
+            # repositories are lazy loaded.
+        ),
+        # affiliated group IDs
         FilterOption(
             key="g",
-            description=_get_description(UsersCriteria, "g"),
-            type=_get_type(UsersCriteria, "g"),
-            multiple=_allow_multiple(UsersCriteria, "g"),
-            items=gros,
-        )
-    )
-
-    roles = list(USER_ROLES)
-    options.append(
+            description=__get_description(UsersCriteria, "g"),
+            type=__get_type(UsersCriteria, "g"),
+            multiple=__allow_multiple(UsersCriteria, "g"),
+            # groups are lazy loaded.
+        ),
         # user roles
         FilterOption(
             key="a",
-            description=_get_description(UsersCriteria, "a"),
-            type=_get_type(UsersCriteria, "a"),
-            multiple=_allow_multiple(UsersCriteria, "a"),
+            description=__get_description(UsersCriteria, "a"),
+            type=__get_type(UsersCriteria, "a"),
+            multiple=__allow_multiple(UsersCriteria, "a"),
             items=[
-                {"value": i, "label": alias(name)}
-                for i, name in enumerate(roles)
+                {"value": i, "label": _a(name)}
+                for i, name in enumerate(list(USER_ROLES))
                 if is_system_admin or name != USER_ROLES.SYSTEM_ADMIN
             ],
-        )
-    )
+        ),
+    ))
 
     options.extend((
         # last modified date (from)
         FilterOption(
             key="s",
-            description=_get_description(UsersCriteria, "s"),
-            type=_get_type(UsersCriteria, "s"),
-            multiple=_allow_multiple(UsersCriteria, "s"),
+            description=__get_description(UsersCriteria, "s"),
+            type=__get_type(UsersCriteria, "s"),
+            multiple=__allow_multiple(UsersCriteria, "s"),
         ),
         # last modified date (to)
         FilterOption(
             key="e",
-            description=_get_description(UsersCriteria, "e"),
-            type=_get_type(UsersCriteria, "e"),
-            multiple=_allow_multiple(UsersCriteria, "e"),
+            description=__get_description(UsersCriteria, "e"),
+            type=__get_type(UsersCriteria, "e"),
+            multiple=__allow_multiple(UsersCriteria, "e"),
         ),
-        # sort key
+        # sort attribute key
         FilterOption(
             key="k",
-            description=_get_description(Criteria, "k"),
-            type=_get_type(Criteria, "k"),
-            multiple=_allow_multiple(Criteria, "k"),
-            items=[{"value": alias(key)} for key in user_sortable_keys],
+            description=__get_description(Criteria, "k"),
+            type=__get_type(Criteria, "k"),
+            multiple=__allow_multiple(Criteria, "k"),
+            items=[{"value": _a(key)} for key in user_sortable_keys],
         ),
     ))
 
@@ -205,21 +189,26 @@ def search_users_options() -> list[FilterOption[UserSummary]]:
     return options
 
 
+@cache
+def _a(o: str) -> str:
+    return FilterOption._alias_generator(o)  # noqa: SLF001
+
+
 def _initial_options() -> list[FilterOption]:
     return [
         # search term
         FilterOption(
             key="q",
-            description=_get_description(Criteria, "q"),
-            type=_get_type(Criteria, "q"),
-            multiple=_allow_multiple(Criteria, "q"),
+            description=__get_description(Criteria, "q"),
+            type=__get_type(Criteria, "q"),
+            multiple=__allow_multiple(Criteria, "q"),
         ),
-        # IDs
+        # resource IDs
         FilterOption(
             key="i",
-            description=_get_description(Criteria, "i"),
-            type=_get_type(Criteria, "i"),
-            multiple=_allow_multiple(Criteria, "i"),
+            description=__get_description(Criteria, "i"),
+            type=__get_type(Criteria, "i"),
+            multiple=__allow_multiple(Criteria, "i"),
         ),
     ]
 
@@ -230,9 +219,9 @@ def _common_options() -> list[FilterOption]:
         # sort order
         FilterOption(
             key="d",
-            description=_get_description(Criteria, "d"),
-            type=_get_type(Criteria, "d"),
-            multiple=_allow_multiple(Criteria, "d"),
+            description=__get_description(Criteria, "d"),
+            type=__get_type(Criteria, "d"),
+            multiple=__allow_multiple(Criteria, "d"),
             items=[
                 {"value": "asc", "label": "Ascending"},
                 {"value": "desc", "label": "Descending"},
@@ -241,16 +230,16 @@ def _common_options() -> list[FilterOption]:
         # page number
         FilterOption(
             key="p",
-            description=_get_description(Criteria, "p"),
-            type=_get_type(Criteria, "p"),
-            multiple=_allow_multiple(Criteria, "p"),
+            description=__get_description(Criteria, "p"),
+            type=__get_type(Criteria, "p"),
+            multiple=__allow_multiple(Criteria, "p"),
         ),
         # page size
         FilterOption(
             key="l",
-            description=_get_description(Criteria, "l"),
-            type=_get_type(Criteria, "l"),
-            multiple=_allow_multiple(Criteria, "l"),
+            description=__get_description(Criteria, "l"),
+            type=__get_type(Criteria, "l"),
+            multiple=__allow_multiple(Criteria, "l"),
         ),
     ]
 
@@ -258,18 +247,18 @@ def _common_options() -> list[FilterOption]:
 type OptionType = t.Literal["string", "number", "date"]
 
 
-def _get_description(cls: type, attr_name: str) -> str | None:
-    hints = t.get_type_hints(cls, include_extras=True)
+def __get_description(cls: type, attr_name: str) -> str | None:
+    hints = get_type_hints(cls, include_extras=True)
     hint = hints.get(attr_name)
 
-    if t.get_origin(hint) is t.Annotated:
-        return t.get_args(hint)[1]
+    if get_origin(hint) is t.Annotated:
+        return get_args(hint)[1]
 
     return None
 
 
-def _get_type(protocol_cls: type, attr_name: str) -> OptionType:
-    hints = t.get_type_hints(protocol_cls)
+def __get_type(protocol_cls: type, attr_name: str) -> OptionType:
+    hints = get_type_hints(protocol_cls)
     hint_str = str(hints.get(attr_name, ""))
 
     if "date" in hint_str:
@@ -280,20 +269,20 @@ def _get_type(protocol_cls: type, attr_name: str) -> OptionType:
     return "string"
 
 
-def _allow_multiple(protocol_cls: type, attr_name: str) -> bool:
-    hints = t.get_type_hints(protocol_cls)
+def __allow_multiple(protocol_cls: type, attr_name: str) -> bool:
+    hints = get_type_hints(protocol_cls)
 
     if attr_name not in hints:
         return False
 
     arg_type = hints[attr_name]
-    origin = t.get_origin(arg_type)
+    origin = get_origin(arg_type)
 
     if origin is t.Union or (
         hasattr(t, "UnionType") and isinstance(arg_type, t.UnionType)  # pyright: ignore[reportAttributeAccessIssue]
     ):
-        args = t.get_args(arg_type)
-        return any(t.get_origin(arg) is list or arg is list for arg in args)
+        args = get_args(arg_type)
+        return any(get_origin(arg) is list or arg is list for arg in args)
 
     return origin is list or arg_type is list
 
@@ -304,25 +293,45 @@ def search_history_filter_options() -> list[FilterOption]:
     Returns:
         list[FilterOption]: List of filter options for history search.
     """
-    items = [
-        # lazy load repositories.
-    ]
-
-    return [
+    # Items of options are lazy loaded in the frontend.
+    options = [
+        # history ID (parent ID)
         FilterOption(
-            key="o", description="operator", type="string", multiple=True, items=items
+            key="i",
+            description=__get_description(HistoryCriteria, "i"),
+            type=__get_type(HistoryCriteria, "i"),
+            multiple=__allow_multiple(HistoryCriteria, "i"),
         ),
+        # repository IDs
         FilterOption(
             key="r",
-            description="repositories",
-            type="string",
-            multiple=True,
-            items=items,
+            description=__get_description(HistoryCriteria, "r"),
+            type=__get_type(HistoryCriteria, "r"),
+            multiple=__allow_multiple(HistoryCriteria, "r"),
         ),
+        # group IDs
         FilterOption(
-            key="g", description="groups", type="string", multiple=True, items=items
+            key="g",
+            description=__get_description(HistoryCriteria, "g"),
+            type=__get_type(HistoryCriteria, "g"),
+            multiple=__allow_multiple(HistoryCriteria, "g"),
         ),
+        # user IDs
         FilterOption(
-            key="u", description="users", type="string", multiple=True, items=items
+            key="u",
+            description=__get_description(HistoryCriteria, "u"),
+            type=__get_type(HistoryCriteria, "u"),
+            multiple=__allow_multiple(HistoryCriteria, "u"),
+        ),
+        # operator user IDs
+        FilterOption(
+            key="o",
+            description=__get_description(HistoryCriteria, "o"),
+            type=__get_type(HistoryCriteria, "o"),
+            multiple=__allow_multiple(HistoryCriteria, "o"),
         ),
     ]
+
+    options.extend(_common_options())
+
+    return options

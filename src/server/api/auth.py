@@ -30,8 +30,8 @@ from server.messages import E, I, W
 from server.services import users
 from server.services.utils import (
     detect_affiliations,
-    extract_group_ids,
     get_highest_role,
+    parse_affiliated_group_ids,
 )
 
 from .schemas import LoginUserState
@@ -60,7 +60,7 @@ def check() -> tuple[LoginUserState, int]:
 
 
 @bp.get("/login")
-def login() -> Response:  # noqa: PLR0914
+def login() -> Response:
     """Handle user login, validate authorization, create session.
 
     Returns:
@@ -88,7 +88,7 @@ def login() -> Response:  # noqa: PLR0914
             f"/gr/{urlparse.quote(g.id, safe='')}" for g in user.groups or []
         )
 
-    groups = extract_group_ids(is_member_of)
+    groups = parse_affiliated_group_ids(is_member_of)
     user_roles, _ = detect_affiliations(groups)
     if not any(
         r.role in {USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN}
@@ -118,6 +118,7 @@ def login() -> Response:  # noqa: PLR0914
     account_data = user.model_dump(mode="json", by_alias=True) | {
         alias("is_system_admin"): str(user.is_system_admin)
     }
+
     try:
         account_store.hset(key, mapping=account_data)
         session_ttl: int = config.SESSION.sliding_lifetime
@@ -125,8 +126,7 @@ def login() -> Response:  # noqa: PLR0914
             account_store.expire(key, session_ttl)
     except RedisError as exc:
         current_app.logger.error(E.FAILED_SET_LOGIN_SESSION, {"eppn": user.eppn})
-        error = E.FAILED_SET_LOGIN_SESSION % {"eppn": user.eppn}
-        raise DatastoreError(error) from exc
+        raise DatastoreError(E.FAILED_SET_LOGIN_SESSION % {"eppn": user.eppn}) from exc
 
     next_val = request.args.get("next")
     location = "/" if not next_val else f"/?{urlparse.urlencode({'next': next_val})}"

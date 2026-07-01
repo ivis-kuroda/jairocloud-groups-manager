@@ -18,6 +18,7 @@ from tests.helpers import assert_message, regex
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
+    from werkzeug.local import LocalProxy
 
     from server.config import RuntimeConfig
 
@@ -88,13 +89,12 @@ def test_connection_ping_error(test_config: RuntimeConfig, mocker: MockerFixture
 
 @pytest.mark.redis_enabled
 @pytest.mark.parametrize("name", ["app_cache", "account_store", "group_cache"])
-def test_proxy(name: str, base_app, test_config, mocker: MockerFixture):
+def test_proxy(name: str, base_app: Flask, test_config, mocker: MockerFixture):
     mocker.patch.object(Redis, "ping")
     ext = JAIROCloudGroupsManager(base_app, config=test_config)
     expected = ext.datastore[name]
 
+    proxy: LocalProxy[Redis] = getattr(server.datastore, name)
     with base_app.app_context():
-        proxy = getattr(server.datastore, name)
-
         assert proxy == expected
         assert proxy._get_current_object() is expected

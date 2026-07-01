@@ -2,13 +2,13 @@ import typing as t
 
 from http import HTTPStatus
 
-from flask import Response
+from flask import Flask, Response
 from flask_login import login_user
 
 import server.api.users
 
 from server.api import users
-from server.api.schemas import ErrorResponse, FileQuery, UsersQuery
+from server.api.schemas import ErrorResponse, ExportUsersQuery, UsersQuery
 from server.const import USER_ROLES
 from server.entities.search_request import FilterOption, SearchResult
 from server.exc import (
@@ -132,7 +132,7 @@ def test_id_get_forbidden(app, user_details, mocker: MockerFixture, caplog):
     mock_permission.assert_called_once_with(target)
 
 
-def test_id_put(app, login_users, user_details, mocker: MockerFixture):
+def test_id_put(app: Flask, login_users, user_details, mocker: MockerFixture):
     body = expected = user_details[USER_ROLES.CONTRIBUTOR]
     uid, body.id = body.id, None
     mock_update = mocker.patch.object(server.api.users.users, "update", return_value=body)
@@ -149,7 +149,7 @@ def test_id_put(app, login_users, user_details, mocker: MockerFixture):
     mock_permission.assert_not_called()  # not to check (implemented in service layer)
 
 
-def test_id_put_self(app, login_users, user_details, mocker: MockerFixture):
+def test_id_put_self(app: Flask, login_users, user_details, mocker: MockerFixture):
     body = expected = user_details[USER_ROLES.REPOSITORY_ADMIN]
     mock_update = mocker.patch.object(server.api.users.users, "update", return_value=body)
     spy_logout = mocker.spy(server.api.users, "logout")
@@ -243,9 +243,9 @@ def test_filter_options(mocker: MockerFixture):
     assert result == expected
 
 
-def test_export_get(app, login_users, mocker: MockerFixture, tmp_path):
+def test_export_get(app: Flask, login_users, mocker: MockerFixture, tmp_path):
     operator = login_users[USER_ROLES.REPOSITORY_ADMIN]
-    query = FileQuery(f="tsv")
+    query = ExportUsersQuery(f="tsv")
 
     file_path = tmp_path / "export.tsv"
     file_path.write_text("test file content")
@@ -261,9 +261,9 @@ def test_export_get(app, login_users, mocker: MockerFixture, tmp_path):
     mock_export.assert_called_once_with(operator.map_id, operator.user_name, query)
 
 
-def test_export_post(app, login_users, mocker: MockerFixture, tmp_path):
+def test_export_post(app: Flask, login_users, mocker: MockerFixture, tmp_path):
     operator = login_users[USER_ROLES.REPOSITORY_ADMIN]
-    query = FileQuery(f="tsv")
+    query = ExportUsersQuery(f="tsv")
 
     file_path = tmp_path / "export.tsv"
     file_path.write_text("test file content")
@@ -279,9 +279,9 @@ def test_export_post(app, login_users, mocker: MockerFixture, tmp_path):
     mock_export.assert_called_once_with(operator.map_id, operator.user_name, query)
 
 
-def test_export_forbidden(app, login_users, mocker: MockerFixture):
+def test_export_forbidden(app: Flask, login_users, mocker: MockerFixture):
     operator = login_users[USER_ROLES.REPOSITORY_ADMIN]
-    query = FileQuery(f="tsv")
+    query = ExportUsersQuery(f="tsv")
 
     mock_export = mocker.patch.object(server.api.users.users, "make_export_file")
     mock_export.side_effect = InvalidExportError(E.USER_FORBIDDEN_EXPORT)
@@ -295,9 +295,9 @@ def test_export_forbidden(app, login_users, mocker: MockerFixture):
     assert_message(res.message, E.USER_FORBIDDEN_EXPORT)
 
 
-def test_export_invalid_query_error(app, login_users, mocker: MockerFixture):
+def test_export_invalid_query_error(app: Flask, login_users, mocker: MockerFixture):
     operator = login_users[USER_ROLES.REPOSITORY_ADMIN]
-    body = FileQuery(f="tsv")
+    body = ExportUsersQuery(f="tsv")
 
     mock_export = mocker.patch.object(server.api.users.users, "make_export_file")
     mock_export.side_effect = InvalidQueryError(E.UNSUPPORTED_SEARCH_FILTER)

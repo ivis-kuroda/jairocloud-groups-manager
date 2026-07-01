@@ -12,6 +12,7 @@ import typing as t
 from datetime import date, datetime, timedelta
 from functools import cache
 from types import SimpleNamespace
+from typing import get_args, get_type_hints, runtime_checkable
 from zoneinfo import ZoneInfo
 
 from flask import current_app
@@ -56,9 +57,8 @@ def build_search_query(criteria: Criteria) -> SearchRequestParameter:
         case RepositoriesCriteria():
             query = build_repositories_search_query(criteria)
         case _:
-            error = E.UNRECOGNIZED_SEARCH_CRITERIA
-            current_app.logger.error(error)
-            raise InvalidQueryError(error)
+            current_app.logger.error(E.UNRECOGNIZED_SEARCH_CRITERIA)
+            raise InvalidQueryError(E.UNRECOGNIZED_SEARCH_CRITERIA)
 
     return query
 
@@ -781,31 +781,31 @@ class Criteria(t.Protocol):
     """Page size (number of items per page)."""
 
 
-@t.runtime_checkable
+@runtime_checkable
 class RepositoriesCriteria(Criteria, t.Protocol):
-    """Protocol for search criteria."""
+    """Protocol for repository search criteria."""
 
 
-@t.runtime_checkable
+@runtime_checkable
 class GroupsCriteria(Criteria, t.Protocol):
-    """Protocol for search criteria."""
+    """Protocol for group search criteria."""
 
-    r: list[str] | None
+    r: t.Annotated[list[str] | None, "affiliated repository IDs"]
     """Filter by affiliated repository IDs."""
 
-    u: list[str] | None
+    u: t.Annotated[list[str] | None, "affiliated user IDs"]
     """Filter by affiliated user IDs."""
 
-    s: t.Literal[0, 1] | None
+    s: t.Annotated[t.Literal[0, 1] | None, "public status"]
     """Filter by public status: 0 (public), 1 (private)."""
 
-    v: t.Literal[0, 1, 2] | None
+    v: t.Annotated[t.Literal[0, 1, 2] | None, "member list visibility"]
     """Filter by member list visibility: 0 (public), 1 (private), 2 (hidden)."""
 
 
-@t.runtime_checkable
+@runtime_checkable
 class UsersCriteria(Criteria, t.Protocol):
-    """Protocol for search criteria."""
+    """Protocol for user search criteria."""
 
     r: t.Annotated[list[str] | None, "affiliated repository IDs"]
     """Filter by affiliated repository IDs."""
@@ -837,17 +837,17 @@ class ExportUsersCriteria(UsersCriteria, t.Protocol):
 type RepositoriesSortableKeys = t.Literal[
     "id", "service_name", "service_url", "entity_ids"
 ]
-repository_sortable_keys: set[str] = set(t.get_args(RepositoriesSortableKeys.__value__))
+repository_sortable_keys: set[str] = set(get_args(RepositoriesSortableKeys.__value__))
 
 type GroupsSortableKeys = t.Literal[
     "id", "display_name", "public", "member_list_visibility"
 ]
-group_sortable_keys: set[str] = set(t.get_args(GroupsSortableKeys.__value__))
+group_sortable_keys: set[str] = set(get_args(GroupsSortableKeys.__value__))
 
 type UsersSortableKeys = t.Literal[
     "id", "user_name", "emails", "eppns", "last_modified"
 ]
-user_sortable_keys: set[str] = set(t.get_args(UsersSortableKeys.__value__))
+user_sortable_keys: set[str] = set(get_args(UsersSortableKeys.__value__))
 
 
 @t.overload
@@ -895,9 +895,9 @@ def make_criteria_object(
     l: int | None = None,  # noqa: E741
     super: bool = False,
 ) -> UsersCriteria: ...
-
-
-def make_criteria_object(resource_type: str, **kwargs: t.Any) -> Criteria:  # pyright: ignore[reportInconsistentOverload]
+def make_criteria_object(
+    resource_type: t.Literal["repositories", "groups", "users"], **kwargs: t.Any
+) -> Criteria:
     """Create an instance of a criteria protocol with specified attributes.
 
     Repositories query attributes:
@@ -947,7 +947,7 @@ def make_criteria_object(resource_type: str, **kwargs: t.Any) -> Criteria:  # py
             error = E.UNRECOGNIZED_SEARCH_CRITERIA
             raise InvalidQueryError(error)
 
-    hints = t.get_type_hints(protocol_cls)
+    hints = get_type_hints(protocol_cls)
 
     attrs = dict.fromkeys(hints)
     for key, value in kwargs.items():
@@ -956,14 +956,61 @@ def make_criteria_object(resource_type: str, **kwargs: t.Any) -> Criteria:  # py
     return t.cast("Criteria", SimpleNamespace(**attrs))
 
 
+class HistoryCriteria(t.Protocol):
+    """Protocol for history search criteria."""
+
+    i: t.Annotated[str | None, "history ID (parent ID)"]
+    """Filter by parent history ID."""
+
+    r: t.Annotated[list[str] | None, "repository IDs"]
+    """Filter by repository IDs."""
+
+    g: t.Annotated[list[str] | None, "group IDs"]
+    """Filter by group IDs."""
+
+    u: t.Annotated[list[str] | None, "user IDs"]
+    """Filter by user IDs."""
+
+    o: t.Annotated[list[str] | None, "operator user IDs"]
+    """Filter by operator user IDs."""
+
+    s: t.Annotated[date | None, "last modified date (from)"]
+    """Filter by last modified date (from)."""
+
+    e: t.Annotated[date | None, "last modified date (to)"]
+    """Filter by last modified date (to)."""
+
+    d: t.Annotated[t.Literal["asc", "desc"] | None, "sort order"]
+    """Sort order: 'asc' (ascending) or 'desc' (descending)."""
+
+    p: t.Annotated[int | None, "page number"]
+    """Page number to retrieve."""
+
+    l: t.Annotated[int | None, "page size"]  # noqa: E741
+    """Page size (number of items per page)."""
+
+
+class OperatorsCriteria(t.Protocol):
+    """Protocol for operator search criteria."""
+
+    q: t.Annotated[str | None, "query"] = None
+    """Search term to filter operators."""
+
+    p: t.Annotated[int | None, "page number"] = None
+    """Page number to retrieve."""
+
+    l: t.Annotated[int | None, "page size"] = None  # noqa: E741
+    """Page size (number of items per page)."""
+
+
 class GroupCacheCriteria(t.Protocol):
-    """Schema for cache query parameters."""
+    """Protocol for group cache search criteria."""
 
     q: t.Annotated[str | None, "term"] = None
     """Search term for querying cache entries."""
 
     f: t.Annotated[list[GroupCacheFilter] | None, "filter"] = None
-    """Filter expression for querying cache entries."""
+    """Filter expression for querying cache entries. "e" and "n" can be used."""
 
     p: t.Annotated[int | None, "page"] = None
     """Page number for pagination."""
@@ -974,12 +1021,12 @@ class GroupCacheCriteria(t.Protocol):
 
 type GroupCacheFilter = t.Literal["e", "n"]
 """Group cache filter options:
-    - “e”: Filter existing cache entries.
-    - “n”: Filter non-existent cache entries.
+    - "e": Filter existing cache entries.
+    - "n": Filter non-existent cache entries.
 """
 
 type GroupCacheOperation = t.Literal["all", "id-specified"]
 """Group cache operation options:
-    - “all”: Update all cache entries.
-    - “id-specified”: Update cache entries by specified IDs.
+    - "all": Update all cache entries.
+    - "id-specified": Update cache entries by specified IDs.
 """

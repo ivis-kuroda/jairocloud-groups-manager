@@ -9,7 +9,6 @@ import typing as t
 from importlib import import_module
 from pathlib import Path
 from pkgutil import iter_modules
-from typing import cast
 
 from flask import current_app
 from sqlalchemy_utils import create_database, database_exists, drop_database
@@ -21,11 +20,12 @@ from server.messages import E, I
 
 if t.TYPE_CHECKING:
     from flask_sqlalchemy import SQLAlchemy
+    from sqlalchemy import URL
 
 
 def create_db() -> None:
     """Create the database if it does not already exist."""
-    db_uri = current_app.config["SQLALCHEMY_DATABASE_URI"]
+    db_uri: URL = current_app.config["SQLALCHEMY_DATABASE_URI"]
 
     if database_exists(db_uri):
         current_app.logger.info(I.DATABASE_ALREADY_EXISTS)
@@ -37,7 +37,7 @@ def create_db() -> None:
 
 def destroy_db() -> None:
     """Drop the database if it exists."""
-    db_uri = current_app.config["SQLALCHEMY_DATABASE_URI"]
+    db_uri: URL = current_app.config["SQLALCHEMY_DATABASE_URI"]
 
     if not database_exists(db_uri):
         current_app.logger.info(I.DATABASE_NOT_EXIST)
@@ -53,7 +53,7 @@ def create_tables() -> None:
     Raises:
         DatabaseError: If the database does not exist.
     """
-    db_url = current_app.config["SQLALCHEMY_DATABASE_URI"]
+    db_url: URL = current_app.config["SQLALCHEMY_DATABASE_URI"]
     if not database_exists(db_url):
         raise DatabaseError(E.DATABASE_NOT_EXIST)
 
@@ -67,7 +67,7 @@ def drop_tables() -> None:
     Raises:
         DatabaseError: If the database does not exist.
     """
-    db_url = current_app.config["SQLALCHEMY_DATABASE_URI"]
+    db_url: URL = current_app.config["SQLALCHEMY_DATABASE_URI"]
     if not database_exists(db_url):
         raise DatabaseError(E.DATABASE_NOT_EXIST)
 
@@ -81,9 +81,21 @@ def load_models() -> None:
         import_module(f"{__package__}.{name}")
 
 
-def _db() -> SQLAlchemy:
+def __get_db() -> SQLAlchemy:
     return current_app.extensions["sqlalchemy"]
 
 
-db = cast("SQLAlchemy", LocalProxy(lambda: _db()))  # noqa: PLW0108
-"""Database instance proxy."""
+def _db():  # noqa: ANN202, for intersection-type inference
+    def __type_assertion(_: object) -> t.TypeIs[SQLAlchemy]:
+        return True
+
+    proxy = LocalProxy(lambda: __get_db())  # noqa: PLW0108
+
+    if not __type_assertion(proxy):
+        raise NotImplementedError(E.UNEXPECTED_SERVER_ERROR)  # pragma: no cover
+
+    return proxy
+
+
+db = _db()
+"""Proxy for the :class:`SQLAlchemy` database instance."""

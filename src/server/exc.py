@@ -228,3 +228,10 @@ class GroupCacheError(JAIROCloudGroupsManagerError):
 
     Error caused by issues in group cache operations.
     """
+
+
+class ProgrammingError(JAIROCloudGroupsManagerError):
+    """Exception for programming errors.
+
+    Error caused by issues in the code logic or structure.
+    """

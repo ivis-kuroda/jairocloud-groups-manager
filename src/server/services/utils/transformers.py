@@ -67,8 +67,7 @@ def prepare_service(
     repository_id = t.cast("str", repository.id)
 
     if not administrators:
-        error = E.REPOSITORY_REQUIRES_SYSTEM_ADMIN
-        raise SystemAdminNotFound(error)
+        raise SystemAdminNotFound(E.REPOSITORY_REQUIRES_SYSTEM_ADMIN)
 
     service.administrators = [
         ServiceAdministrator(value=user_id) for user_id in administrators
@@ -101,8 +100,7 @@ def prepare_role_groups(
     service_id = resolve_service_id(repository_id=repository_id)
 
     if not administrators:
-        error = E.REPOSITORY_REQUIRES_SYSTEM_ADMIN
-        raise SystemAdminNotFound(error)
+        raise SystemAdminNotFound(E.REPOSITORY_REQUIRES_SYSTEM_ADMIN)
 
     role_groups = []
     for role in USER_ROLES:
@@ -278,8 +276,7 @@ def prepare_group(
     service_id = resolve_service_id(repository_id=repository_id)
 
     if not administrators:
-        error = E.GROUP_REQUIRES_SYSTEM_ADMIN
-        raise SystemAdminNotFound(error)
+        raise SystemAdminNotFound(E.GROUP_REQUIRES_SYSTEM_ADMIN)
 
     map_group.administrators = [
         GroupAdministrator(value=user_id) for user_id in administrators

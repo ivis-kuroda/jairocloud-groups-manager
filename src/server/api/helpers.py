@@ -8,16 +8,23 @@ import traceback
 import typing as t
 
 from functools import wraps
+from typing import get_origin
 
 from flask import Response, jsonify, make_response, request
+from flask_login import current_user
 from flask_pydantic.core import _sanitize_ctx_errors  # noqa: PLC2701
 from pydantic import BaseModel, ValidationError
 from werkzeug.datastructures import FileStorage
 
+from server.auth import is_user_logged_in
 from server.config import config
 from server.const import USER_ROLES
+from server.exc import ProgrammingError
 from server.messages import E
-from server.services.utils import get_current_user_affiliations, get_highest_role
+from server.services.utils import (
+    detect_affiliations_from_is_member_of,
+    get_highest_role,
+)
 
 from .schemas import ErrorResponse
 
@@ -50,7 +57,7 @@ def roles_required[**P, R](
         """
 
         @wraps(func)
-        def decorated_view(*args: P.args, **kwargs: P.kwargs) -> R | Response:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | Response:
             """The actual view function that performs the role check.
 
             Args:
@@ -59,8 +66,16 @@ def roles_required[**P, R](
 
             Returns:
                 R: The result of the decorated function.
+
+            Raises:
+                ProgrammingError: If the user is not logged in.
             """
-            user_roles, _ = get_current_user_affiliations()
+            if not is_user_logged_in(current_user):
+                raise ProgrammingError(E.AUTHENTICATION_NOT_YET)
+
+            user_roles, _ = detect_affiliations_from_is_member_of(
+                current_user.is_member_of
+            )
             highest = get_highest_role([repository.role for repository in user_roles])
 
             if highest not in required:
@@ -69,7 +84,7 @@ def roles_required[**P, R](
 
             return func(*args, **kwargs)
 
-        return decorated_view  # pyright: ignore[reportReturnType]
+        return wrapper  # pyright: ignore[reportReturnType]
 
     return decorator
 
@@ -97,7 +112,7 @@ def validate_files(func: t.Callable) -> t.Callable:  # noqa: C901
                 if field_name not in request.files:
                     continue
 
-                origin = t.get_origin(field_info.annotation)
+                origin = get_origin(field_info.annotation)
                 uploaded_files = (
                     request.files.getlist(field_name)
                     if origin is list

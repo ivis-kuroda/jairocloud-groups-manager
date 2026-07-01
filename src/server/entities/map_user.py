@@ -81,7 +81,7 @@ class EPPN(BaseModel):
     value: str
     """eduPersonPrincipalName value."""
 
-    idp_entity_id: t.Annotated[str | None, Field(exclude=True)] = None
+    idp_entity_id: str | None = None
     """Entity ID of the Identity Provider that issued this ePPN.
     Alias for 'idpEntityId'.
     """

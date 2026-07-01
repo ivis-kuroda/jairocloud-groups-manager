@@ -3,13 +3,13 @@ import typing as t
 from http import HTTPStatus
 from uuid import uuid7
 
-from flask import Response
+from flask import Flask, Response
 
 import server.api.history
 
 from server.api import history
-from server.api.schemas import ErrorResponse, HistoryPublic, OperatorQuery
-from server.entities.history_detail import DownloadHistoryData, HistoryQuery, UploadHistoryData
+from server.api.schemas import ErrorResponse, HistoryPublic, HistoryQuery, OperatorQuery
+from server.entities.history_detail import DownloadHistoryData, UploadHistoryData
 from server.entities.search_request import FilterOption, SearchResult
 from server.exc import InvalidQueryError, RecordNotFound
 from server.messages import E
@@ -120,7 +120,7 @@ def test_public_status_record_not_found(mocker: MockerFixture):
     mock_update.assert_called_once_with(tab, history_id, public=pub)
 
 
-def test_files(app, tmp_path, mocker: MockerFixture):
+def test_files(app: Flask, tmp_path, mocker: MockerFixture):
     file_id = uuid7()
     file_path = tmp_path / f"{str(file_id)[:7]}.tsv"
     file_path.write_text("mocked file content")
@@ -136,7 +136,7 @@ def test_files(app, tmp_path, mocker: MockerFixture):
     mock_get_path.assert_called_once_with(file_id)
 
 
-def test_files_not_found(app, tmp_path, mocker: MockerFixture, caplog):
+def test_files_not_found(app: Flask, tmp_path, mocker: MockerFixture, caplog):
     file_id = uuid7()
     file_path = tmp_path / f"{str(file_id)[:7]}.tsv"
 

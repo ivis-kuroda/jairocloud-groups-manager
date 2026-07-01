@@ -7,6 +7,11 @@
 from blinker import Namespace
 
 
+request_signals = Namespace()
+"""Namespace for signals related to API request lifecycle."""
+
+before_request = request_signals.signal("before")
+
 repository_signals = Namespace()
 """Namespace for signals related to repository operations."""
 

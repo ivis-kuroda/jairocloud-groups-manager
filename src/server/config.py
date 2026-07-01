@@ -11,6 +11,7 @@ Provides validation, loading, and global access to runtime configuration.
 
 import ast
 import operator
+import re
 import typing as t
 
 from datetime import timedelta
@@ -32,7 +33,7 @@ from pydantic_settings import (
 )
 from sqlalchemy.engine import URL
 from weko_group_cache_db.config import (
-    Sentinel,
+    Sentinel as CacheDbSentinel,
     Settings as CacheDbSettings,
 )
 from werkzeug.local import LocalProxy
@@ -44,6 +45,12 @@ from server.const import (
     USER_ROLES,
 )
 from server.messages import E
+
+
+if t.TYPE_CHECKING:
+    from collections import abc
+
+    from server.ext import JAIROCloudGroupsManager
 
 
 class RuntimeConfig(BaseSettings):
@@ -135,7 +142,10 @@ class RuntimeConfig(BaseSettings):
                 "REDIS_PORT": self.REDIS.single.base_url.port,
                 "REDIS_DB_INDEX": self.REDIS.database.group_cache,
                 "REDIS_SENTINEL_MASTER": self.REDIS.sentinel.master_name,
-                "SENTINELS": t.cast("list[Sentinel]", self.REDIS.sentinel.nodes),
+                "SENTINELS": [
+                    CacheDbSentinel(host=node.host, port=node.port)
+                    for node in self.REDIS.sentinel.nodes
+                ],
             }
         )
 
@@ -200,7 +210,7 @@ class RuntimeConfig(BaseSettings):
         return self.SESSION.strategy == "sliding"
 
     @property
-    def for_flask(self) -> dict[str, t.Any]:
+    def FLASK(self) -> dict[str, t.Any]:
         """Configuration dictionary suitable for Flask app.config.
 
         Returns:
@@ -216,8 +226,8 @@ class RuntimeConfig(BaseSettings):
                 "REMEMBER_COOKIE_REFRESH_EACH_REQUEST",
             }
         ) | {
-            "PREFERRED_URL_SCHEME": "https",
             "SQLALCHEMY_DATABASE_URI": self.SQLALCHEMY_DATABASE_URI,
+            "PREFERRED_URL_SCHEME": "https",
             "SESSION_COOKIE_SECURE": True,
             "SESSION_COOKIE_SAMESITE": "Lax",
         }
@@ -357,7 +367,7 @@ class RepositoriesConfig(BaseModel):
         """
         try:
             pursed = safe_eval(value)
-        except SyntaxError as exc:
+        except (SyntaxError, TypeError) as exc:
             error = E.INVALID_EXPRESSION
             raise ValueError(error) from exc
         return t.cast("int", pursed)
@@ -367,7 +377,7 @@ class RepositoriesIdPatternsConfig(BaseModel):
     """Schema for repository-related ID patterns."""
 
     sp_connector: HasRepoId
-    """SP Connector ID pattern. It should include `{repository_id}` placeholder."""
+    """SP Connector ID pattern. It should include one `{repository_id}` placeholder."""
 
 
 class GroupsConfig(BaseModel):
@@ -398,7 +408,7 @@ class GroupsConfig(BaseModel):
         """
         try:
             pursed = safe_eval(value)
-        except SyntaxError as exc:
+        except (SyntaxError, TypeError) as exc:
             error = E.INVALID_EXPRESSION
             raise ValueError(error) from exc
         return t.cast("int", pursed)
@@ -587,25 +597,30 @@ class CacheGroupsConfig(CacheDbSettings):
     """Path to the directory containing institution TLS files."""
 
 
-type HasRepoId = t.Annotated[str, StringConstraints(pattern=HAS_REPO_ID_PATTERN)]
-"""Pattern for role-based group IDs.
+type HasRepoId = t.Annotated[
+    str, StringConstraints(pattern=re.compile(HAS_REPO_ID_PATTERN))
+]
+"""String with a pattern for role-based group IDs.
 
-It should include `{repository_id}` placeholder.
+It should include one `{repository_id}` placeholder.
 """
 
-type HasRepoName = t.Annotated[str, StringConstraints(pattern=HAS_REPO_NAME_PATTERN)]
-"""Pattern for role-based group names.
+type HasRepoName = t.Annotated[
+    str, StringConstraints(pattern=re.compile(HAS_REPO_NAME_PATTERN))
+]
+"""String with a pattern for role-based group names.
 
-It should include `{repository_name}` placeholder.
+It should include one `{repository_name}` placeholder.
 """
 
 
 type HasRepoAndUserDefinedId = t.Annotated[
-    str, StringConstraints(pattern=HAS_REPO_ID_AND_USER_DEFINED_ID_PATTERN)
+    str, StringConstraints(pattern=re.compile(HAS_REPO_ID_AND_USER_DEFINED_ID_PATTERN))
 ]
-"""Pattern for custom group IDs.
+"""String with a pattern for user-defined group IDs.
 
-It should include `{repository_id}` followed by `{user_defined_id}` placeholders.
+It should include one `{repository_id}`, followed by one `{user_defined_id}`
+placeholders.
 """
 
 
@@ -650,7 +665,7 @@ class DevAccountConfig(BaseModel):
     """User name of the development account."""
 
 
-def safe_eval(expr: str) -> int | str:
+def safe_eval(expr: str) -> object:
     """Safely evaluate a restricted arithmetic expression.
 
     Supported:
@@ -672,48 +687,64 @@ def safe_eval(expr: str) -> int | str:
         ast.FloorDiv: operator.floordiv,
     }
 
-    def _eval(node: ast.AST) -> int | str:
+    def _eval(node: ast.AST) -> object:
         if isinstance(node, ast.Constant):
-            return node.value  # type: ignore[return-value]
+            return node.value
 
-        if isinstance(node, ast.BinOp) and type(node.op) in ops:
-            return ops[type(node.op)](_eval(node.left), _eval(node.right))  # type: ignore[arg-type]
+        if isinstance(node, ast.BinOp) and (op := type(node.op)) in ops:
+            return ops[op](_eval(node.left), _eval(node.right))
 
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             args = [_eval(a) for a in node.args]
             if node.func.id == "len":
-                return len(args[0])  # type: ignore[arg-type]
+                # if args[0] is not Sized, it will raise a TypeError.
+                return len(t.cast("abc.Sized", args[0]))
             if node.func.id == "max":
-                return max(args)
+                # if args are not comparable, it will raise a TypeError.
+                return max(args)  # pyright: ignore[reportArgumentType]
             if node.func.id == "min":
-                return min(args)
+                # if args are not comparable, it will raise a TypeError.
+                return min(args)  # pyright: ignore[reportArgumentType]
 
-        error = E.UNSUPPORTED_EXPRESSION % {"exp": expr}
-        raise ValueError(error)
+        raise ValueError(E.UNSUPPORTED_EXPRESSION % {"exp": expr})
 
     return _eval(ast.parse(expr, mode="eval").body)
 
 
-def setup_config(path_or_obj: str | RuntimeConfig) -> RuntimeConfig:
-    """Initialize and set the global server configuration instance.
+# Rebuild models to resolve aliased imports.
+CacheGroupsConfig.model_rebuild(_types_namespace={"Sentinel": CacheDbSentinel})
+RuntimeConfig.model_rebuild(_types_namespace={"Sentinel": CacheDbSentinel})
+
+
+def load_config(toml_path: str) -> RuntimeConfig:
+    """Load and initialize the runtime configuration.
 
     Args:
-        path_or_obj (str | RuntimeConfig): Path to the TOML config file or a
-            RuntimeConfig instance to use.
+        toml_path (str): Path to the TOML config file.
 
     Returns:
         RuntimeConfig: The initialized config instance.
 
     """
-    if isinstance(path_or_obj, str):
-        path_or_obj = RuntimeConfig(_toml_file=path_or_obj)  # pyright: ignore[reportCallIssue]
-
-    return path_or_obj
+    return RuntimeConfig(_toml_file=toml_path)  # pyright: ignore[reportCallIssue]
 
 
-def _get_config() -> RuntimeConfig:
-    return current_app.extensions["jairocloud-groups-manager"].config
+def __get_config() -> RuntimeConfig:
+    ext: JAIROCloudGroupsManager = current_app.extensions["jairocloud-groups-manager"]
+    return ext.config
 
 
-config = t.cast("RuntimeConfig", LocalProxy(lambda: _get_config()))  # noqa: PLW0108
-"""The global server configuration instance."""
+def _config():  # noqa: ANN202, for intersection-type inference
+    def __type_assertion(_: object) -> t.TypeIs[RuntimeConfig]:
+        return True
+
+    proxy = LocalProxy(lambda: __get_config())  # noqa: PLW0108
+
+    if not __type_assertion(proxy):
+        raise NotImplementedError  # pragma: no cover
+
+    return proxy
+
+
+config = _config()
+"""Proxy for global :class:`RuntimeConfig` instance."""

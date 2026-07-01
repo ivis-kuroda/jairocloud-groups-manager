@@ -1,123 +1,202 @@
-from unittest.mock import MagicMock
+import typing as t
+
+from datetime import timedelta
+from urllib.parse import urlparse
 
 import pytest
 
-from server.config import (
-    USER_ROLES,
-    E,
-    GroupIdPatternsConfig,
-    GroupNamePatternsConfig,
-    GroupsConfig,
-    RepositoriesConfig,
-    config,
-    safe_eval,
-)
-from server.factory import celery_init_app, create_app
+from flask import Flask
+
+import server.config
+
+from server.config import GroupsConfig, RepositoriesConfig, safe_eval
+from server.ext import JAIROCloudGroupsManager
+from server.messages import E
+
+from tests.helpers import regex
 
 
-def test_celery_init_app_once():
-    app = create_app(__name__)
-    celery = celery_init_app(app)
-    assert celery is app.extensions["celery"]
+if t.TYPE_CHECKING:
+    from pytest_mock import MockerFixture
+    from werkzeug.local import LocalProxy
+
+    from server.config import RuntimeConfig
 
 
-def test_celery_property_redis_sentinel_cache_type(app, mocker):
-    """CELERY property returns correct config when cache_type is RedisSentinelCache (mocked)."""
-    mocker.patch("pydantic.main._check_frozen")
-    mock_redis_config = MagicMock(cache_type="RedisSentinelCache")
-    mocker.patch.object(config, "REDIS", mock_redis_config)
-    _ = config.CELERY
-    assert config.REDIS.cache_type == "RedisSentinelCache"
+class TestRuntimeConfig:
+    def test_celery(self, test_config: RuntimeConfig):
+        test_config.REDIS.cache_type = "RedisCache"
+        redis_url = test_config.REDIS.single.base_url
+        rabbitmq_url = test_config.RABBITMQ.url
 
-    mocker.stopall()
+        celery_config = test_config.CELERY
 
+        scheme, netloc, path, *_ = urlparse(celery_config["broker_url"])
+        assert scheme == rabbitmq_url.scheme
+        assert netloc == f"{rabbitmq_url.username}:{rabbitmq_url.password}@{rabbitmq_url.host}:{rabbitmq_url.port}"
+        assert path == rabbitmq_url.path
 
-def test_celery_property_redis_sentinel_cache_type_no_sentinel(app, mocker):
-    """CELERY property: cache_type=RedisSentinelCache but REDIS.sentinel is None (False branch)."""
-    mocker.patch("pydantic.main._check_frozen")
-    mock_redis_config = MagicMock(cache_type="RedisSentinelCache_false")
-    mocker.patch.object(config, "REDIS", mock_redis_config)
-    _ = config.CELERY
-    assert config.REDIS.cache_type == "RedisSentinelCache_false"
+        scheme, netloc, path, *_ = urlparse(celery_config["result_backend"])
+        assert (scheme, netloc) == (redis_url.scheme, f"{redis_url.host}:{redis_url.port}")
+        assert path == f"/{test_config.REDIS.database.result_backend}"
 
-    mocker.stopall()
+    def test_celery_sentinel(self, test_config: RuntimeConfig):
+        test_config.REDIS.cache_type = "RedisSentinelCache"
+        sentinel_nodes = test_config.REDIS.sentinel.nodes
+        rabbitmq_url = test_config.RABBITMQ.url
 
+        celery_config = test_config.CELERY
 
-def test_remember_cookie_duration_absolute(app, mocker):
-    mocker.patch.object(config.SESSION, "strategy", "absolute")
-    _ = config.REMEMBER_COOKIE_DURATION
-    assert config.REDIS.cache_type == "RedisCache"
+        assert celery_config["broker_url"] == rabbitmq_url.encoded_string()
 
-    mocker.stopall()
+        result_backend = celery_config["result_backend"]
+        nodes, db = result_backend[:-2].split(";"), result_backend[-2:]
+        assert len(nodes) == len(sentinel_nodes)
+        assert all(
+            (scheme, netloc) == ("sentinel", f"{sentinel_node.host}:{sentinel_node.port}")
+            for node, sentinel_node in zip(nodes, sentinel_nodes, strict=True)
+            for scheme, netloc, *_ in [urlparse(node)]
+        )
+        assert db == f"/{test_config.REDIS.database.result_backend}"
 
+    def test_sqlalchemy_database_uri(self, test_config: RuntimeConfig):
+        (_, user), (_, password), (_, host), (_, port), (_, database) = test_config.POSTGRES
+        expected = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}"
 
-def test_remember_cookie_duration_other(app, mocker):
+        computed = test_config.SQLALCHEMY_DATABASE_URI
 
-    mocker.patch.object(config.SESSION, "strategy", "invalid")
-    with pytest.raises(UnboundLocalError):
-        _ = config.REMEMBER_COOKIE_DURATION
-    assert config.REDIS.cache_type == "RedisCache"
+        assert computed.render_as_string(hide_password=False) == expected
 
-    mocker.stopall()
+    def test_permanent_session_lifetime(self, test_config: RuntimeConfig):
+        lifetime = test_config.SESSION.absolute_lifetime = 60 * 60 * 24  # 1 day
+        expected = timedelta(seconds=lifetime)
 
+        computed = test_config.PERMANENT_SESSION_LIFETIME
 
-def test_validate_max_url_length_syntax_error():
-    invalid_expr = "1 + * 2"
-    msg = "E003 | Invalid syntax in expression in server configuration."
+        assert computed == expected
 
-    with pytest.raises(ValueError, match=msg):
-        RepositoriesConfig.validate_max_url_length(invalid_expr)
+    def test_remember_cookie_duration_absolute(self, test_config: RuntimeConfig):
+        test_config.SESSION.strategy = "absolute"
+        lifetime = test_config.SESSION.absolute_lifetime = 60 * 60 * 24  # 1 day
+        test_config.SESSION.sliding_lifetime = 60 * 60  # 1 hour
+        expected = timedelta(seconds=lifetime)
 
+        computed = test_config.REMEMBER_COOKIE_DURATION
 
-def test_validate_max_id_length_syntax_error():
-    invalid_expr = "abc + * 1"
-    msg = "E003 | Invalid syntax in expression in server configuration."
+        assert computed == expected
 
-    with pytest.raises(ValueError, match=msg):
-        GroupsConfig.validate_max_id_length(invalid_expr)
+    def test_remember_cookie_duration_sliding(self, test_config: RuntimeConfig):
+        test_config.SESSION.strategy = "sliding"
+        test_config.SESSION.absolute_lifetime = 60 * 60 * 24  # 1 day
+        lifetime = test_config.SESSION.sliding_lifetime = 60 * 60  # 1 hour
+        expected = timedelta(seconds=lifetime)
 
+        computed = test_config.REMEMBER_COOKIE_DURATION
 
-def test_group_patterns_config_validation_success():
+        assert computed == expected
 
-    id_patterns = GroupNamePatternsConfig(
-        system_admin="sysadmin",
-        repository_admin="repo_admin_{repository_name}",
-        community_admin="community_admin_{repository_name}",
-        contributor="contributor_{repository_name}",
-        general_user="general_user_{repository_name}",
-    )
-    name_patterns = GroupIdPatternsConfig(
-        system_admin="sysadmin_id",
-        repository_admin="repo_admin_{repository_id}",
-        community_admin="community_admin_{repository_id}",
-        contributor="contributor_{repository_id}",
-        general_user="general_user_{repository_id}",
-        user_defined="user_defined_{repository_id}_{user_defined_id}",
-    )
-    assert id_patterns[USER_ROLES.SYSTEM_ADMIN] == "sysadmin"
-    assert name_patterns[USER_ROLES.SYSTEM_ADMIN] == "sysadmin_id"
+    def test_flask(self, test_config: RuntimeConfig):
+        flask_config = test_config.FLASK
 
-
-def test_safe_eval_unsupported_function():
-    with pytest.raises(ValueError, match=str(E.UNSUPPORTED_EXPRESSION) % {"exp": "sum(1,2)"}):
-        safe_eval("sum(1,2)")
-
-
-def test_safe_eval_syntax_error():
-    with pytest.raises(SyntaxError):
-        safe_eval("1 + * 2")
-
-
-def test_safe_eval_max_branch():
-    excepted_value = 10
-    assert safe_eval("max(10, 3, 7)") == excepted_value
+        assert flask_config["SERVER_NAME"] == test_config.SERVER_NAME
+        assert flask_config["SECRET_KEY"] == test_config.SECRET_KEY
+        assert flask_config["CELERY"] == test_config.CELERY
+        assert flask_config["PERMANENT_SESSION_LIFETIME"] == test_config.PERMANENT_SESSION_LIFETIME
+        assert flask_config["REMEMBER_COOKIE_DURATION"] == test_config.REMEMBER_COOKIE_DURATION
+        assert flask_config["REMEMBER_COOKIE_REFRESH_EACH_REQUEST"] == (test_config.SESSION.strategy == "sliding")
+        assert flask_config["SQLALCHEMY_DATABASE_URI"] == test_config.SQLALCHEMY_DATABASE_URI
+        assert flask_config["PREFERRED_URL_SCHEME"] == "https"
+        assert flask_config["SESSION_COOKIE_SECURE"]
+        assert flask_config["SESSION_COOKIE_SAMESITE"] == "Lax"
 
 
-def test_safe_eval_min_branch():
-    excepted_value = 3
-    assert safe_eval("min(10, 3, 7)") == excepted_value
+def test_validate_max_url_length(mocker: MockerFixture):
+    value, expected = "max(10, 20) + 5", 25
+    mocker.patch.object(server.config, "safe_eval", return_value=expected)
+
+    result = RepositoriesConfig.validate_max_url_length(value)
+
+    assert result == expected
 
 
-def test_safe_eval_unsupported_ast_node():
-    with pytest.raises(ValueError, match=str(E.UNSUPPORTED_EXPRESSION) % {"exp": "[1, 2, 3]"}):
-        safe_eval("[1, 2, 3]")
+def test_validate_max_url_length_syntax_error(mocker: MockerFixture):
+    value = "1 + * 2"
+    mocker.patch.object(server.config, "safe_eval", side_effect=SyntaxError)
+
+    with pytest.raises(ValueError, match=regex(E.INVALID_EXPRESSION)):
+        RepositoriesConfig.validate_max_url_length(value)
+
+
+def test_validate_max_id_length(mocker: MockerFixture):
+    value, expected = "max(10, 20) + 5", 25
+    mocker.patch.object(server.config, "safe_eval", return_value=expected)
+
+    result = GroupsConfig.validate_max_id_length(value)
+
+    assert result == expected
+
+
+def test_validate_max_id_length_syntax_error(mocker: MockerFixture):
+    value = "1 + * 2"
+    mocker.patch.object(server.config, "safe_eval", side_effect=SyntaxError)
+
+    with pytest.raises(ValueError, match=regex(E.INVALID_EXPRESSION)):
+        GroupsConfig.validate_max_id_length(value)
+
+
+def test_safe_eval():
+    expr, expected = "1 + 3 * 2", 7
+
+    evaled = safe_eval(expr)
+
+    assert evaled == expected
+
+
+def test_safe_eval_len():
+    expr, expected = 'len("jcgroups")', 8
+
+    evaled = safe_eval(expr)
+
+    assert evaled == expected
+
+
+def test_safe_eval_max():
+    expr, expected = "max(10, 3, 7)", 10
+
+    evaled = safe_eval(expr)
+
+    assert evaled == expected
+
+
+def test_safe_eval_min():
+    expr, expected = "min(10, 3, 7)", 3
+
+    evaled = safe_eval(expr)
+
+    assert evaled == expected
+
+
+def test_safe_eval_len_unsupported():
+    expr = "len(12345)"
+
+    with pytest.raises(TypeError):
+        safe_eval(expr)
+
+
+def test_safe_eval_unsupported():
+    expr = "sum(1, 2)"
+
+    with pytest.raises(ValueError, match=str(E.UNSUPPORTED_EXPRESSION) % {"exp": expr}):
+        safe_eval(expr)
+
+
+def test_proxy(test_config: RuntimeConfig):
+    app = Flask(__name__)
+    ext = JAIROCloudGroupsManager()
+    app.extensions["jairocloud-groups-manager"] = ext
+    expected = ext._config = test_config
+
+    proxy = t.cast("LocalProxy[RuntimeConfig]", server.config.config)
+    with app.app_context():
+        assert proxy == expected
+        assert proxy._get_current_object() is expected

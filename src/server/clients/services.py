@@ -6,15 +6,14 @@
 
 import typing as t
 
+from functools import cache
 from http import HTTPStatus
 
 import requests
 
-from flask import current_app
-from flask_login import current_user
 from pydantic import TypeAdapter
+from pydantic.alias_generators import to_camel
 
-from server.auth import is_user_logged_in
 from server.config import config
 from server.const import MAP_SERVICES_ENDPOINT
 from server.entities.map_error import MapError
@@ -23,7 +22,7 @@ from server.entities.patch_request import PatchOperation, PatchRequestPayload
 from server.entities.search_request import SearchRequestParameter, SearchResponse
 from server.signals import repository_created, repository_deleted, repository_updated
 
-from .decoraters import cache_resource
+from .decorators import cache_resource, default_id_generator
 from .utils import compute_signature, get_time_stamp
 
 
@@ -39,16 +38,7 @@ adapter_search: TypeAdapter[ServicesSearchResponse] = TypeAdapter(
 )
 
 
-def _search_cache_identifier(*args, **kwargs) -> str:  # noqa: ANN002, ANN003, ARG001
-    if not is_user_logged_in(current_user):
-        return "by_anonymous"
-    if current_user.is_system_admin:
-        return "by_system_admin"
-    permitted = sorted(current_user.permitted_repositories)
-    return ",".join(permitted)
-
-
-@cache_resource(identifier_generator=_search_cache_identifier)
+@cache_resource(id_generator=default_id_generator)
 def search(
     query: SearchRequestParameter,
     /,
@@ -78,16 +68,7 @@ def search(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
+    attributes_params = _build_attribute_params(include, exclude)
 
     query_params = query.model_dump(
         mode="json",
@@ -106,7 +87,7 @@ def search(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter_search.validate_json(response.text)
+    return adapter_search.validate_json(response.text, extra="ignore")
 
 
 @cache_resource
@@ -139,16 +120,7 @@ def get_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
+    attributes_params = _build_attribute_params(include, exclude)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_SERVICES_ENDPOINT}/{service_id}",
@@ -162,7 +134,7 @@ def get_by_id(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def post(
@@ -195,23 +167,15 @@ def post(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = service.model_dump(
         mode="json",
-        exclude=set(exclude or ()),
+        include=include | {"id"} if include else None,
+        exclude=exclude,
         by_alias=True,
         exclude_unset=True,
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.post(
         f"{config.MAP_CORE.base_url}{MAP_SERVICES_ENDPOINT}",
@@ -227,7 +191,7 @@ def post(
     if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def put_by_id(
@@ -260,6 +224,7 @@ def put_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = service.model_dump(
         mode="json",
@@ -268,16 +233,6 @@ def put_by_id(
         by_alias=True,
         exclude_unset=True,
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.put(
         f"{config.MAP_CORE.base_url}{MAP_SERVICES_ENDPOINT}/{service.id}",
@@ -293,17 +248,17 @@ def put_by_id(
     if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text)
+    resource = adapter.validate_json(response.text, extra="ignore")
 
     if isinstance(resource, MapService):
-        repository_updated.send(None, service=resource)
+        repository_updated.send(put_by_id, service=resource)
 
     return resource
 
 
 def patch_by_id(
     service_id: str,
-    operations: list[PatchOperation[MapService]],
+    operations: t.Sequence[PatchOperation[MapService]],
     /,
     include: set[str] | None = None,
     exclude: set[str] | None = None,
@@ -315,7 +270,7 @@ def patch_by_id(
 
     Args:
         service_id (str): ID of the Service resource to patch.
-        operations (list[PatchOperation]): List of patch operations to apply.
+        operations (Sequence[PatchOperation]): List of patch operations to apply.
         include (set[str] | None):
             Attribute names to include in patch. Optional.
         exclude (set[str] | None):
@@ -333,22 +288,11 @@ def patch_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = PatchRequestPayload(operations=operations).model_dump(
-        mode="json",
-        by_alias=True,
-        exclude_unset=False,
+        mode="json", by_alias=True, exclude_none=False
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.patch(
         f"{config.MAP_CORE.base_url}{MAP_SERVICES_ENDPOINT}/{service_id}",
@@ -363,10 +307,10 @@ def patch_by_id(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text)
+    resource = adapter.validate_json(response.text, extra="ignore")
 
     if isinstance(resource, MapService):
-        repository_updated.send(None, service=resource)
+        repository_updated.send(patch_by_id, service=resource)
 
     return resource
 
@@ -404,81 +348,85 @@ def delete_by_id(
         timeout=config.MAP_CORE.timeout,
     )
 
-    current_app.logger.info(
-        "status_code: %s, response: %s",
-        response.status_code,
-        response.text,
-    )
-
-    if response.ok:
-        repository_deleted.send(None, service_id=service_id)
-        return None
-
-    response.raise_for_status()
+    if response.status_code > HTTPStatus.BAD_REQUEST:
+        response.raise_for_status()
 
     if not response.text:
-        repository_updated.send(None, service=MapService(id=service_id))
+        repository_deleted.send(delete_by_id, service=MapService(id=service_id))
         return None
 
-    return MapError.model_validate_json(response.text)
+    return MapError.model_validate_json(response.text, extra="ignore")
 
 
-def _get_alias_generator() -> t.Callable[[str], str]:
-    generator = MapService.model_config.get("alias_generator")
-    if generator and not callable(generator):
-        generator = generator.serialization_alias
-    if generator is None:
-        generator = lambda x: x  # noqa: E731
-
-    return generator
+@cache
+def _a(o: str) -> str:
+    ag = MapService.model_config.get("alias_generator")
+    fnc = ag if callable(ag) else ag.serialization_alias if ag else None
+    return fnc(o) if fnc else o
 
 
-alias_generator: t.Callable[[str], str] = _get_alias_generator()
-del _get_alias_generator
+def _build_attribute_params(
+    include: set[str] | None, exclude: set[str] | None
+) -> dict[str, str]:
+    attributes_params = {}
+    if include:
+        attributes_params[to_camel("attributes")] = ",".join([
+            _a(name) for name in include | {"id"}
+        ])
+    if exclude:
+        attributes_params[to_camel("excluded_attributes")] = ",".join([
+            _a(name) for name in exclude
+        ])
+    return attributes_params
 
 
 @repository_updated.connect
 @repository_deleted.connect
 def handle_repository_updated(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     service: MapService | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle repository updated signal to clear cache for the updated service.
 
     Args:
         sender: The sender of the signal.
         service (MapService): The updated Service resource.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if service and service.id:
-        get_by_id.clear_cache(service.id)  # pyright: ignore[reportFunctionMemberAccess]
+    if not isinstance(service, MapService) or not service.id:
+        return
+
+    get_by_id.clear_cache(service.id)
 
 
 @repository_updated.connect
 @repository_deleted.connect
 def handle_repository_updated_by_id(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     service_id: str | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle repository updated signal to clear cache for the updated service by ID.
 
     Args:
         sender: The sender of the signal.
         service_id (str): The ID of the updated Service resource.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if service_id:
-        get_by_id.clear_cache(service_id)  # pyright: ignore[reportFunctionMemberAccess]
+    if not service_id:
+        return
+
+    get_by_id.clear_cache(service_id)
 
 
 @repository_created.connect
 @repository_updated.connect
 @repository_deleted.connect
 def handle_reset_search_cache(
-    _sender: object,
-    **kwargs,  # noqa: ANN003, ARG001
+    _sender: object = None,
+    *_args,  # noqa: ANN002
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle users signals to clear cache of the search results.
 
@@ -486,4 +434,4 @@ def handle_reset_search_cache(
         sender: The sender of the signal.
         **kwargs: Other keyword arguments passed with the signal.
     """
-    search.clear_cache(_search_cache_identifier())  # pyright: ignore[reportFunctionMemberAccess]
+    search.clear_cache(default_id_generator())

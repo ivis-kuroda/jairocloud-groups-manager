@@ -34,7 +34,7 @@ from server.services.utils import (
 
 from .auth import logout
 from .helpers import roles_required
-from .schemas import ErrorResponse, FileQuery, UsersQuery
+from .schemas import ErrorResponse, ExportUsersQuery, UsersQuery
 
 
 bp = Blueprint("users", __name__)
@@ -210,11 +210,11 @@ def filter_options() -> list[FilterOption]:
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
-def export_get(query: FileQuery) -> tuple[Response | ErrorResponse, int]:
+def export_get(query: ExportUsersQuery) -> tuple[Response | ErrorResponse, int]:
     """Export users to a file for bulk processing.
 
     Args:
-        query (FileQuery): The query parameters for the export.
+        query (ExportUsersQuery): The query parameters for the export.
 
     Returns:
         Response: The response containing the exported file
@@ -228,11 +228,11 @@ def export_get(query: FileQuery) -> tuple[Response | ErrorResponse, int]:
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN)
 @validate(response_by_alias=True)
-def export_post(body: FileQuery) -> tuple[Response | ErrorResponse, int]:
+def export_post(body: ExportUsersQuery) -> tuple[Response | ErrorResponse, int]:
     """Export users to a file for bulk processing.
 
     Args:
-        body (FileQuery): The query parameters for the export.
+        body (ExportUsersQuery): The query parameters for the export.
 
     Returns:
         Response: The response containing the exported file
@@ -242,7 +242,7 @@ def export_post(body: FileQuery) -> tuple[Response | ErrorResponse, int]:
     return __export(operator, body)
 
 
-def __export(operator: LoginUser, query: FileQuery):  # noqa: ANN202
+def __export(operator: LoginUser, query: ExportUsersQuery):  # noqa: ANN202
     try:
         files = users.make_export_file(operator.map_id, operator.user_name, query)
     except InvalidQueryError as exc:

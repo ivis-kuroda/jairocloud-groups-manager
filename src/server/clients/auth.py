@@ -31,7 +31,7 @@ def issue_client_credentials(entity_id: str, certs: _SpCerts) -> ClientCredentia
 
     Args:
         entity_id (str): Entity ID of the Service Provider.
-        certs (_SpCerts):
+        certs (SpCerts):
             File paths for certificates and private keys used for mutual
             TLS authentication. It must contain members `crt` and `key`.
 

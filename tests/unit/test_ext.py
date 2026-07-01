@@ -45,7 +45,7 @@ class TestJAIROCloudGroupsManager:
 
     def test_init_config(self, test_config: RuntimeConfig, mocker: MockerFixture):
         app = Flask(__name__)
-        mock_setup = mocker.patch.object(server.ext, "setup_config", return_value=test_config)
+        mock_setup = mocker.patch.object(server.ext, "load_config", return_value=test_config)
         mock_setup_cache = mocker.patch.object(server.ext, "setup_weko_group_cache_db_config")
 
         ext = JAIROCloudGroupsManager()
@@ -53,6 +53,10 @@ class TestJAIROCloudGroupsManager:
         ext.init_config(app)
         mock_setup.assert_called_once()
         mock_setup_cache.assert_called_once_with(test_config.for_group_caches)
+
+        assert app.config["SERVER_NAME"] == test_config.SERVER_NAME
+        assert app.config["SECRET_KEY"] == test_config.SECRET_KEY
+        assert app.config["SQLALCHEMY_DATABASE_URI"] == test_config.SQLALCHEMY_DATABASE_URI
 
     def test_init_db_app(self, test_config: RuntimeConfig, mocker: MockerFixture, caplog):
         app = Flask(__name__)

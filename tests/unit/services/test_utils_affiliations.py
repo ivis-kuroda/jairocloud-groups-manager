@@ -1,161 +1,185 @@
+import typing as t
+
 import pytest
 
-from server.entities.map_group import Service
+import server.services.utils.affiliations
+
+from server.const import USER_ROLES
 from server.services.utils.affiliations import (
-    _build_combined_regex,
-    _Group,
-    _RoleGroup,
+    detect_affiliated_repository,
     detect_affiliation,
     detect_affiliations,
-    detect_repository,
+    parse_affiliated_group_ids,
 )
 
 
-def test_detect_affiliations(app):
+if t.TYPE_CHECKING:
+    from pytest_mock import MockFixture
+
+    from server.config import RuntimeConfig
+
+
+def test_detect_affiliations(config: RuntimeConfig):
+    patterns = config.GROUPS.id_patterns
+    repository_id, user_defined_id = "test_repo_ac_jp", "detection_sample"
+
     group_ids = [
-        "jc_roles_sysadm_test",  # sysado
-        "jc_test_ac_jp_ro_radm_test",  # repoado
-        "jc_test_ac_jp_ro_cadm_test",  # comado
-        "jc_test_ac_jp_ro_cont_test",  # contributer
-        "jc_test_ac_jp_ro_user_test",  # generaluser
-        "jc_test_ac_jp_gr_test3_test",
-    ]  # user
+        patterns[USER_ROLES.REPOSITORY_ADMIN].format(repository_id=repository_id),
+        patterns["user_defined"].format(repository_id=repository_id, user_defined_id=user_defined_id),
+    ]
 
-    result = detect_affiliations(group_ids)
+    detected = detect_affiliations(group_ids)
 
-    expected_repository_id_sys = None
-    expected_ro_sys = ["system_admin"]
-    expected_rolegroup_type = "role"
+    assert len(detected.roles) == 1
+    assert len(detected.groups) == 1
 
-    expected_repository_id = "test_ac_jp"
-    expected_roles = ["repository_admin", "community_admin", "contributor", "general_user"]
+    assert (repository_admin := next(r for r in detected.roles if r.role == USER_ROLES.REPOSITORY_ADMIN))
+    assert repository_admin.type == "role"
+    assert repository_admin.repository_id == repository_id
 
-    expected_group_repository_id = "test_ac_jp"
-    expected_group_id = "jc_test_ac_jp_gr_test3_test"
-    expected_user_defined_id = "test3"
-    expected_group_type = "group"
-    expected_length = [2, 1]
-
-    assert len(result.roles) == expected_length[0]
-    assert len(result.groups) == expected_length[1]
-
-    result_ro_0 = result.roles[0]
-    assert result_ro_0.type == expected_rolegroup_type
-    assert result_ro_0.repository_id == expected_repository_id_sys
-    assert result_ro_0.role == expected_ro_sys[0]
-
-    result_ro_1 = result.roles[1]
-    assert result_ro_1.type == expected_rolegroup_type
-    assert result_ro_1.repository_id == expected_repository_id
-    assert sorted(result_ro_1.role) == sorted(expected_roles[0])
-
-    result_groups_0 = result.groups[0]
-    assert result_groups_0.type == expected_group_type
-    assert result_groups_0.repository_id == expected_group_repository_id
-    assert result_groups_0.group_id == expected_group_id
-    assert result_groups_0.user_defined_id == expected_user_defined_id
+    assert (user_defined_group := next(g for g in detected.groups if g.user_defined_id == user_defined_id))
+    assert user_defined_group.type == "group"
+    assert user_defined_group.repository_id == repository_id
 
 
-def test_detect_affiliation_no_match(app):
-    result = detect_affiliation("test1_ro_radm_test")
-    expected = None
-    assert result == expected
+@pytest.mark.parametrize("sort", ["asc", "desc"])
+def test_detect_affiliations_multiple_roles(sort, config: RuntimeConfig):
+    patterns = config.GROUPS.id_patterns
+    repository_id, user_defined_id = "test_repo_ac_jp", "detection_sample"
+    roles = [USER_ROLES.COMMUNITY_ADMIN, USER_ROLES.CONTRIBUTOR]
+    roles.sort(reverse=(sort == "desc"))
+    # when sort == "asc", first role (COMMUNITY_ADMIN) is preferred over the second role (CONTRIBUTOR).
+    # when sort == "desc", first role (CONTRIBUTOR) is overridden by the second role (COMMUNITY_ADMIN).
+    group_ids = [
+        patterns[roles[0]].format(repository_id=repository_id),
+        patterns[roles[1]].format(repository_id=repository_id),
+        patterns["user_defined"].format(repository_id=repository_id, user_defined_id=user_defined_id),
+    ]
+
+    detected = detect_affiliations(group_ids)
+
+    assert len(detected.roles) == 1
+    assert len(detected.groups) == 1
+
+    assert (community_admin := next(r for r in detected.roles if r.role == USER_ROLES.COMMUNITY_ADMIN))
+    assert community_admin.type == "role"
+    assert community_admin.repository_id == repository_id
+
+    assert next(g for g in detected.groups if g.user_defined_id == user_defined_id)
 
 
-@pytest.mark.parametrize(
-    ("group_id", "expected_repository_id", "expected_roles", "expected_type"),
-    [
-        ("jc_roles_sysadm_test", None, ["system_admin"], "role"),
-        ("jc_test_ac_jp_ro_radm_test", "test_ac_jp", ["repository_admin"], "role"),
-        ("jc_test_ac_jp_ro_cadm_test", "test_ac_jp", ["community_admin"], "role"),
-        ("jc_test_ac_jp_ro_cont_test", "test_ac_jp", ["contributor"], "role"),
-        ("jc_test_ac_jp_ro_user_test", "test_ac_jp", ["general_user"], "role"),
-    ],
-    ids=["sysadm", "radm", "cadm", "cont", "user"],
-)
-def test_detect_affiliation_role_group(app, group_id, expected_repository_id, expected_roles, expected_type):
-    result = detect_affiliation(group_id)
-    assert result is not None
-    assert isinstance(result, _RoleGroup)
-    assert result.repository_id == expected_repository_id
-    assert result.role == expected_roles[0]
-    assert result.type == expected_type
+def test_detect_affiliations_multiple_repositories(config: RuntimeConfig):
+    patterns = config.GROUPS.id_patterns
+    num_repo = 2
+    repository_ids = [f"test_{i}_repo_ac_jp" for i in range(1, num_repo + 1)]
+    group_ids = [patterns[USER_ROLES.CONTRIBUTOR].format(repository_id=repository_ids[i]) for i in range(num_repo)]
+
+    detected = detect_affiliations(group_ids)
+
+    assert len(detected.roles) == num_repo
+    assert not detected.groups
+
+    assert next(r for r in detected.roles if r.repository_id == repository_ids[0])
+    assert next(r for r in detected.roles if r.repository_id == repository_ids[1])
 
 
-def test_detect_affiliation_group(app):
-    expected_repository_id = "test_ac_jp"
-    expected_group_id = "jc_test_ac_jp_gr_test3_test"
-    expected_user_defined_id = "test3"
-    expected_type = "group"
+def test_detect_affiliations_multiple_groups(config: RuntimeConfig):
+    patterns = config.GROUPS.id_patterns
+    num_groups = 2
+    repository_id = "test_repo_ac_jp"
+    user_defined_ids = [f"detection_sample_{i}" for i in range(1, num_groups + 1)]
+    group_ids = [
+        patterns["user_defined"].format(repository_id=repository_id, user_defined_id=user_defined_ids[i])
+        for i in range(num_groups)
+    ]
 
-    result = detect_affiliation("jc_test_ac_jp_gr_test3_test")
-    assert result is not None
-    assert isinstance(result, _Group)
-    assert result.repository_id == expected_repository_id
-    assert result.group_id == expected_group_id
-    assert result.user_defined_id == expected_user_defined_id
-    assert result.type == expected_type
+    detected = detect_affiliations(group_ids)
 
+    assert not detected.roles
+    assert len(detected.groups) == num_groups
 
-def test_build_combined_regex_sys(app):
-    pattern = _build_combined_regex().pattern
-    expected = "(?P<system_admin>jc_roles_sysadm_test)"
-
-    assert expected in pattern
+    assert next(g for g in detected.groups if g.user_defined_id == user_defined_ids[0])
+    assert next(g for g in detected.groups if g.user_defined_id == user_defined_ids[1])
 
 
-def test_build_combined_regex_repo(app):
-    pattern = _build_combined_regex().pattern
-    expected = "(?P<repository_admin>jc_(?P<repository_admin__repository_id>.+?)_ro_radm_test)"
+def test_detect_affiliation_role_system_admin(config: RuntimeConfig):
+    group_id = config.GROUPS.id_patterns[USER_ROLES.SYSTEM_ADMIN]
 
-    assert expected in pattern
+    detected = detect_affiliation(group_id)
 
-
-def test_build_combined_regex_com(app):
-    pattern = _build_combined_regex().pattern
-    expected = "(?P<community_admin>jc_(?P<community_admin__repository_id>.+?)_ro_cadm_test)"
-
-    assert expected in pattern
+    assert detected is not None
+    assert detected.type == "role"
+    assert detected.repository_id is None
+    assert detected.role == USER_ROLES.SYSTEM_ADMIN
 
 
-def test_build_combined_regex_con(app):
-    pattern = _build_combined_regex().pattern
-    expected = "(?P<contributor>jc_(?P<contributor__repository_id>.+?)_ro_cont_test)"
+@pytest.mark.parametrize("role", [role for role in USER_ROLES if role != USER_ROLES.SYSTEM_ADMIN])
+def test_detect_affiliation_role(role, config: RuntimeConfig):
+    pattern = config.GROUPS.id_patterns[role]
+    repository_id = "test_repo_ac_jp"
+    group_id = pattern.format(repository_id=repository_id)
 
-    assert expected in pattern
+    detected = detect_affiliation(group_id)
 
-
-def test_build_combined_regex_gene(app):
-    pattern = _build_combined_regex().pattern
-    expected = "(?P<general_user>jc_(?P<general_user__repository_id>.+?)_ro_user_test)"
-
-    assert expected in pattern
-
-
-def test_build_combined_regex_user(app):
-    pattern = _build_combined_regex().pattern
-    expected = (
-        "(?P<user_defined>jc_(?P<user_defined__repository_id>.+?)_gr_(?P<user_defined__user_defined_id>.+?)_test)"
-    )
-
-    assert expected in pattern
+    assert detected is not None
+    assert detected.type == "role"
+    assert detected.repository_id == repository_id
+    assert detected.role == role
 
 
-def test_build_combined_regex_len(app, test_config):
-    pattern = _build_combined_regex().pattern
-    patterns_config = test_config.GROUPS.id_patterns.model_dump()
+def test_detect_affiliation_group(config: RuntimeConfig):
+    pattern = config.GROUPS.id_patterns["user_defined"]
+    repository_id, user_defined_id = "test_repo_ac_jp", "detection_sample"
+    group_id = pattern.format(repository_id=repository_id, user_defined_id=user_defined_id)
 
-    assert len(patterns_config) == len(pattern.split("|"))
+    detected = detect_affiliation(group_id)
+
+    assert detected is not None
+    assert detected.type == "group"
+    assert detected.repository_id == repository_id
+    assert detected.group_id == group_id
+    assert detected.user_defined_id == user_defined_id
 
 
-def test_detect_repository_first_match_with_resolver_mock(mocker):
-    """detect_repository returns the first Service when resolve_repository_id is mocked to match only the first."""
-    service1 = Service(value="repo1")
-    service2 = Service(value="repo2")
-    services = [service1, service2]
-    mocker.patch(
-        "server.services.utils.affiliations.resolve_repository_id",
-        side_effect=lambda service_id: "matched" if service_id == "repo1" else None,
-    )
-    result = detect_repository(services)
-    assert result is service1
+def test_detect_affiliation_no_match(config):
+    detected = detect_affiliation("non_following_pattern_group")
+
+    assert detected is None
+
+
+def test_parse_affiliated_group_ids(test_config: RuntimeConfig):
+    patterns = test_config.GROUPS.id_patterns
+    uri = "https://cg.gakunin.jp/gr/{group_id}"
+    group_ids = [
+        patterns.repository_admin.format(repository_id="test_1_repo_ac_jp"),
+        patterns.contributor.format(repository_id="test_2_repo_ac_jp"),
+    ]
+    is_member_of = ";".join(uri.format(group_id=gid) for gid in group_ids)
+
+    result = parse_affiliated_group_ids(is_member_of)
+
+    assert result == group_ids
+
+
+def test_parse_affiliated_group_ids_include_admin(test_config: RuntimeConfig):
+    patterns = test_config.GROUPS.id_patterns
+    uri = "https://cg.gakunin.jp/gr/{group_id}"
+    group_ids = [
+        # group that has admin suffix should be ignored.
+        f"{patterns.repository_admin.format(repository_id='test_1_repo_ac_jp')}/admin",
+        patterns.system_admin,
+    ]
+    is_member_of = ";".join(uri.format(group_id=gid) for gid in group_ids)
+
+    result = parse_affiliated_group_ids(is_member_of)
+
+    assert result == [group_ids[1]]  # only non-suffix group.
+
+
+def test_detect_affiliated_repository(map_groups, mocker: MockFixture):
+    service = map_groups[0].services[0]
+    repository_id = "test_repo_ac_jp"
+    mocker.patch.object(server.services.utils.affiliations, "resolve_repository_id", return_value=repository_id)
+
+    result = detect_affiliated_repository([service])
+    assert result is service

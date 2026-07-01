@@ -1,44 +1,30 @@
 import re
 import typing as t
 
-from server.clients import utils
+import server.clients.utils
+
+from server.clients.utils import compute_signature, get_time_stamp
 
 
 if t.TYPE_CHECKING:
-    import pytest
+    from pytest_mock import MockerFixture
 
 
-def test_get_time_stamp_returns_int_timestamp_string(monkeypatch: pytest.MonkeyPatch):
-    """A fixed input should always make a fixed output"""
+def test_get_time_stamp(mocker: MockerFixture):
+    mocker.patch.object(server.clients.utils.time, "time", return_value=1767667634.6385803)
 
-    fixed_time = 1700000000.987654
-    expecter_timestamp = "1700000000"
-    monkeypatch.setattr(utils.time, "time", lambda: fixed_time)
-    result = utils.get_time_stamp()
-    assert result == expecter_timestamp
-
-
-def test_compute_signature_matches_expected_hash():
-    """A known input should make a known SHA-256 hash"""
-    cs = "secret"
-    at = "token"
-    ts = "1700000000"
-    expected = utils.hashlib.sha256(f"{cs}{at}{ts}".encode()).hexdigest()
-    result = utils.compute_signature(cs, at, ts)
-    assert result == expected
+    time_stamp = get_time_stamp()
+    assert isinstance(time_stamp, str)
+    assert re.match(r"^\d+$", time_stamp)
+    assert time_stamp == "1767667634"
 
 
-def test_compute_signature_returns_sha256_hex_format():
-    """The return value should be a SHA-256 hash"""
-    expected_length = 64
-    out = utils.compute_signature("a", "b", "c")
-    assert isinstance(out, str)
-    assert len(out) == expected_length
-    assert re.fullmatch(r"[0-9a-f]{64}", out)
+def test_compute_signature():
+    time_stamp = "1767667634"
+    client_secret, access_token = "bdaf22fc9d8a4b25b6f97f6a2a38f6ea", "bd06475264864f56"
 
+    signature = compute_signature(client_secret, access_token, time_stamp)
 
-def test__compute_signature_changes_when_input_changes():
-    """If one character in the input changes, the output hash should also change"""
-    base = utils.compute_signature("s", "t", "1")
-    changed = utils.compute_signature("s", "t", "2")
-    assert base != changed
+    assert isinstance(signature, str)
+    assert re.match(r"^[a-f0-9]{64}$", signature)
+    assert signature == "24f9dd449705838fafc185bc8a6cd40b733f5653ae2b2bc8eeaf65d2dfaeb5d6"

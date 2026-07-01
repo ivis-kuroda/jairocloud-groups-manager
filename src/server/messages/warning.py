@@ -15,7 +15,7 @@ DATABASE_NOT_EXIST = LogMessage(
 
 FAILED_CONNECT_REDIS = LogMessage(
     "W020",
-    "Failed to connect to Redis. Application may not function correctly: %(error)s",
+    "Failed to connect to Redis. Application may not function correctly.",
 )
 
 

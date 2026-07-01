@@ -9,29 +9,19 @@ export default defineNuxtConfig({
     '@vueuse/nuxt',
   ],
   ssr: false,
-
   imports: {
     dirs: ['~/types'],
     scan: true,
   },
-
-  devtools: {
-    enabled: true,
-  },
-
   css: ['~/assets/css/main.css'],
-
   srcDir: 'src/app/',
-
   compatibilityDate: '2026-03-23',
-
   vite: {
     vue: {
       features: {
         optionsAPI: false,
       },
     },
-
     optimizeDeps: {
       include: [
         '@vue/devtools-core',
@@ -42,13 +32,11 @@ export default defineNuxtConfig({
       ],
     },
   },
-
   eslint: {
     config: {
       stylistic: true,
     },
   },
-
   i18n: {
     locales: [
       { code: 'en', iso: 'es-US', file: 'en.json', name: 'English' },

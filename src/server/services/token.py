@@ -14,7 +14,7 @@ import requests
 from flask import current_app, url_for
 from pydantic_core import ValidationError
 
-from server.clients import auth
+from server.clients import auth, users
 from server.config import config
 from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT, OAUTH_CALLBACK_CHANNEL
 from server.datastore import app_cache
@@ -93,32 +93,32 @@ def prepare_issuing_url() -> str:
     """
     entity_id = config.SP.entity_id
 
-    certs = get_client_credentials()
-    if certs is None:
+    creds = get_client_credentials()
+    if creds is None:
         try:
-            certs = auth.issue_client_credentials(entity_id, config.SP)
+            creds = auth.issue_client_credentials(entity_id, config.SP)
         except requests.HTTPError as exc:
             current_app.logger.error(E.FAILED_ISSUE_CREDENTIALS)
-            response = exc.response
-            status_code = response.status_code
-            match status_code:
-                case HTTPStatus.BAD_REQUEST:
-                    description = response.json().get("error_description")
-                    error = E.RECEIVE_RESPONSE_MESSAGE % {"message": description}
-                    raise CertificatesError(error) from exc
-                case _:
-                    error = E.RECEIVE_UNEXPECTED_RESPONSE
-                    raise UnexpectedResponseError(error) from exc
+
+            response = t.cast("requests.Response", exc.response)
+            if response.status_code == HTTPStatus.BAD_REQUEST:
+                description = response.json().get("error_description")
+                current_app.logger.error(
+                    E.RECEIVE_RESPONSE_MESSAGE, {"message": description}
+                )
+                raise CertificatesError(E.FAILED_ISSUE_CREDENTIALS) from exc
+
+            raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
         except requests.JSONDecodeError as exc:
             current_app.logger.error(E.FAILED_ISSUE_CREDENTIALS)
             raise CertificatesError(E.FAILED_DECODE_RESPONSE) from exc
 
         current_app.logger.info(I.SUCCESS_ISSUE_CREDENTIALS)
-        save_client_credentials(certs)
+        save_client_credentials(creds)
 
     redirect_uri = url_for("api.callback.auth_code", _external=True)
-    return _create_issuing_url(certs.client_id, redirect_uri, entity_id)
+    return _create_issuing_url(creds.client_id, redirect_uri, entity_id)
 
 
 def _create_issuing_url(client_id: str, redirect_uri: str, entity_id: str) -> str:
@@ -160,6 +160,7 @@ def issue_access_token(code: str) -> str:
     """
     certs = get_client_credentials()
     if certs is None:
+        current_app.logger.error(E.CREDENTIALS_NOT_STORED)
         app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
         raise CredentialsError(E.CREDENTIALS_NOT_STORED)
 
@@ -168,16 +169,17 @@ def issue_access_token(code: str) -> str:
     except requests.HTTPError as exc:
         app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
         current_app.logger.error(E.FAILED_ISSUE_TOKEN)
-        response = exc.response
-        status_code = response.status_code
-        match status_code:
-            case HTTPStatus.BAD_REQUEST:
-                description = response.json().get("error_description")
-                error = E.RECEIVE_RESPONSE_MESSAGE % {"message": description}
-                raise OAuthTokenError(error) from exc
-            case _:
-                error = E.RECEIVE_UNEXPECTED_RESPONSE
-                raise UnexpectedResponseError(error) from exc
+
+        response = t.cast("requests.Response", exc.response)
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            description = response.json().get("error_description")
+            current_app.logger.error(
+                E.RECEIVE_RESPONSE_MESSAGE, {"message": description}
+            )
+            raise OAuthTokenError(E.FAILED_ISSUE_TOKEN) from exc
+
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
+
     except requests.JSONDecodeError as exc:
         app_cache.publish(OAUTH_CALLBACK_CHANNEL, "failed")
         current_app.logger.error(E.FAILED_ISSUE_TOKEN)
@@ -222,26 +224,29 @@ def refresh_access_token() -> str:
     """
     certs = get_client_credentials()
     if certs is None:
+        current_app.logger.error(E.CREDENTIALS_NOT_STORED)
         raise CredentialsError(E.CREDENTIALS_NOT_STORED)
 
     token = get_oauth_token()
     if token is None or (refresh_token := token.refresh_token) is None:
+        current_app.logger.error(E.REFRESH_TOKEN_NOT_STORED)
         raise OAuthTokenError(E.REFRESH_TOKEN_NOT_STORED)
 
     try:
         new_token = auth.refresh_oauth_token(refresh_token, certs)
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_REFRESH_TOKEN)
-        response = exc.response
-        status_code = response.status_code
-        match status_code:
-            case HTTPStatus.BAD_REQUEST:
-                description = response.json().get("error_description")
-                error = E.RECEIVE_RESPONSE_MESSAGE % {"message": description}
-                raise OAuthTokenError(error) from exc
-            case _:
-                error = E.RECEIVE_UNEXPECTED_RESPONSE
-                raise UnexpectedResponseError(error) from exc
+
+        response = t.cast("requests.Response", exc.response)
+        if response.status_code == HTTPStatus.BAD_REQUEST:
+            description = response.json().get("error_description")
+            current_app.logger.error(
+                E.RECEIVE_RESPONSE_MESSAGE, {"message": description}
+            )
+            raise OAuthTokenError(E.FAILED_REFRESH_TOKEN) from exc
+
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
+
     except requests.JSONDecodeError as exc:
         current_app.logger.error(E.FAILED_REFRESH_TOKEN)
         raise OAuthTokenError(E.FAILED_DECODE_RESPONSE) from exc
@@ -260,44 +265,33 @@ def get_token_owner() -> UserDetail:
 
     Raises:
         OAuthTokenError: If the access token is invalid or expired.
-        CredentialsError: If the client credentials are invalid.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
-    from server.clients import users  # noqa: PLC0415
-
-    access_token = get_access_token()
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        client_secret = get_client_secret()
         result: MapUser | MapError = users.get_self(
             access_token=access_token, client_secret=client_secret
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        response = t.cast("requests.Response", exc.response)
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
+
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
-
-    except OAuthTokenError, CredentialsError:
-        raise
+        raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_GET_TOKEN_OWNER)
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error)
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
     return UserDetail.from_map_user(result)

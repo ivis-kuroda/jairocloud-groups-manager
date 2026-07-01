@@ -1,6 +1,7 @@
 import typing as t
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 
@@ -9,14 +10,19 @@ from pydantic import HttpUrl
 from redis import Redis
 from redis.sentinel import Sentinel
 
+import server.config
 import server.datastore
+import server.db
+import server.signals
 
 from server import const
 from server.config import RuntimeConfig
 from server.const import USER_ROLES
+from server.entities.auth import ClientCredentials, OAuthToken
 from server.entities.cache import RepositoryCache
 from server.entities.group_detail import GroupDetail, Repository as GroupRepository
 from server.entities.login_user import LoginUser
+from server.entities.map_error import MapError
 from server.entities.map_group import (
     Administrator as GroupAdministrator,
     MapGroup,
@@ -35,9 +41,10 @@ from server.services.utils.affiliations import Affiliations, _Group, _RoleGroup
 if t.TYPE_CHECKING:
     from pathlib import Path
 
-    from pytest_mock import MockerFixture
+    from pytest_mock import MockerFixture, MockType
 
 pytest.register_assert_rewrite("tests.helpers")
+from tests.helpers import load_json_data  # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -104,11 +111,12 @@ def test_config(tmp_path) -> RuntimeConfig:
             "REDIS": {
                 "cache_type": "RedisCache",
                 "key_prefix": "jcgroups-test-",
-                "single": {"base_url": "redis://disable:6379/0"},
+                "single": {"base_url": "redis://disable:6379"},
                 "sentinel": {
                     "nodes": [
                         {"host": "sentinel-1", "port": 26379},
                         {"host": "sentinel-2", "port": 26379},
+                        {"host": "sentinel-3", "port": 26379},
                     ],
                 },
             },
@@ -135,8 +143,13 @@ def config(test_config, mocker: MockerFixture) -> RuntimeConfig:
 
     This includes mocking to bypass access to the application context.
     """
-    mocker.patch("server.config._get_config", return_value=test_config)
+    mocker.patch.object(server.config, "__get_config", return_value=test_config)
     return test_config
+
+
+def pytest_configure(config: pytest.Config):
+    config.addinivalue_line("markers", "sqlalchemy_enabled: Mark a test to enable SQLAlchemy.")
+    config.addinivalue_line("markers", "redis_enabled: Mark a test to enable Redis model.")
 
 
 @pytest.fixture(autouse=True)
@@ -148,10 +161,6 @@ def sqlalchemy_disable(request: pytest.FixtureRequest, mocker: MockerFixture):
     If you want to enable it, add `@pytest.mark.sqlalchemy_enabled` to the test."""
     mocker.patch("server.db.base.SQLAlchemy", side_effect=RuntimeError(error))
     mocker.patch("server.ext.database_exists")
-
-
-def pytest_configure(config):
-    config.addinivalue_line("markers", "redis_enabled: Mark a test to enable Redis model.")
 
 
 @pytest.fixture(autouse=True)
@@ -172,7 +181,7 @@ def redis_disable(request: pytest.FixtureRequest, mocker: MockerFixture):
 @pytest.fixture
 def db(mocker: MockerFixture):
     mock_db = mocker.MagicMock()
-    mocker.patch("server.db.utils._db", return_value=mock_db)
+    mocker.patch.object(server.db.utils, "__get_db", return_value=mock_db)
     return mock_db
 
 
@@ -182,14 +191,14 @@ def datastore(mocker: MockerFixture):
     account_store = mocker.create_autospec(Redis, instance=True)
     group_cache = mocker.create_autospec(Redis, instance=True)
 
-    def _stores(name):
+    def _get_store(name):
         return {
             "app_cache": app_cache,
             "account_store": account_store,
             "group_cache": group_cache,
         }[name]
 
-    mocker.patch.object(server.datastore, "_stores", side_effect=_stores)
+    mocker.patch.object(server.datastore, "__get_store", side_effect=_get_store)
 
     return app_cache, account_store, group_cache
 
@@ -208,6 +217,25 @@ def app(base_app: Flask, test_config):
     JAIROCloudGroupsManager(base_app, config=test_config)
     with base_app.app_context():
         yield base_app
+
+
+@pytest.fixture
+def auth_token():
+    return OAuthToken(
+        access_token=uuid4().hex[:8],
+        token_type="bearer",
+        expires_in=3600,
+        refresh_token=uuid4().hex[:8],
+        scope="scope",
+    )
+
+
+@pytest.fixture
+def client_creds():
+    return ClientCredentials(
+        client_id=uuid4().hex[:8],
+        client_secret=uuid4().hex[:16],
+    )
 
 
 @pytest.fixture
@@ -288,6 +316,7 @@ def map_users(test_config):
         role: MapUser(
             id=f"test_user_id_{role.value}",
             user_name=f"Test {role.value.title()}",
+            preferred_language="en",
             edu_person_principal_names=[EPPN(value=f"test-{role.value}@idp.example.com")],
             emails=[Email(value=f"test-{role.value}@example.com")],
             meta=UserMeta(created=created, last_modified=last_modified),
@@ -440,6 +469,34 @@ def repository_summaries():
 
 
 @pytest.fixture
+def map_error():
+    json_data = load_json_data("data/map_error.json")
+    map_error = MapError.model_validate(json_data)
+    raw_json = map_error.model_dump_json(ensure_ascii=False, by_alias=True)
+
+    return json_data, map_error, raw_json
+
+
+@pytest.fixture
+def signal_send(mocker: MockerFixture):
+    mockes: MockSignal[MockType] = {
+        "before_request": mocker.patch.object(server.signals.before_request, "send"),
+        "repository_created": mocker.patch.object(server.signals.repository_created, "send"),
+        "repository_updated": mocker.patch.object(server.signals.repository_updated, "send"),
+        "repository_deleted": mocker.patch.object(server.signals.repository_deleted, "send"),
+        "group_created": mocker.patch.object(server.signals.group_created, "send"),
+        "group_updated": mocker.patch.object(server.signals.group_updated, "send"),
+        "group_deleted": mocker.patch.object(server.signals.group_deleted, "send"),
+        "user_created": mocker.patch.object(server.signals.user_created, "send"),
+        "user_updated": mocker.patch.object(server.signals.user_updated, "send"),
+        "user_deleted": mocker.patch.object(server.signals.user_deleted, "send"),
+        "user_promoted": mocker.patch.object(server.signals.user_promoted, "send"),
+        "user_demoted": mocker.patch.object(server.signals.user_demoted, "send"),
+    }
+    return mockes
+
+
+@pytest.fixture
 def group_caches():
     return [
         RepositoryCache(
@@ -463,7 +520,7 @@ def cached_data():
         return [
             RepositoryCache(
                 id=repositories[i].id,
-                service_name=t.cast(str, repositories[i].service_name),
+                service_name=t.cast("str", repositories[i].service_name),
                 service_url=repositories[i].service_url,
                 updated=now or datetime.now(UTC) if not every_other or i % 2 == 0 else None,
             )
@@ -471,3 +528,21 @@ def cached_data():
         ]
 
     return _data
+
+
+class MockSignal[T](t.TypedDict):
+    before_request: T
+
+    repository_created: T
+    repository_updated: T
+    repository_deleted: T
+
+    group_created: T
+    group_updated: T
+    group_deleted: T
+
+    user_created: T
+    user_updated: T
+    user_deleted: T
+    user_promoted: T
+    user_demoted: T

@@ -9,24 +9,24 @@ import typing as t
 from datetime import UTC, datetime
 
 from flask import current_app, session
-from flask_login import LoginManager, current_user
+from flask_login import LoginManager, UserMixin, current_user
 
 from server.config import config
 from server.datastore import account_store
 from server.entities.login_user import LoginUser
 from server.messages import I
+from server.signals import before_request
 
 
 if t.TYPE_CHECKING:
-    from flask_login import AnonymousUserMixin
     from werkzeug.local import LocalProxy
 
-    type CurrentUser = LoginUser | AnonymousUserMixin
+    type CurrentUser = UserMixin | LocalProxy
 
 login_manager = LoginManager()
 
 
-def is_user_logged_in(current_user: LocalProxy) -> t.TypeGuard[LoginUser]:
+def is_user_logged_in(current_user: CurrentUser) -> t.TypeIs[LoginUser]:
     """Type guard for current_user.
 
     If current_user is logged in, then it is LoginUser.
@@ -43,7 +43,8 @@ def is_user_logged_in(current_user: LocalProxy) -> t.TypeGuard[LoginUser]:
         return False
 
 
-def refresh_session() -> None:
+@before_request.connect
+def refresh_session(_sender: object = None, *_, **__) -> None:  # noqa: ANN002, ANN003
     """Extend the TTL of the Redis login state for login users."""
     if config.SESSION.strategy == "absolute":
         return
@@ -118,4 +119,4 @@ def build_account_store_key(session_id: str) -> str:
     Returns:
         str: Session information key for account_store
     """
-    return f"{config.REDIS.key_prefix}login-{session_id}"
+    return f"{config.REDIS.key_prefix}user-session-{session_id}"

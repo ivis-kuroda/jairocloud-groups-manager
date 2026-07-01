@@ -23,7 +23,7 @@ if t.TYPE_CHECKING:
     from server.config import RuntimeConfig
 
 
-def test_roles_required_grants_access(app: Flask, user_affils, mocker: MockerFixture):
+def test_roles_required_grants_access(app, user_affils, mocker: MockerFixture):
     required = USER_ROLES.SYSTEM_ADMIN
     mocker.patch.object(server.api.helpers, "get_current_user_affiliations", return_value=user_affils[required])
     mock_highest = mocker.patch.object(server.api.helpers, "get_highest_role", return_value=required)
@@ -35,7 +35,7 @@ def test_roles_required_grants_access(app: Flask, user_affils, mocker: MockerFix
     mock_highest.assert_called_once_with([required])
 
 
-def test_roles_required_denies_access(app: Flask, user_affils, mocker: MockerFixture):
+def test_roles_required_denies_access(app, user_affils, mocker: MockerFixture):
     required, client = USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN
     mocker.patch.object(server.api.helpers, "get_current_user_affiliations", return_value=user_affils[client])
     mocker.patch.object(server.api.helpers, "get_highest_role", return_value=client)

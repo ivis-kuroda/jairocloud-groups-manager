@@ -46,7 +46,7 @@ def connection(
     Args:
         app (Flask): The Flask application instance, or None to use current_app.
         db (int): Database number.
-        config (RuntimeConfig): The runtime configuration instance.
+        config (RuntimeConfig): The server configuration instance.
 
     Returns:
         Redis: Redis store object.
@@ -99,16 +99,30 @@ def __sentinel_connection(config: RuntimeConfig, db: int) -> Redis:
     )
 
 
-def _stores(name: str) -> Redis:
+def __get_store(name: str) -> Redis:
     ext: JAIROCloudGroupsManager = current_app.extensions["jairocloud-groups-manager"]
     return ext.datastore[name]
 
 
-app_cache = t.cast("Redis", LocalProxy(lambda: _stores("app_cache")))
-"""Redis datastore connection for application cache."""
+def _stores(name: str):  # noqa: ANN202, for intersection-type inference
+    def __type_assertion(_: object) -> t.TypeIs[Redis]:
+        return True
 
-account_store = t.cast("Redis", LocalProxy(lambda: _stores("account_store")))
-"""Redis datastore connection for storing account information."""
+    proxy = LocalProxy(lambda: __get_store(name))
 
-group_cache = t.cast("Redis", LocalProxy(lambda: _stores("group_cache")))
-"""Redis datastore connection for group informations cache."""
+    if not __type_assertion(proxy):
+        raise NotImplementedError  # pragma: no cover
+
+    return proxy
+
+
+app_cache = _stores("app_cache")
+"""Proxy for :class:`Redis` datastore connection used for the application's cache."""
+
+account_store = _stores("account_store")
+"""Proxy for :class:`Redis` datastore connection used for the logged-in user's
+session data.
+"""
+
+group_cache = _stores("group_cache")
+"""Proxy for :class:`Redis` datastore connection used for caching group information."""

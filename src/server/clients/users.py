@@ -6,14 +6,14 @@
 
 import typing as t
 
+from functools import cache
 from http import HTTPStatus
 
 import requests
 
-from flask_login import current_user
 from pydantic import TypeAdapter
+from pydantic.alias_generators import to_camel
 
-from server.auth import is_user_logged_in
 from server.config import config
 from server.const import MAP_EXIST_EPPN_ENDPOINT, MAP_SELF_ENDPOINT, MAP_USERS_ENDPOINT
 from server.entities.map_error import MapError
@@ -22,7 +22,7 @@ from server.entities.patch_request import PatchOperation, PatchRequestPayload
 from server.entities.search_request import SearchRequestParameter, SearchResponse
 from server.signals import user_created, user_deleted, user_updated
 
-from .decoraters import cache_resource
+from .decorators import cache_resource, default_id_generator
 from .utils import compute_signature, get_time_stamp
 
 
@@ -36,16 +36,7 @@ type UsersSearchResponse = SearchResponse[MapUser] | MapError
 adapter_search: TypeAdapter[UsersSearchResponse] = TypeAdapter(UsersSearchResponse)
 
 
-def _search_cache_identifier(*args, **kwargs) -> str:  # noqa: ANN002, ANN003, ARG001
-    if not is_user_logged_in(current_user):
-        return "by_anonymous"
-    if current_user.is_system_admin:
-        return "by_system_admin"
-    permitted = sorted(current_user.permitted_repositories)
-    return ",".join(permitted)
-
-
-@cache_resource(identifier_generator=_search_cache_identifier)
+@cache_resource(id_generator=default_id_generator)
 def search(
     query: SearchRequestParameter,
     /,
@@ -75,21 +66,8 @@ def search(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
-
-    query_params = query.model_dump(
-        mode="json",
-        by_alias=True,
-    )
+    attributes_params = _build_attribute_params(include, exclude)
+    query_params = query.model_dump(mode="json", by_alias=True)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_USERS_ENDPOINT}",
@@ -103,7 +81,7 @@ def search(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter_search.validate_json(response.text)
+    return adapter_search.validate_json(response.text, extra="ignore")
 
 
 @cache_resource
@@ -136,16 +114,7 @@ def get_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
+    attributes_params = _build_attribute_params(include, exclude)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_USERS_ENDPOINT}/{user_id}",
@@ -159,7 +128,7 @@ def get_by_id(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 @cache_resource
@@ -191,16 +160,7 @@ def get_by_eppn(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
+    attributes_params = _build_attribute_params(include, exclude)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_EXIST_EPPN_ENDPOINT}/{eppn}",
@@ -214,7 +174,7 @@ def get_by_eppn(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def post(
@@ -247,23 +207,15 @@ def post(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = user.model_dump(
         mode="json",
-        exclude=set(exclude or ()),
+        include=include | {"id"} if include else None,
+        exclude=_build_user_dump_exclude(exclude),
         by_alias=True,
         exclude_unset=True,
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.post(
         f"{config.MAP_CORE.base_url}{MAP_USERS_ENDPOINT}",
@@ -312,23 +264,15 @@ def put_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = user.model_dump(
         mode="json",
-        exclude=set(exclude or ()),
+        include=include | {"id"} if include else None,
+        exclude=_build_user_dump_exclude(exclude),
         by_alias=True,
         exclude_unset=True,
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.put(
         f"{config.MAP_CORE.base_url}{MAP_USERS_ENDPOINT}/{user.id}",
@@ -340,20 +284,21 @@ def put_by_id(
         timeout=config.MAP_CORE.timeout,
     )
 
-    if response.status_code > HTTPStatus.BAD_REQUEST:
+    status_code = response.status_code
+    if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
     resource = adapter.validate_json(response.text)
 
     if isinstance(resource, MapUser):
-        user_updated.send(None, user=resource)
+        user_updated.send(put_by_id, user=resource)
 
     return resource
 
 
 def patch_by_id(
     user_id: str,
-    operations: list[PatchOperation[MapUser]],
+    operations: t.Sequence[PatchOperation[MapUser]],
     /,
     include: set[str] | None = None,
     exclude: set[str] | None = None,
@@ -365,7 +310,7 @@ def patch_by_id(
 
     Args:
         user_id (str): ID of the User resource.
-        operations (list[PatchOperation]): List of patch operations to apply.
+        operations (Sequence[PatchOperation]): List of patch operations to apply.
         include (set[str] | None):
             Attribute names to include in update. Optional.
         exclude (set[str] | None):
@@ -383,22 +328,11 @@ def patch_by_id(
         "time_stamp": time_stamp,
         "signature": signature,
     }
+    attributes_params = _build_attribute_params(include, exclude)
 
     payload = PatchRequestPayload(operations=operations).model_dump(
-        mode="json",
-        by_alias=True,
-        exclude_unset=False,
+        mode="json", by_alias=True, exclude_none=True
     )
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
 
     response = requests.patch(
         f"{config.MAP_CORE.base_url}{MAP_USERS_ENDPOINT}/{user_id}",
@@ -417,7 +351,7 @@ def patch_by_id(
     resource = adapter.validate_json(response.text)
 
     if isinstance(resource, MapUser):
-        user_updated.send(None, user=resource)
+        user_updated.send(patch_by_id, user=resource)
 
     return resource
 
@@ -448,16 +382,7 @@ def get_self(
         "time_stamp": time_stamp,
         "signature": signature,
     }
-
-    attributes_params: dict[str, str] = {}
-    if include:
-        attributes_params[alias_generator("attributes")] = ",".join([
-            alias_generator(name) for name in include | {"id"}
-        ])
-    if exclude:
-        attributes_params[alias_generator("excluded_attributes")] = ",".join([
-            alias_generator(name) for name in exclude
-        ])
+    attributes_params = _build_attribute_params(include, exclude)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_SELF_ENDPOINT}",
@@ -474,85 +399,114 @@ def get_self(
     return adapter.validate_json(response.text)
 
 
-def _get_alias_generator() -> t.Callable[[str], str]:
-    generator = MapUser.model_config.get("alias_generator")
-    if generator and not callable(generator):
-        generator = generator.serialization_alias
-    if generator is None:
-        generator = lambda x: x  # noqa: E731
-
-    return generator
+@cache
+def _a(o: str) -> str:
+    ag = MapUser.model_config.get("alias_generator")
+    fnc = ag if callable(ag) else ag.serialization_alias if ag else None
+    return fnc(o) if fnc else o
 
 
-alias_generator: t.Callable[[str], str] = _get_alias_generator()
-del _get_alias_generator
+def _build_attribute_params(
+    include: set[str] | None, exclude: set[str] | None
+) -> dict[str, str]:
+    attributes_params = {}
+    if include:
+        attributes_params[to_camel("attributes")] = ",".join([
+            _a(name) for name in include | {"id"}
+        ])
+    if exclude:
+        attributes_params[to_camel("excluded_attributes")] = ",".join([
+            _a(name) for name in exclude
+        ])
+    return attributes_params
+
+
+def _build_user_dump_exclude(exclude: set[str] | None) -> dict[str, t.Any]:
+    dump_exclude: dict[str, t.Any] = dict.fromkeys(exclude or set(), True)
+
+    if "edu_person_principal_names" not in dump_exclude:
+        dump_exclude["edu_person_principal_names"] = {
+            # Only include the ePPN values in the dump.
+            "__all__": {"idp_entity_id"},
+        }
+
+    return dump_exclude
 
 
 @user_updated.connect
 @user_deleted.connect
-def handle_user_updated(_sender: object, user: MapUser | None = None, **kwargs) -> None:  # noqa: ANN003, ARG001
+def handle_user_updated(
+    _sender: object = None,
+    *_args,  # noqa: ANN002
+    user: MapUser | None = None,
+    **_kwargs,  # noqa: ANN003
+) -> None:
     """Handle user_updated signal to clear cache of the updated user.
 
     Args:
         sender: The sender of the signal.
         user (MapUser): The updated User resource.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if not isinstance(user, MapUser):
+    if not isinstance(user, MapUser) or not user.id:
         return
-    get_by_id.clear_cache(user.id)  # pyright: ignore[reportFunctionMemberAccess]
-    get_by_eppn.clear_cache(  # pyright: ignore[reportFunctionMemberAccess]
-        *[eppn.value for eppn in user.edu_person_principal_names or []]
-    )
+
+    get_by_id.clear_cache(user.id)
+    get_by_eppn.clear_cache(*[
+        eppn.value for eppn in user.edu_person_principal_names or []
+    ])
 
 
 @user_updated.connect
 @user_deleted.connect
 def handle_user_updated_by_eppn(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     eppns: list[str] | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle user_updated signal to clear cache of the updated user by ePPN.
 
     Args:
         sender: The sender of the signal.
         eppns (list): The ePPNs of the updated User resources.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if eppns:
-        get_by_eppn.clear_cache(*eppns)  # pyright: ignore[reportFunctionMemberAccess]
+    if not eppns:
+        return
+
+    get_by_eppn.clear_cache(*eppns)
 
 
 @user_updated.connect
 @user_deleted.connect
 def handle_user_updated_by_id(
-    _sender: object,
+    _sender: object = None,
+    *_args,  # noqa: ANN002
     user_id: str | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle user_updated signal to clear cache of the updated user by ID.
 
     Args:
         sender: The sender of the signal.
         user_id (str): The ID of the updated User resource.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    if user_id:
-        get_by_id.clear_cache(user_id)  # pyright: ignore[reportFunctionMemberAccess]
+    if not user_id:
+        return
+
+    get_by_id.clear_cache(user_id)
 
 
 @user_created.connect
 @user_updated.connect
 @user_deleted.connect
 def handle_reset_search_cache(
-    _sender: object,
-    **kwargs,  # noqa: ANN003, ARG001
+    _sender: object = None,
+    *_args,  # noqa: ANN002
+    **_kwargs,  # noqa: ANN003
 ) -> None:
     """Handle users signals to clear cache of the search results.
 
     Args:
         sender: The sender of the signal.
-        **kwargs: Other keyword arguments passed with the signal.
     """
-    search.clear_cache(_search_cache_identifier())  # pyright: ignore[reportFunctionMemberAccess]
+    search.clear_cache(default_id_generator())

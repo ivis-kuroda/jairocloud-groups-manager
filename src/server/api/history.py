@@ -12,8 +12,8 @@ from flask import Blueprint, Response, current_app, send_file
 from flask_login import login_required
 from flask_pydantic import validate
 
+from server.api.schemas import HistoryQuery
 from server.const import USER_ROLES
-from server.entities.history_detail import HistoryQuery
 from server.entities.search_request import FilterOption, SearchResult
 from server.exc import InvalidQueryError, RecordNotFound
 from server.messages import E
@@ -88,7 +88,7 @@ def get(
     return result, 200
 
 
-@bp.put("/<tab>/<history_id>/public-status")
+@bp.put("/<tab>/<uuid:history_id>/public-status")
 @login_required
 @roles_required(USER_ROLES.SYSTEM_ADMIN)
 @validate(response_by_alias=True)

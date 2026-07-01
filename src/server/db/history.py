@@ -10,6 +10,7 @@ import typing as t
 import uuid
 
 from datetime import datetime  # noqa: TC003
+from typing import get_args
 
 from sqlalchemy import (
     JSON,
@@ -231,7 +232,7 @@ class UploadHistory(db.Model):
 
     __table_args__ = (
         CheckConstraint(
-            status.in_(t.get_args(Status.__value__)),
+            status.in_(get_args(Status.__value__)),
             name="status",
         ),
         Index(None, "results", postgresql_using="gin"),

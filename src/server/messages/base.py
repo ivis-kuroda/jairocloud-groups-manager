@@ -47,7 +47,7 @@ class LogMessage(UserString):
         return f"{self.code} | {self.data}"
 
     def __repr__(self) -> str:
-        return f"LogMessage(code={self.code!r}, content={self.data!r})"
+        return f"LogMessage(code={self.code!r}, message={self.data!r})"
 
     def __mod__(self, mapping: dict[str, t.Any]) -> t.Self:
         return self.__class__(self.code, self.data % mapping)  # pyright: ignore[reportArgumentType]

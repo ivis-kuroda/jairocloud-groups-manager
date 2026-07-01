@@ -1,232 +1,410 @@
-from typing import TYPE_CHECKING
+import typing as t
+
+from datetime import datetime
+from uuid import uuid4
 
 import pytest
 
-from pydantic import AliasGenerator, BaseModel, ConfigDict
+from pydantic import AliasGenerator
+from pydantic.alias_generators import to_camel
 
+import server.services.utils.patch_operations
+
+from server.const import USER_ROLES
+from server.entities.map_group import MapGroup, MemberUser
+from server.entities.map_user import EPPN, Email, MapUser
 from server.entities.patch_request import (
     AddOperation,
     RemoveOperation,
     ReplaceOperation,
 )
+from server.exc import SystemAdminNotFound
+from server.messages import E
+from server.services.utils import patch_operations
 from server.services.utils.patch_operations import (
     _diff,
-    _handle_list_diff,
-    _handle_literal_diff,
+    _select_fields,
     build_patch_operations,
     build_update_member_operations,
 )
 
+from tests.helpers import regex, unwrap
 
-if TYPE_CHECKING:
+
+if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-
-def return_str(x):
-    return x
+    from server.entities.user_detail import UserDetail
 
 
-config = ConfigDict(
-    alias_generator=AliasGenerator(serialization_alias=return_str),
-)
+@pytest.fixture(autouse=True)
+def alias(mocker: MockerFixture):
+    original = server.services.utils.patch_operations._a
+    mock_alias = mocker.patch.object(server.services.utils.patch_operations, "_a", side_effect=lambda _, x: x)
 
-config2 = ConfigDict(
-    alias_generator=None,
-)
-
-
-class Test(BaseModel):
-    id: str
-    model_config = config
-    test_list: list[Test3]
-    test_model: Test2
+    return original, mock_alias
 
 
-class Test2(BaseModel):
-    id: str
-    model_config = config2
+@pytest.fixture
+def original_alias(alias):
+    original, _ = alias
+    server.services.utils.patch_operations._a = original
+
+    return original
 
 
-class Test3(BaseModel):
-    value: str
-    type: str
+def test_build_patch_operations(map_users, mocker: MockerFixture):
+    base: MapUser = map_users[USER_ROLES.CONTRIBUTOR]
+    head = base.model_copy(
+        update={
+            "user_name": f"Updated {base.user_name}",
+        },
+        deep=True,
+    )
+
+    mock_diff = mocker.patch.object(server.services.utils.patch_operations, "_diff")
+    mock_diff.return_value = expected = [ReplaceOperation(path="user_name", value=head.user_name)]
+
+    result = build_patch_operations(base, head)
+
+    assert result == expected
+    mock_diff.assert_called_once_with(MapUser, base, head, include=None, exclude=None)
 
 
-class Test4(BaseModel):
-    value: str
-    value2: str
-    type: str
+def test_build_patch_operations_with_different_types(config, user_details):
+    base: UserDetail = user_details[USER_ROLES.CONTRIBUTOR]
+    head = base.to_map_user().model_copy(
+        update={
+            "user_name": f"updated_{base.user_name}",
+        },
+        deep=True,
+    )
+
+    with pytest.raises(TypeError, match=regex(E.CANNOT_RESOLVE_DIFFERENCE)):
+        build_patch_operations(base, head)
 
 
-class Test5(BaseModel):
-    value: str
-    value2: str
+def test__diff_literal_add(map_users, mocker: MockerFixture):
+    base: MapUser = map_users[USER_ROLES.CONTRIBUTOR]
+    base.preferred_language = None
+    head = base.model_copy(
+        update={"preferred_language": (updated_language := "ja")},
+        deep=True,
+    )
+
+    spy_literal_diff = mocker.spy(server.services.utils.patch_operations, "_handle_literal_diff")
+    expected = [AddOperation(path="preferred_language", value=updated_language)]
+
+    result = _diff(MapUser, base, head)
+
+    assert len(result) == len(expected)
+    assert next(op for op in result if op.path == "preferred_language") == expected[0]
+    spy_literal_diff.assert_any_call(base.id, head.id, path="id")
+    spy_literal_diff.assert_any_call(base.user_name, head.user_name, path="user_name")
+    spy_literal_diff.assert_any_call(base.preferred_language, updated_language, path="preferred_language")
 
 
-class Test6(BaseModel):
-    value: str
-    value3: str
+def test__diff_literal_remove(map_users, mocker: MockerFixture):
+    base: MapUser = map_users[USER_ROLES.CONTRIBUTOR]
+    base.external_id = uuid4().hex
+    head = base.model_copy(
+        update={"external_id": None},
+        deep=True,
+    )
+
+    spy_literal_diff = mocker.spy(server.services.utils.patch_operations, "_handle_literal_diff")
+    expected = [RemoveOperation(path="external_id")]
+
+    result = _diff(MapUser, base, head)
+
+    assert len(result) == len(expected)
+    assert next(op for op in result if op.path == "external_id") == expected[0]
+    spy_literal_diff.assert_any_call(base.external_id, head.external_id, path="external_id")
 
 
-@pytest.mark.parametrize(
-    ("ori", "up", "expected"),
-    [
-        (
-            Test(id="1", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-            Test(id="2", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-            [
-                Test(id="1", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-                Test(id="2", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-                None,
-                None,
-            ],
-        ),
-        (Test2(id="1"), Test2(id="2"), [Test2(id="1"), Test2(id="2"), None, None]),
-    ],
-    ids=["alias_generator", "no_alias_generator"],
-)
-def test_build_patch_operations(ori, up, expected, mocker: MockerFixture):
-    call = mocker.patch("server.services.utils.patch_operations._diff")
-    build_patch_operations(ori, up)
-    args, kwargs = call.call_args
-    assert args[0] == expected[0]
-    assert args[1] == expected[1]
-    assert callable(kwargs["alias_generator"])
-    assert kwargs["include"] is expected[2]
-    assert kwargs["exclude"] is expected[3]
+def test__diff_literal_replace(map_users, mocker: MockerFixture):
+    base: MapUser = map_users[USER_ROLES.CONTRIBUTOR]
+    head = base.model_copy(
+        update={"user_name": (updated_user_name := f"Updated {base.user_name}")},
+        deep=True,
+    )
+
+    spy_literal_diff = mocker.spy(server.services.utils.patch_operations, "_handle_literal_diff")
+    expected = [ReplaceOperation(path="user_name", value=updated_user_name)]
+
+    result = _diff(MapUser, base, head)
+
+    assert len(result) == len(expected)
+    assert next(op for op in result if op.path == "user_name") == expected[0]
+    spy_literal_diff.assert_any_call(base.user_name, updated_user_name, path="user_name")
 
 
-def test_build_patch_operations_typeerror():
-    original = Test(id="1", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2"))
-    updated = Test2(id="2")
-    msg = "E092 | Cannot resolve differences between different types (original: Test, updated: Test2)."
-    with pytest.raises(TypeError, match=msg):
-        build_patch_operations(original, updated)
+def test__diff_list_add(map_users, mocker: MockerFixture):
+    base: MapUser = map_users[USER_ROLES.CONTRIBUTOR]
+    assert base.emails
+    head = base.model_copy(
+        update={"emails": [*base.emails, added_email := Email(value="test-addition@example.com")]},
+        deep=True,
+    )
+
+    spy_list_diff = mocker.spy(server.services.utils.patch_operations, "_handle_list_diff")
+    expected = [AddOperation(path="emails", value=added_email)]
+
+    result = _diff(MapUser, base, head)
+
+    assert len(result) == len(expected)
+    assert next(op for op in result if op.path == "emails") == expected[0]
+    spy_list_diff.assert_any_call(base.emails, head.emails, path="emails")
+    spy_list_diff.assert_any_call(
+        base.edu_person_principal_names, head.edu_person_principal_names, path="edu_person_principal_names"
+    )
+    spy_list_diff.assert_any_call(base.groups, head.groups, path="groups")
 
 
-@pytest.mark.parametrize(
-    ("src", "dsc", "include"),
-    [
-        (
-            Test(id="1", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-            Test(id="2", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-            {"id", "test_list", "test_model"},
-        ),
-        (
-            Test(id="1", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-            Test(id="2", test_list=[Test3(value="test", type="test")], test_model=Test2(id="2")),
-            None,
-        ),
-    ],
-    ids=["include", "no_include"],
-)
-def test__diff(src, dsc, include):
-    result = _diff(src, dsc, include=include)
-    expected_op = "replace"
-    expected_path = "id"
-    expected_value = "2"
-    assert isinstance(result[0], ReplaceOperation)
+def test__diff_list_remove(map_users, mocker: MockerFixture):
+    base: MapUser = map_users[USER_ROLES.CONTRIBUTOR]
+    assert base.edu_person_principal_names
+    base.edu_person_principal_names.append(EPPN(value=(removed_eppn := "test-remove@@idp.example.com")))
+    head = base.model_copy(
+        update={"edu_person_principal_names": [*base.edu_person_principal_names[:-1]]},
+        deep=True,
+    )
 
-    assert result[0].op == expected_op
-    assert result[0].path == expected_path
-    assert result[0].value == expected_value
+    spy_list_diff = mocker.spy(server.services.utils.patch_operations, "_handle_list_diff")
+    expected = [RemoveOperation(path=f'edu_person_principal_names[value eq "{removed_eppn}"]')]
+
+    result = _diff(MapUser, base, head)
+
+    assert len(result) == len(expected)
+    assert next(op for op in result if op.path.startswith("edu_person_principal_names")) == expected[0]
+    spy_list_diff.assert_any_call(
+        base.edu_person_principal_names, head.edu_person_principal_names, path="edu_person_principal_names"
+    )
 
 
-@pytest.mark.parametrize(
-    ("src_value", "dsc_value", "path", "expected_op", "expected_path", "expected_value"),
-    [(None, 1, "id", "add", "id", 1), (1, 2, "id", "replace", "id", 2)],
-    ids=["no_src_value", "different_value"],
-)
-def test_handle_literal_diff(src_value, dsc_value, path, expected_op, expected_path, expected_value):
-    result = _handle_literal_diff(src_value, dsc_value, path)
-    assert isinstance(result[0], (AddOperation, ReplaceOperation))
-    assert result[0].op == expected_op
-    assert result[0].path == expected_path
-    assert result[0].value == expected_value
+def test__diff_list_typed_element(map_groups, mocker: MockerFixture):
+    origin: MapGroup = map_groups[0]
+    base = origin.model_copy(
+        update={"members": [MemberUser(value=(removed_member_id := "removing_user_id"))]},
+        deep=True,
+    )
+    head = origin.model_copy(
+        update={"members": [added_member := MemberUser(value="adding_user_id")]},
+        deep=True,
+    )
+
+    spy_list_diff = mocker.spy(server.services.utils.patch_operations, "_handle_list_diff")
+    expected = [
+        RemoveOperation(path=f'members[value eq "{removed_member_id}" and type eq "User"]'),
+        AddOperation(path="members", value=added_member),
+    ]
+
+    result = _diff(MapGroup, base, head)
+
+    assert len(result) == len(expected)
+    assert next(op for op in result if op.op == "remove") == expected[0]
+    assert next(op for op in result if op.op == "add") == expected[1]
+    spy_list_diff.assert_any_call(base.members, head.members, path="members")
 
 
-def test_handle_literal_diff_match_value():
-    result = _handle_literal_diff(1, 1, "id")
-    assert result == []
+def test__select_fields(map_groups):
+    base: MapGroup = map_groups[0]
+    head = base.model_copy(update={"external_id": uuid4().hex}, deep=True)
+    assert base.model_fields_set.issubset(head.model_fields_set)
+    expected = head.model_fields_set
+
+    fields = _select_fields(base, head)
+
+    assert fields == expected
 
 
-def test_handle_literal_diff_no_dst_value():
-    expected_op = "remove"
-    expected_path = "id"
-    result = _handle_literal_diff(1, None, "id")
-    assert isinstance(result[0], RemoveOperation)
-    assert result[0].op == expected_op
-    assert result[0].path == expected_path
+def test__select_fields_with_include(map_groups):
+    base: MapGroup = map_groups[0]
+    head = base.model_copy(update={"external_id": uuid4().hex}, deep=True)
+    include = {"display_name", "external_id"}
+    assert include.issubset(head.model_fields_set)
+    expected = include
+
+    fields = _select_fields(base, head, include=include)
+
+    assert fields == expected
 
 
-@pytest.mark.parametrize(
-    (
-        "src_list",
-        "dsc_list",
-        "path",
-        "expected_op_1",
-        "expected_path_1",
-        "expected_op_2",
-        "expected_path_2",
-        "expected_value",
-    ),
-    [
-        (
-            [Test4(value="test", value2="test2", type="test")],
-            [Test3(value="test", type="test2")],
-            "value",
-            "remove",
-            'value[value eq "test" and type eq "test"]',
-            "add",
-            "value",
-            Test3(value="test", type="test2"),
-        ),
-        (
-            [Test5(value="test", value2="test2")],
-            [Test6(value="test2", value3="test3")],
-            "value",
-            "remove",
-            'value[value eq "test"]',
-            "add",
-            "value",
-            Test6(value="test2", value3="test3"),
-        ),
-    ],
-    ids=["type", "no_type"],
-)
-def test__handle_list_diff(
-    src_list, dsc_list, path, expected_op_1, expected_path_1, expected_op_2, expected_path_2, expected_value
-):
-    result = _handle_list_diff(src_list, dsc_list, path)
-    assert isinstance(result[0], RemoveOperation)
-    assert result[0].op == expected_op_1
-    assert result[0].path == expected_path_1
-    assert isinstance(result[1], AddOperation)
-    assert result[1].op == expected_op_2
-    assert result[1].path == expected_path_2
-    assert result[1].value == expected_value
+def test__select_fields_with_exclude(map_groups):
+    base: MapGroup = map_groups[0]
+    head = base.model_copy(update={"external_id": uuid4().hex}, deep=True)
+    exclude = {"meta", "external_id"}
+    assert exclude.issubset(head.model_fields_set)
+    expected = head.model_fields_set - exclude
+
+    fields = _select_fields(base, head, exclude=exclude)
+
+    assert fields == expected
 
 
-def test_build_update_member_operations() -> None:
+def test__select_fields_nested(map_groups):
+    base: MapGroup = map_groups[0]
+    assert base.meta
+    head = base.model_copy(
+        update={
+            "meta": base.meta.model_copy(
+                update={
+                    "created": datetime.fromisoformat("2026-03-01T03:00:00Z"),
+                    "last_modified": datetime.fromisoformat("2026-04-01T09:00:00Z"),
+                },
+                deep=True,
+            )
+        },
+        deep=True,
+    )
+    include = {"display_name", "meta.created"}
+    expected = {"created"}
 
-    add = {"u1", "u2"}
-    remove = {"u3", "u4"}
-    user_list = {"u1", "u3"}
-    system_admins = {"admin"}
-    ops = build_update_member_operations(add, remove, user_list, system_admins)
-    assert any(isinstance(op, AddOperation) and op.value["value"] in {"u2", "admin"} for op in ops)
-    assert any(isinstance(op, RemoveOperation) and "u3" in op.path for op in ops)
+    fields = _select_fields(base.meta, head.meta, path="meta", include=include)
+
+    assert fields == expected
 
 
-def test_build_update_member_operations_add_update_system_admins() -> None:
+def test__alias_generator(original_alias, mocker: MockerFixture):
+    mock_generator = mocker.MagicMock(side_effect=to_camel)
+    mocker.patch.object(MapUser, "model_config", {"alias_generator": mock_generator})
 
-    add = set()
-    user_list = set()
+    assert unwrap(patch_operations._a)(MapUser, "user_name") == "userName"
+
+    mock_generator.assert_called_once_with("user_name")
+
+
+def test__alias_serialization(original_alias, mocker: MockerFixture):
+    mock_generator = mocker.NonCallableMock(spec_set=AliasGenerator)
+    mock_generator.serialization_alias.side_effect = to_camel
+    mocker.patch.object(MapUser, "model_config", {"alias_generator": mock_generator})
+
+    assert unwrap(patch_operations._a)(MapUser, "user_name") == "userName"
+
+    mock_generator.serialization_alias.assert_called_once_with("user_name")
+
+
+def test__alias_not_set(original_alias, mocker: MockerFixture):
+    mock_config = mocker.MagicMock(spec=dict)
+    mock_config.get.return_value = None
+    mocker.patch.object(MapUser, "model_config", mock_config)
+
+    assert unwrap(patch_operations._a)(MapUser, "user_name") == "user_name"
+    mock_config.get.assert_called_once_with("alias_generator")
+
+
+def test_build_update_member_operations_add() -> None:
+    current_users = {
+        "current_user_id_1",
+        "current_user_id_2",
+        "system_admin",
+    }
+    add = {"adding_user_id_3", "adding_user_id_4"}
     remove = set()
-    system_admins = {"admin1", "admin2"}
+    system_admins = {"system_admin"}
 
-    ops = build_update_member_operations(set(add), set(remove), set(user_list), set(system_admins))
+    ops = build_update_member_operations(add, remove, current_users, system_admins)
 
-    added_ids = {op.value["value"] for op in ops if isinstance(op, AddOperation)}
-    assert "admin1" in added_ids
-    assert "admin2" in added_ids
+    assert len(ops) == len(add)
+    assert next(op for op in ops if op.op == "add" and op.value.value == "adding_user_id_3")
+    assert next(op for op in ops if op.op == "add" and op.value.value == "adding_user_id_4")
+
+
+def test_build_update_member_operations_already_existing() -> None:
+    current_users = {
+        "current_user_id_1",
+        "current_user_id_2",
+        "system_admin",
+    }
+    add = {"current_user_id_2", "adding_user_id_4"}
+    remove = set()
+    system_admins = {"system_admin"}
+
+    ops = build_update_member_operations(add, remove, current_users, system_admins)
+
+    assert len(ops) == len(add - current_users)
+    assert not any(op for op in ops if op.op == "add" and op.value.value == "current_user_id_2")
+
+
+def test_build_update_member_operations_remove() -> None:
+    current_users = {
+        "current_user_id_1",
+        "current_user_id_2",
+        "removing_user_id_3",
+        "removing_user_id_4",
+        "system_admin",
+    }
+    add = set()
+    remove = {"removing_user_id_3", "removing_user_id_4"}
+    system_admins = {"system_admin"}
+
+    ops = build_update_member_operations(add, remove, current_users, system_admins)
+
+    assert len(ops) == len(remove & current_users)
+    assert next(op for op in ops if op.op == "remove" and op.path == 'members[value eq "removing_user_id_3"]')
+    assert next(op for op in ops if op.op == "remove" and op.path == 'members[value eq "removing_user_id_4"]')
+
+
+def test_build_update_member_operations_unexisting():
+    current_users = {
+        "current_user_id_1",
+        "current_user_id_2",
+        "removing_user_id_3",
+        "system_admin",
+    }
+    add = set()
+    remove = {"removing_user_id_3", "unexisting_user_id_4"}
+    system_admins = {"system_admin"}
+
+    ops = build_update_member_operations(add, remove, current_users, system_admins)
+
+    assert len(ops) == len(remove & current_users)
+    assert not any(op for op in ops if op.op == "remove" and op.path == 'members[value eq "unexisting_user_id_4"]')
+
+
+def test_build_update_member_operations_remove_system_admins():
+    current_users = {
+        "current_user_id_1",
+        "current_user_id_2",
+        "removing_user_id_3",
+        "system_admin",
+    }
+    add = set()
+    remove = {"removing_user_id_3", "system_admin"}
+    system_admins = {"system_admin"}
+
+    ops = build_update_member_operations(add, remove, current_users, system_admins)
+
+    # could not remove system_admin
+    assert len(ops) == len(remove & current_users - system_admins)
+    assert not any(op for op in ops if op.op == "remove" and op.path == 'members[value eq "system_admin"]')
+
+
+def test_build_update_member_operations_no_members_left():
+    current_users = {
+        "removing_user_id_3",
+        # "system_admin",    # In the unlikely event that a system administrator does not belong to a group
+    }
+    add = set()
+    remove = {"removing_user_id_3"}
+    system_admins = {"system_admin"}
+
+    ops = build_update_member_operations(add, remove, current_users, system_admins)
+
+    # If this would leave the group with no members, add system admins instead.
+    assert len(ops) == len(remove | system_admins)
+    assert next(op for op in ops if op.op == "add" and op.value.value == "system_admin")
+
+
+def test_build_update_member_operations_no_system_admins():
+    current_users = {
+        "current_user_id_1",
+        "current_user_id_2",
+        "removing_user_id_3",
+    }
+    add = {"adding_user_id_3"}
+    remove = {"removing_user_id_3"}
+    system_admins = set()
+
+    with pytest.raises(SystemAdminNotFound, match=regex(E.GROUP_REQUIRES_SYSTEM_ADMIN)):
+        build_update_member_operations(add, remove, current_users, system_admins)

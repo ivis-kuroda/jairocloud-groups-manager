@@ -1,7 +1,7 @@
 import typing as t
 
 from http import HTTPStatus
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from flask import Response
@@ -28,7 +28,8 @@ def test_auth_code_redirect(app, mocker: MockerFixture):
 
     assert res.status_code == HTTPStatus.FOUND
     assert isinstance(res, Response)
-    assert urlparse(res.location).path == "/"
+    *_, path, _, _ = urlsplit(res.location)
+    assert path == "/"
     mock_issue.assert_called_once_with(auth_code)
 
 
@@ -42,5 +43,6 @@ def test_auth_code_oauth_token_error(app, mocker: MockerFixture):
 
     assert res.status_code == HTTPStatus.FOUND
     assert isinstance(res, Response)
-    assert urlparse(res.location).path == "/"
+    *_, path, _, _ = urlsplit(res.location)
+    assert path == "/"
     mock_issue.assert_called_once_with(invalid_code)

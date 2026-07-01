@@ -10,19 +10,30 @@ from datetime import UTC, datetime
 from uuid import UUID  # noqa: TC003
 
 from flask import current_app
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
 from server.db import db
-from server.db.history import DownloadHistory, Files, UploadHistory
+from server.db.history import (
+    DownloadHistory,
+    Files,
+    ResultStatus,
+    UploadHistory,
+    _FileContent,
+)
 from server.exc import (
     DatabaseError,
     InvalidQueryError,
-    InvalidRecordError,
     RecordNotFound,
 )
 from server.messages import E
+
+
+if t.TYPE_CHECKING:
+    from sqlalchemy.sql.elements import TableValuedColumn
+
+    from server.entities.bulk import FileContent, ValidateResults
 
 
 def get_upload_by_id(history_id: UUID) -> UploadHistory | None:
@@ -42,14 +53,24 @@ def get_upload_by_id(history_id: UUID) -> UploadHistory | None:
             UploadHistory, history_id, options=[selectinload(UploadHistory.file)]
         )
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_GET_UPLOAD_HISTORY_RECORD, {"history_id": history_id}
+        )
         raise DatabaseError(
             E.FAILED_GET_UPLOAD_HISTORY_RECORD % {"history_id": history_id}
         ) from exc
     return history
 
 
-def get_upload_results(history_id: UUID, attribute: str) -> dict:
+@t.overload
+def get_upload_results(history_id: UUID, attribute: t.Literal["summary"]) -> dict: ...
+@t.overload
+def get_upload_results(
+    history_id: UUID, attribute: t.Literal["items", "missing_users"]
+) -> list[dict]: ...
+def get_upload_results(
+    history_id: UUID, attribute: t.Literal["summary", "items", "missing_users"]
+) -> dict | list[dict]:
     """Get upload results by history ID and attribute.
 
     Args:
@@ -57,85 +78,88 @@ def get_upload_results(history_id: UUID, attribute: str) -> dict:
         attribute (str): The attribute to retrieve from results.
 
     Returns:
-        dict: The upload results for the specified attribute.
+        dict | list[dict]: The upload results for the specified attribute.
 
     Raises:
         DatabaseError: If there is an error querying the database.
         RecordNotFound: If no history record is found for the given ID.
     """
+    stmt = select(UploadHistory.results[attribute]).where(
+        UploadHistory.id == history_id
+    )
     try:
-        result = (
-            db.session
-            .query(UploadHistory.results[attribute])
-            .filter(UploadHistory.id == history_id)
-            .first()
-        )
+        row = db.session.execute(stmt).one_or_none()
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_GET_UPLOAD_HISTORY_RECORD, {"history_id": history_id}
+        )
         raise DatabaseError(
             E.FAILED_GET_UPLOAD_HISTORY_RECORD % {"history_id": history_id}
         ) from exc
-    if result is None:
-        current_app.logger.error(E.FAILED_GET_FILE_RECORD, {"file_id": history_id})
-        raise RecordNotFound(E.FAILED_GET_FILE_RECORD % {"file_id": history_id})
-    return result[0]
+
+    if row is None:
+        current_app.logger.error(E.UPLOAD_HISTORY_RECORD_NOT_FOUND, {"id": history_id})
+        raise RecordNotFound(E.UPLOAD_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
+
+    return row[0]
 
 
-def get_paginated_upload_results(
-    history_id: UUID, offset: int, size: int, status_filter: list[str]
+def get_upload_results_with_pagination(
+    history_id: UUID, page: int, size: int, status_filter: list[ResultStatus]
 ) -> list[dict]:
     """Get paginated upload results with optional status filtering.
 
     Args:
         history_id (UUID): The ID of the upload history.
-        offset (int): The page number (1-based).
+        page (int): The page number (1-based).
         size (int): The number of items per page.
-        status_filter (list[str]): List of status strings to filter results.
+        status_filter (list[ResultStatus]): List of status strings to filter results.
 
     Returns:
         list[dict]: A list of upload result items.
 
     Raises:
-        InvalidQueryError: If offset or size is less than 1.
+        InvalidQueryError: If page or size is less than 1.
         DatabaseError: If there is an error querying the database.
     """
-    if offset < 1 or size < 1:
-        current_app.logger.error(E.INVALID_QUERY, {"offset": offset, "size": size})
-        raise InvalidQueryError(E.INVALID_QUERY % {"offset": offset, "size": size})
+    if page < 1 or size < 1:
+        current_app.logger.error(E.INVALID_QUERY, {"page": page, "size": size})
+        raise InvalidQueryError(E.INVALID_QUERY % {"page": page, "size": size})
 
-    elements = func.jsonb_array_elements(
-        UploadHistory.results["results"]
+    items_element_col: TableValuedColumn[dict] = func.jsonb_array_elements(
+        UploadHistory.results["items"]
     ).column_valued("item")
+    stmt = (
+        select(items_element_col)
+        .select_from(UploadHistory)
+        .where(UploadHistory.id == history_id)
+    )
+    if status_filter:
+        stmt = stmt.where(items_element_col.op("->>")("status").in_(status_filter))
+
+    offset = (page - 1) * size
+    stmt = stmt.offset(offset).limit(size)
+
     try:
-        query = (
-            db.session
-            .query(elements)
-            .select_from(UploadHistory)
-            .filter(UploadHistory.id == history_id)
-        )
-
-        if status_filter:
-            query = query.filter(elements.op("->>")("status").in_(status_filter))
-
-        offset_val = (offset - 1) * size
-
-        raw_results = query.limit(size).offset(offset_val).all()
+        raw_results = db.session.execute(stmt).scalars().all()
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_GET_UPLOAD_HISTORY_RECORD, {"history_id": history_id}
+        )
         raise DatabaseError(
             E.FAILED_GET_UPLOAD_HISTORY_RECORD % {"history_id": history_id}
         ) from exc
-    return [r[0] for r in raw_results]
+    return list(raw_results)
 
 
 def create_upload(
-    file_id: UUID, results: dict, operator_id: str, operator_name: str
+    file_id: UUID, results: ValidateResults, operator_id: str, operator_name: str
 ) -> UploadHistory:
     """Create a new upload history record.
 
     Args:
         file_id (UUID): The ID of the associated file.
-        results (dict): The results of the upload operation.
+        results (ValidateResults): The results of the upload operation.
         operator_id (str): The ID of the operator performing the upload.
         operator_name (str): The name of the operator performing the upload.
 
@@ -143,29 +167,29 @@ def create_upload(
         UploadHistory: The newly created upload history record.
 
     Raises:
-        InvalidRecordError: If the results dictionary is missing required keys.
         DatabaseError:
           If there is an error creating the upload history record in the database.
     """
-    summary = results.get("summary")
-    items = results.get("results")
-    missing_users = results.get("missing_users", [])
-    if summary is None or items is None:
-        raise InvalidRecordError(E.INVALID_UPLOAD_HISTORY_RECORD_ATTRIBUTES)
+    results_data = results.model_dump(
+        mode="json", exclude_none=True, exclude_unset=True, by_alias=True
+    )
+
     try:
         history_record = UploadHistory()
         history_record.file_id = file_id
         history_record.results = {
-            "summary": summary,
-            "items": items,
-            "missing_users": missing_users,
+            "summary": results_data["summary"],
+            "items": results_data["results"],
+            "missing_users": results_data["missing_users"],
         }
         history_record.operator_id = operator_id
         history_record.operator_name = operator_name
         db.session.add(history_record)
         db.session.commit()
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_CREATE_UPLOAD_HISTORY_RECORD, {"file_id": file_id}
+        )
         raise DatabaseError(
             E.FAILED_CREATE_UPLOAD_HISTORY_RECORD % {"file_id": file_id}
         ) from exc
@@ -175,7 +199,7 @@ def create_upload(
 def update_upload_status(
     history_id: UUID,
     status: t.Literal["P", "S", "F"],
-    new_results: dict | None = None,
+    new_results: ValidateResults | None = None,
     file_id: UUID | None = None,
 ) -> None:
     """Update the status of an upload history record.
@@ -186,7 +210,7 @@ def update_upload_status(
         history_id (UUID): The ID of the history record to update.
         status (Literal["P", "S", "F"]):
           The new status ("P": Progress, "S": Success, "F": Failed).
-        new_results (dict | None): New results to update, if any.
+        new_results (ValidateResults | None): New results to update, if any.
         file_id (UUID | None): New file ID to update, if any.
 
     Raises:
@@ -197,10 +221,11 @@ def update_upload_status(
         if obj is None:
             return
         if new_results:
+            json_results = new_results.model_dump(mode="json")
             obj.results = {
-                "summary": new_results.get("summary", {}),
-                "items": new_results.get("results", []),
-                "missing_users": new_results.get("missing_users", []),
+                "summary": json_results["summary"],
+                "items": json_results["results"],
+                "missing_users": json_results["missing_users"],
             }
 
         obj.status = status
@@ -213,7 +238,9 @@ def update_upload_status(
         if file_id:
             obj.file_id = file_id
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_UPDATE_HISTORY_RECORD_STATUS, {"history_id": history_id}
+        )
         raise DatabaseError(
             E.FAILED_UPDATE_HISTORY_RECORD_STATUS % {"history_id": history_id}
         ) from exc
@@ -237,7 +264,9 @@ def get_history_by_file_id(file_id: UUID) -> UploadHistory:
             db.session.query(UploadHistory).filter_by(file_id=file_id).one_or_none()
         )
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_GET_UPLOAD_HISTORY_RECORD_BY_FILE_ID, {"file_id": file_id}
+        )
         raise DatabaseError(
             E.FAILED_GET_UPLOAD_HISTORY_RECORD_BY_FILE_ID % {"file_id": file_id}
         ) from exc
@@ -267,7 +296,7 @@ def get_file_by_id(file_id: UUID) -> Files:
     try:
         result = db.session.query(Files).filter_by(id=file_id).one_or_none()
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(E.FAILED_GET_FILE_RECORD, {"file_id": file_id})
         raise DatabaseError(E.FAILED_GET_FILE_RECORD % {"file_id": file_id}) from exc
     if result is None:
         current_app.logger.error(E.FAILED_GET_FILE_RECORD, {"file_id": file_id})
@@ -275,7 +304,7 @@ def get_file_by_id(file_id: UUID) -> Files:
     return result
 
 
-def delete_file_by_id(file_id: UUID) -> None:
+def delete_file_by_id(file_id: UUID) -> int:
     """Delete a file record by its ID.
 
     Must call db.session.commit() after using this function to persist changes.
@@ -283,18 +312,23 @@ def delete_file_by_id(file_id: UUID) -> None:
     Args:
         file_id (UUID): The ID of the file to delete.
 
+    Returns:
+        int: The number of rows deleted.
+
     Raises:
         DatabaseError: If there is an error deleting the file from the database.
     """
     try:
-        Files.query.filter(Files.id == file_id).delete()
+        result = db.session.query(Files).filter_by(id=file_id).delete()
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(E.FAILED_DELETE_FILE_RECORD, {"file_id": file_id})
         raise DatabaseError(E.FAILED_DELETE_FILE_RECORD % {"file_id": file_id}) from exc
 
+    return result
 
-def create_file(
-    file_path: str, file_content: dict, file_id: UUID | None = None
+
+def create_file_record(
+    file_path: str, file_content: FileContent, file_id: UUID | None = None
 ) -> Files:
     """Create or update a file record.
 
@@ -302,7 +336,7 @@ def create_file(
 
     Args:
         file_path (str): The path of the file.
-        file_content (dict): The content of the file.
+        file_content (FileContent): The content of the file.
         file_id (UUID | None): The ID of the file to update.
 
     Returns:
@@ -311,19 +345,18 @@ def create_file(
     Raises:
         DatabaseError: If there is an error creating the file record in the database.
     """
+    json_content: _FileContent = file_content.model_dump(  # pyright: ignore[reportAssignmentType]
+        mode="json", by_alias=True, exclude_none=True
+    )
     try:
         file_record = Files()
         if file_id:
             file_record.id = file_id
         file_record.file_path = str(file_path)
-        file_record.file_content = {
-            "repositories": file_content.get("repositories", []),
-            "groups": file_content.get("groups", []),
-            "users": file_content.get("users", []),
-        }
+        file_record.file_content = json_content
         db.session.add(file_record)
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(E.FAILED_CREATE_FILE_RECORD, {"file_path": file_path})
         raise DatabaseError(
             E.FAILED_CREATE_FILE_RECORD % {"file_path": file_path}
         ) from exc
@@ -333,7 +366,7 @@ def create_file(
 def create_download_history(
     file_id: UUID,
     file_path: str,
-    file_content: dict,
+    file_content: FileContent,
     operator_id: str,
     operator_name: str,
 ) -> DownloadHistory:
@@ -344,7 +377,7 @@ def create_download_history(
     Args:
         file_id (UUID): The ID of the associated file.
         file_path (str): The path of the file.
-        file_content (dict): The content of the file.
+        file_content (FileContent): The content of the file.
         operator_id (str): The ID of the operator performing the download.
         operator_name (str): The name of the operator performing the download.
 
@@ -356,14 +389,16 @@ def create_download_history(
           If there is an error creating the download history record in the database.
     """
     try:
-        create_file(file_path, file_content, file_id)
+        create_file_record(file_path, file_content, file_id)
         download_history = DownloadHistory()
         download_history.file_id = file_id
         download_history.operator_id = operator_id
         download_history.operator_name = operator_name
         db.session.add(download_history)
     except SQLAlchemyError as exc:
-        current_app.logger.error(str(exc))
+        current_app.logger.error(
+            E.FAILED_CREATE_DOWNLOAD_HISTORY_RECORD, {"file_id": file_id}
+        )
         raise DatabaseError(
             E.FAILED_CREATE_DOWNLOAD_HISTORY_RECORD % {"file_id": file_id}
         ) from exc

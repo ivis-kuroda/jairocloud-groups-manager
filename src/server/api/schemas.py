@@ -75,7 +75,7 @@ class ErrorResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def preprocess(cls, data: dict) -> dict:
-        """Extract error message from string or LogMessage.
+        """Extract error message from :class:`~server.messages.base.LogMessage`.
 
         Args:
             data : The error message.
@@ -107,7 +107,10 @@ class GlobalSearchResult(RootModel):
 
 
 class RepositoriesQuery(BaseModel):
-    """Schema for repositories search query parameters."""
+    """Schema for repositories search query parameters.
+
+    It links to the :class:`~server.services.utils.RepositoriesCriteria` protocol.
+    """
 
     q: t.Annotated[str | None, "query"] = None
     """Search term to filter repositories."""
@@ -135,7 +138,10 @@ class RepositoriesQuery(BaseModel):
 
 
 class GroupsQuery(BaseModel):
-    """Schema for groups search query parameters."""
+    """Schema for groups search query parameters.
+
+    It links to the :class:`~server.services.utils.GroupsCriteria` protocol.
+    """
 
     q: t.Annotated[str | None, "query"] = None
     """Search term to filter groups."""
@@ -181,7 +187,10 @@ class GroupsQuery(BaseModel):
 
 
 class UsersQuery(BaseModel):
-    """Schema for users search query parameters."""
+    """Schema for users search query parameters.
+
+    It links to the :class:`~server.services.utils.UsersCriteria` protocol.
+    """
 
     q: t.Annotated[str | None, "query"] = None
     """Search term to filter users."""
@@ -358,8 +367,51 @@ class BulkResultQuery(BaseModel):
     """Page size (number of items per page)."""
 
 
-class FileQuery(UsersQuery):
-    """Query parameters for file export."""
+class HistoryQuery(BaseModel):
+    """Query parameters for searching history data.
+
+    This schema links to the :class:`~server.services.utils.HistoryCriteria` protocol.
+    """
+
+    i: t.Annotated[str | None, "id"] = None
+    """Filter by Parent ID to retrieve child elements """
+
+    r: t.Annotated[list[str] | None, "repositories"] = None
+    """Filter by repository IDs."""
+
+    g: t.Annotated[list[str] | None, "groups"] = None
+    """Filter by group IDs."""
+
+    u: t.Annotated[list[str] | None, "users"] = None
+    """Filter by user IDs."""
+
+    o: t.Annotated[list[str] | None, "operator"] = None
+    """Filter by operator IDs"""
+
+    s: t.Annotated[date | None, "start"] = None
+    """Filter by execution date (from)."""
+
+    e: t.Annotated[date | None, "end"] = None
+    """Filter by execution date (to)."""
+
+    d: t.Annotated[t.Literal["asc", "desc"] | None, "direction"] = None
+    """Sort order: 'asc' (ascending) or 'desc' (descending)."""
+
+    p: t.Annotated[int | None, "page"] = None
+    """Page number to retrieve."""
+
+    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    """Page size (number of items per page)."""
+
+    model_config = ignore_extra_config
+    """Configure to ignore extra fields."""
+
+
+class ExportUsersQuery(UsersQuery):
+    """Query parameters for file export.
+
+    It links to the :class:`~server.services.utils.ExportUsersCriteria` protocol.
+    """
 
     f: t.Annotated[t.Literal["tsv", "csv"], "format"] = "tsv"
     """File format for export."""

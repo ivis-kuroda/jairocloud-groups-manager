@@ -7,6 +7,7 @@
 import typing as t
 
 from server.config import config
+from server.exc import ProgrammingError
 from server.messages import E
 
 
@@ -14,8 +15,6 @@ from server.messages import E
 def resolve_repository_id(*, fqdn: str) -> str: ...
 @t.overload
 def resolve_repository_id(*, service_id: str) -> str | None: ...
-
-
 def resolve_repository_id(
     *, fqdn: str | None = None, service_id: str | None = None
 ) -> str | None:
@@ -29,11 +28,10 @@ def resolve_repository_id(
         str: The corresponding repository ID, or None if it cannot be resolved.
 
     Raises:
-        ValueError: If neither `fqdn` nor `resource_id` is provided.
+        ProgrammingError: If neither `fqdn` nor `service_id` is provided.
     """
     pattern = config.REPOSITORIES.id_patterns.sp_connector
-    prefix = pattern.split("{repository_id}")[0]
-    suffix = pattern.split("{repository_id}")[1]
+    prefix, suffix = pattern.split("{repository_id}")
 
     if fqdn is not None:
         return fqdn.replace(".", "_").replace("-", "_")
@@ -42,16 +40,13 @@ def resolve_repository_id(
             return None
         return service_id.removeprefix(prefix).removesuffix(suffix)
 
-    error = E.REPOSITORY_REQUIRES_FQDN_OR_SERVICE_ID
-    raise ValueError(error)
+    raise ProgrammingError(E.REPOSITORY_REQUIRES_FQDN_OR_SERVICE_ID)
 
 
 @t.overload
 def resolve_service_id(*, fqdn: str) -> str: ...
 @t.overload
 def resolve_service_id(*, repository_id: str) -> str: ...
-
-
 def resolve_service_id(
     *, fqdn: str | None = None, repository_id: str | None = None
 ) -> str:
@@ -65,7 +60,7 @@ def resolve_service_id(
         str: The corresponding service ID.
 
     Raises:
-        ValueError: If neither `fqdn` nor `repository_id` is provided.
+        ProgrammingError: If neither `fqdn` nor `repository_id` is provided.
     """
     pattern = config.REPOSITORIES.id_patterns.sp_connector
 
@@ -74,5 +69,4 @@ def resolve_service_id(
     if repository_id is not None:
         return pattern.format(repository_id=repository_id)
 
-    error = E.RESOURCE_REQUIRES_FQDN_OR_REPOSITORY_ID
-    raise ValueError(error)
+    raise ProgrammingError(E.RESOURCE_REQUIRES_FQDN_OR_REPOSITORY_ID)

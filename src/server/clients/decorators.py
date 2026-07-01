@@ -4,47 +4,73 @@
 
 """Providers of decorators for client functions."""
 
-# ruff: noqa: ANN002, ANN003, ANN202, SLF001
+# ruff: noqa: ANN002, ANN003
 
 import hashlib
 import inspect
 import traceback
 import typing as t
 
-from functools import wraps
+from functools import partial, wraps
+from typing import get_type_hints
 
 from flask import current_app
+from flask_login import current_user
 from pydantic import BaseModel, TypeAdapter
 from pydantic_core import ValidationError
 from redis.exceptions import RedisError
 
+from server.auth import is_user_logged_in
 from server.config import config
 from server.datastore import app_cache
 from server.entities.map_error import MapError
 from server.messages import E, I, W
 
 
-@t.overload
-def cache_resource[T: t.Callable[..., BaseModel]](f: T) -> T: ...
-@t.overload
-def cache_resource[T: t.Callable[..., BaseModel]](
-    *,
-    identifier_generator: t.Callable[..., str] | None = None,
-    timeout: int | None = None,
-) -> t.Callable[[T], T]: ...
+class Cacheable[**P, R: BaseModel](t.Protocol):
+    """Callable protocol for cached resources with cache control methods."""
+
+    __name__: str
+
+    _cache_namespace: str
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        """Call wrapped function with cache behavior."""
+        ...
+
+    def clear_cache(self, *identifier: str) -> None:
+        """Delete cached responses for the given function and resource id.
+
+        Args:
+            identifier (str): The identifier(s) to delete cache for.
+        """
+        ...
 
 
-def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
-    f: T | None = None,
+@t.overload
+def cache_resource[**P, R: BaseModel](f: t.Callable[P, R]) -> Cacheable[P, R]: ...
+@t.overload
+def cache_resource[**P, R: BaseModel](
     *,
-    identifier_generator: t.Callable[..., str] | None = None,
+    id_generator: t.Callable[..., str] | None = None,
     timeout: int | None = None,
-) -> T | t.Callable:
+) -> t.Callable[[t.Callable[P, R]], Cacheable[P, R]]: ...
+
+
+def cache_resource[**P, R: BaseModel](  # noqa: C901
+    f: t.Callable[P, R] | None = None,
+    *,
+    id_generator: t.Callable[..., str] | None = None,
+    timeout: int | None = None,
+) -> Cacheable[P, R] | t.Callable[[t.Callable[P, R]], Cacheable[P, R]]:
     """Cache the response of the API client function using Redis.
+
+    This decorator attaches cache metadata and provides a method to clear the cache
+    for the decorated function.
 
     Args:
         f (Callable | None): The function to decorate.
-        identifier_generator (Callable[..., str]):
+        id_generator (Callable[..., str]):
             Function to generate a unique identifier string to cache key.
             If not provided, the first argument of the decorated function will be used.
         timeout (int):
@@ -54,15 +80,15 @@ def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
         Callable: Decorated function with caching.
     """
 
-    def decorator(func: t.Callable):  # noqa: C901
+    def decorator(func: t.Callable[P, R]) -> Cacheable[P, R]:
 
-        hints = t.get_type_hints(func)
-        return_type: type[BaseModel] | None = hints.get("return")
+        hints = get_type_hints(func)
+        return_type: type[R] | None = hints.get("return")
         original_func = inspect.unwrap(func)
-        import_name = f"{original_func.__module__}.{original_func.__qualname__}"
+        namespace = f"{original_func.__module__}.{original_func.__qualname__}"
 
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def _wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             nonlocal timeout
             ttl = timeout or config.REDIS.cache_timeout
 
@@ -72,9 +98,10 @@ def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
 
             if not args:
                 return func(*args, **kwargs)
+
             identifier = str(args[0])
-            if identifier_generator:
-                identifier = identifier_generator(*args, **kwargs)
+            if id_generator:
+                identifier = id_generator(*args, **kwargs)
 
             relevant_kwargs = {
                 k: v
@@ -88,33 +115,29 @@ def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
             ).hexdigest()
 
             prefix = config.REDIS.key_prefix
-            cache_key = f"{prefix}{import_name}-{identifier}-{args_hash}"
+            cache_key = f"{prefix}{namespace}-{identifier}-{args_hash}"
 
-            result = None
             try:
                 cached_data: str | None = app_cache.get(cache_key)  # pyright: ignore[reportAssignmentType]
                 if cached_data and return_type:
                     adapter = TypeAdapter(return_type)
-                    result = adapter.validate_json(cached_data)
+                    cached_result: R = adapter.validate_json(cached_data)
+                    current_app.logger.info(
+                        I.RESOURCE_CACHE_HIT, {"func": namespace, "id": identifier}
+                    )
+                    return cached_result
             except RedisError:
                 current_app.logger.warning(
-                    W.FAILED_GET_CACHE, {"func": import_name, "id": identifier}
+                    W.FAILED_GET_CACHE, {"func": namespace, "id": identifier}
                 )
                 traceback.print_exc()
-                cached_data = None
             except ValidationError:
                 current_app.logger.warning(
-                    W.FAILED_PARSE_CACHE, {"func": import_name, "id": identifier}
+                    W.FAILED_PARSE_CACHE, {"func": namespace, "id": identifier}
                 )
                 traceback.print_exc()
 
-            if result:
-                current_app.logger.info(
-                    I.RESOURCE_CACHE_HIT, {"func": import_name, "id": identifier}
-                )
-                return result
-
-            result = func(*args, **kwargs)
+            result: R = func(*args, **kwargs)
 
             if isinstance(result, MapError):
                 ttl = int(ttl / 100)
@@ -127,19 +150,18 @@ def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
                 )
                 current_app.logger.info(
                     I.RESOURCE_CACHE_CREATED,
-                    {"func": import_name, "id": identifier},
+                    {"func": namespace, "id": identifier},
                 )
             except RedisError:
                 current_app.logger.warning(
-                    W.FAILED_SET_CACHE, {"func": import_name, "id": identifier}
+                    W.FAILED_SET_CACHE, {"func": namespace, "id": identifier}
                 )
                 traceback.print_exc()
             return result
 
-        wrapper._import_name = import_name  # pyright: ignore[reportAttributeAccessIssue]
-        wrapper.clear_cache = lambda *identifier: clear_cache(  # pyright: ignore[reportAttributeAccessIssue]
-            wrapper, *identifier
-        )
+        wrapper = t.cast("Cacheable[P, R]", _wrapper)
+        wrapper._cache_namespace = namespace  # noqa: SLF001
+        wrapper.clear_cache = partial(_clear_cache, wrapper)
         return wrapper
 
     if f is not None:
@@ -148,41 +170,58 @@ def cache_resource[T: t.Callable[..., BaseModel]](  # noqa: C901
     return decorator
 
 
-def clear_cache(func: t.Callable, *identifier: str) -> None:
+def default_id_generator(*_, **__) -> str:
+    """Function of default identifier generator.
+
+    It generates an identifier string based on current user's permissions.
+
+    Returns:
+        str: The generated identifier string.
+    """
+    if not is_user_logged_in(current_user):
+        return "by_anonymous"
+    if current_user.is_system_admin:
+        return "by_system_admin"
+
+    permitted = sorted(current_user.permitted_repositories)
+
+    return ",".join(permitted)
+
+
+def _clear_cache(func: Cacheable, *identifier: str) -> None:
     """Delete cached responses for the given function and resource id.
 
     Args:
-        func (Callable): The decorated function whose cache to delete.
+        func (Cacheable): The decorated function whose cache to delete.
         identifier (str): The identifier(s) to delete cache for.
 
     Raises:
         NotImplementedError: If the function is not decorated with @response_cache.
     """
     prefix = config.REDIS.key_prefix
-    import_name = getattr(func, "_import_name", None)
-    if not import_name:
-        error = E.UNINIT_RESOURCE_CACHE % {"name": func.__name__}
-        raise NotImplementedError(error)
-
     try:
-        for cid in identifier:
-            match = f"{prefix}{import_name}-{cid}-*"
+        namespace = func._cache_namespace  # noqa: SLF001
+    except AttributeError as exc:
+        raise NotImplementedError(
+            E.UNINIT_RESOURCE_CACHE % {"name": func.__name__}
+        ) from exc
 
+    for cid in identifier:
+        match = f"{prefix}{namespace}-{cid}-*"
+        try:
             cursor: str | int = "0"  # start with "0", exit with int 0
             while cursor != 0:
-                cursor, keys = app_cache.scan(  # pyright: ignore[reportGeneralTypeIssues]
-                    cursor=int(cursor),
-                    match=match,
-                    count=100,
-                )
-                if not keys:
-                    continue
-                app_cache.delete(*keys)
+                cursor, keys = app_cache.scan(int(cursor), match, count=100)  # pyright: ignore[reportGeneralTypeIssues]
+
+                if keys:
+                    app_cache.delete(*keys)
+        except RedisError:
+            current_app.logger.warning(
+                W.FAILED_DELETE_CACHE, {"func": namespace, "id": cid}
+            )
+            traceback.print_exc()
+            continue
+
         current_app.logger.info(
-            I.RESOURCE_CACHE_DELETED, {"func": import_name, "id": identifier}
+            I.RESOURCE_CACHE_DELETED, {"func": namespace, "id": cid}
         )
-    except RedisError:
-        current_app.logger.warning(
-            W.FAILED_DELETE_CACHE, {"func": import_name, "id": identifier}
-        )
-        traceback.print_exc()

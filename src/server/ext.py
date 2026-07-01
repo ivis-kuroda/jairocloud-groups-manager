@@ -14,7 +14,7 @@ from weko_group_cache_db.config import setup_config as setup_weko_group_cache_db
 from server.api.router import create_api_blueprint
 from server.auth import login_manager
 from server.cli.base import register_cli_commands
-from server.config import RuntimeConfig, setup_config
+from server.config import RuntimeConfig, load_config
 from server.const import DEFAULT_CONFIG_PATH
 from server.datastore import setup_datastore
 from server.db.base import db
@@ -72,17 +72,19 @@ class JAIROCloudGroupsManager:
 
         app.extensions["jairocloud-groups-manager"] = self
 
-    def init_config(self, app: Flask) -> None:
+    def init_config(self, app: Flask | None) -> None:
         """Initialize the configuration for this extension.
 
         Args:
-            app (Flask): The Flask application instance.
+            app (Flask | None): The Flask application instance.
 
         """
-        self._config = setup_config(self._config)
+        if isinstance(self._config, str):
+            self._config = load_config(self._config)
 
-        app.config.from_mapping(self.config.for_flask)
-        app.config.from_prefixed_env()
+        if app is not None:
+            app.config.from_mapping(self.config.FLASK)
+            app.config.from_prefixed_env()
 
         setup_weko_group_cache_db_config(self.config.for_group_caches)
 

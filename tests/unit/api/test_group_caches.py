@@ -2,8 +2,6 @@ import typing as t
 
 from http import HTTPStatus
 
-from flask import Flask
-
 import server.api.group_caches
 
 from server.api import group_caches
@@ -100,7 +98,7 @@ def test_status(repository_summaries, cached_data, mocker: MockerFixture):
     mock_status.assert_called_once_with()
 
 
-def test_status_no_task(app: Flask, mocker: MockerFixture):
+def test_status_no_task(app, mocker: MockerFixture):
     mock_status = mocker.patch.object(server.api.group_caches.group_caches, "get_task_status")
     mock_status.return_value = None
 

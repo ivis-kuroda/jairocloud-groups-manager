@@ -29,10 +29,11 @@ from tests.helpers import assert_message, unwrap
 
 
 if t.TYPE_CHECKING:
+    from flask import Flask
     from pytest_mock import MockerFixture
 
 
-def test_upload_file(app, login_users, mocker: MockerFixture):
+def test_upload_file(app: Flask, login_users, mocker: MockerFixture):
     task_id, tmp_id = str(uuid7()), uuid7()
     operator_id, operator_name = (user := login_users[USER_ROLES.REPOSITORY_ADMIN]).map_id, user.user_name
 
@@ -73,7 +74,7 @@ def test_upload_file_repository_not_found(app, mocker: MockerFixture, caplog):
     assert_message(caplog.records[0], E.REPOSITORY_NOT_FOUND, {"id": rid})
 
 
-def test_upload_file_repository_forbidden(app, login_users, mocker: MockerFixture, caplog):
+def test_upload_file_repository_forbidden(app: Flask, login_users, mocker: MockerFixture, caplog):
     mocker.patch.object(server.api.bulk.repositories, "get_by_id", return_value=mocker.Mock())
 
     form = TargetRepositoryForm(repository_id=(rid := "test_repo_ac_jp"))
@@ -100,7 +101,7 @@ def test_validate_status(mocker: MockerFixture):
     assert res == expected
 
 
-def test_validate_result(app, login_users, mocker: MockerFixture):
+def test_validate_result(app: Flask, login_users, mocker: MockerFixture):
     task_id, history_id = uuid7(), uuid7()
     mock_task = mocker.MagicMock(spec=AsyncResult)
     mock_task.get.return_value = history_id
@@ -109,7 +110,7 @@ def test_validate_result(app, login_users, mocker: MockerFixture):
 
     offset, page, size = 1, 1, 20
     query = BulkResultQuery(f=[0], p=page, l=size)
-    expected = ValidateResults(results=[], summary=ResultSummary(), offset=offset, page_size=size)
+    expected = ValidateResults(items=[], summary=ResultSummary(), offset=offset, page_size=size)
     mock_validate_result = mocker.patch.object(server.api.bulk.bulks, "get_validate_result", return_value=expected)
 
     with app.test_request_context():
@@ -121,7 +122,7 @@ def test_validate_result(app, login_users, mocker: MockerFixture):
     mock_validate_result.assert_called_once_with(history_id, query)
 
 
-def test_validate_result_not_permission(app, login_users, mocker: MockerFixture):
+def test_validate_result_not_permission(app: Flask, login_users, mocker: MockerFixture):
     task_id, history_id = uuid7(), uuid7()
 
     mock_task = mocker.MagicMock(spec=AsyncResult)
@@ -166,7 +167,7 @@ def test_validate_result_operation_error(config, mocker: MockerFixture):
     assert_message(res.message, E.INVALID_FILE_STRUCTURE)
 
 
-def test_execute(app, login_users, mocker: MockerFixture):
+def test_execute(app: Flask, login_users, mocker: MockerFixture):
     tmp_id, history_id = uuid7(), uuid7()
     repository_id = "test_repo_ac_jp"
     task_id = str(uuid7())
@@ -206,7 +207,7 @@ def test_execute_history_not_found(mocker: MockerFixture):
     assert_message(res.message, E.UPLOAD_HISTORY_RECORD_NOT_FOUND, {"id": tmp_id})
 
 
-def test_execute_no_permission(app, login_users, mocker: MockerFixture):
+def test_execute_no_permission(app: Flask, login_users, mocker: MockerFixture):
     tmp_id, history_id = uuid7(), uuid7()
     repository_id = "test_repo_ac_jp"
     body = ExcuteRequest(tmp_file_id=tmp_id, repository_id=repository_id)
