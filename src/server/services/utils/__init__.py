@@ -39,8 +39,13 @@ from .search_queries import (
 from .transformers import (
     make_group_detail,
     make_group_summary,
+    make_map_group,
+    make_map_service,
+    make_map_user,
     make_repository_detail,
     make_repository_summary,
+    make_user_detail,
+    make_user_summary,
     prepare_group,
     prepare_role_groups,
     prepare_service,

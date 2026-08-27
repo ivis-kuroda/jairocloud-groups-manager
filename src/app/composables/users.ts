@@ -94,8 +94,8 @@ const useUsersTable = () => {
 
   const getSelected = (): { id: string, userName: string }[] => {
     return Object.entries(selectedMap.value)
-      .filter(([_, userName]) => userName !== undefined)
-      .map(([id, userName]) => ({ id, userName: userName! }))
+      .filter(([_, usermame]) => usermame !== undefined)
+      .map(([id, username]) => ({ id, userName: username! }))
   }
   const clearSelection = () => {
     selectedMap.value = {}

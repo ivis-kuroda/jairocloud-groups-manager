@@ -4,6 +4,9 @@
 
 """Factory for creating and configuring the Flask application."""
 
+# ruff: file-ignore[missing-type-function-argument, missing-type-args, missing-type-kwargs]
+# ruff: file-ignore[missing-return-type-special-method, missing-return-type-private-function]
+
 import typing as t
 
 from uuid import uuid7
@@ -62,7 +65,8 @@ def create_app(
     """
     app = Flask(import_name)
     app.config["RUNTIME_ROLE"] = runtime_role
-    JAIROCloudGroupsManager(app, config=config or config_path)
+    app.config["RUNTIME_CONFIG"] = config or config_path
+    JAIROCloudGroupsManager(app)
     celery_init_app(app)
 
     return app
@@ -81,7 +85,6 @@ def celery_init_app(app: Flask) -> Celery:
     class FlaskTask(Task):
         """Task with Flask application context."""
 
-        # ruff : noqa: ANN001 ANN002 ANN003 ANN204 ANN202
         @t.override
         def __call__(self, *args, **kwargs):
             ploxy = flask_login.current_user
@@ -97,13 +100,13 @@ def celery_init_app(app: Flask) -> Celery:
 
         @t.override
         def apply_async(  # pyright: ignore[reportIncompatibleMethodOverride]
-            self, args, kwargs=None, session_required=None, task_id=None, **options
+            self, args, kwargs=None, session_required=None, **options
         ):
-            task_id = task_id or str(uuid7())
+            options.setdefault("task_id", str(uuid7()))
             if session_required and is_user_logged_in(current_user):
                 kwargs = kwargs or {}
                 kwargs.setdefault("session_id", current_user.session_id)
-            return super().apply_async(args, kwargs, task_id=task_id, **options)
+            return super().apply_async(args, kwargs, **options)
 
     celery_app: Celery = Celery(app.name, task_cls=FlaskTask)
     celery_app.config_from_object(app.config["CELERY"])

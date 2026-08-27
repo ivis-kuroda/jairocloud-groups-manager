@@ -16,11 +16,16 @@ const {
 const { searchTerm, pageNumber, pageSize } = criteria
 
 const table = useTemplateRef('table')
-const { table: { pageSize: { users: pageOptions } },
-  features: { users: { 'filter-by-last-modified': filterByLastModified,
-    'filter-by-both-role-group': filterByBoth,
-    'search-only-username': sercheOnlyUserName },
-  repositories: { 'server-search': serverSearch } },
+const {
+  table: { pageSize: { users: pageOptions } },
+  features: {
+    users: {
+      'filter-by-last-modified': filterByLastModified,
+      'filter-by-both-role-group': filterByBoth,
+      'search-only-username': sercheOnlyUsername,
+    },
+    repositories: { 'server-search': serverSearch },
+  },
 } = useAppConfig()
 
 const { handleFetchError } = useErrorHandling()
@@ -225,7 +230,7 @@ const onRemove = async (event: FormSubmitEvent<typeof userOpState>) => {
     <UInput
       v-model="searchTerm"
       :placeholder="
-        sercheOnlyUserName
+        sercheOnlyUsername
           ? $t('users.table.search-placeholder-username-only')
           : $t('users.table.search-placeholder')
       "

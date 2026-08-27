@@ -11,7 +11,7 @@ from datetime import datetime
 from pydantic import BaseModel, PrivateAttr
 
 from .common import camel_case_config, forbid_extra_config
-from .map_group import MapGroup, Visibility
+from .map_group import Visibility
 
 
 class GroupDetail(BaseModel):
@@ -61,35 +61,6 @@ class GroupDetail(BaseModel):
 
     model_config = camel_case_config | forbid_extra_config
     """Configure to use camelCase aliasing and forbid extra fields."""
-
-    @classmethod
-    def from_map_group(
-        cls, group: MapGroup, *, more_detail: bool = False
-    ) -> GroupDetail:
-        """Create a GroupDetail instance from a MapGroup instance.
-
-        Args:
-            group (MapGroup): The MapGroup instance to convert.
-            more_detail (bool): Whether to include more detailed information.
-
-        Returns:
-            GroupDetail: The created GroupDetail instance.
-        """
-        from server.services.utils.transformers import (  # noqa: PLC0415
-            make_group_detail,
-        )
-
-        return make_group_detail(group, more_detail=more_detail)
-
-    def to_map_group(self) -> MapGroup:
-        """Convert this GroupDetail instance to a MapGroup instance.
-
-        Returns:
-            MapGroup: The created MapGroup instance.
-        """
-        from server.services.utils.transformers import make_map_group  # noqa: PLC0415
-
-        return make_map_group(self)
 
 
 class Repository(BaseModel):

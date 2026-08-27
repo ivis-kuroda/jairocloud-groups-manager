@@ -23,7 +23,8 @@ level = "INFO"
 
 [session]
 # Strategy for session expiration.
-# Possible values: "fixed" or "sliding"
+# Possible values: "absolute" or "sliding".
+# Default is "sliding".
 strategy = "sliding"
 
 # Sliding session lifetime (in seconds)
@@ -40,9 +41,11 @@ absolute_lifetime = 86400
 # Default is 10485760 bytes (10 MB).
 max_upload_size = 10485760  # 10 MB
 
+
 [storage]
 # Type of storage backend to use.
-# Possible values: "local", "object_storage", etc.
+# In the future, support for "ObjectStorage" will be added.
+# Possible values: "local".
 type = "local"
 
 [storage.local]
@@ -55,10 +58,11 @@ storage = "/var/tmp/jcgroups"
 
 [sp]
 # SP connector ID for the application.
-connector_id = "jairocloud-groups-manager"
+connector_id = "jairocloud-groups-manager_dev"
 
 # Entity ID of the Service Provider.
-entity_id = "https://localhost/shibboleth-sp"
+entity_id = "https://tgwbr8w9-443.asse.devtunnels.ms/shibboleth-sp"
+# entity_id = "https://overrudely-tabescent-garret.ngrok-free.dev/shibboleth-sp"
 
 # Path to the Service Provider's certificate file.
 crt = "./certs/server.crt"
@@ -78,7 +82,7 @@ max_url_length = "50 - len('jc_') - len('_ro_radm') - 2"
 [repositories.id_patterns]
 # SP connector ID pattern. It should include '{repository_id}' placeholder.
 # `repository_id` is the FQDN, with its dots and hyphens replaced by underscores.
-sp_connector = "jc_{repository_id}"
+sp_connector = "jc_{repository_id}_test"
 
 
 [groups]
@@ -115,23 +119,23 @@ user_defined = "jc_{repository_id}_gr_{user_defined_id}"
 
 [groups.name_patterns]
 # Name of the system administrator group.
-system_admin = "ジャイロクラウドシステム管理者"
+system_admin = "ジャイロクラウドシステム管理者（開発）"
 
 # Pattern for repository administrator group names.
 # It should include '{repository_name}' placeholder.
-repository_admin = "{repository_name}管理者"
+repository_admin = "{repository_name}管理者（開発）"
 
 # Pattern for community administrator group names.
 # It should include '{repository_name}' placeholder.
-community_admin = "{repository_name}コミュニティ管理者）"
+community_admin = "{repository_name}コミュニティ管理者（開発）"
 
 # Pattern for contributor group names.
 # It should include '{repository_name}' placeholder.
-contributor = "{repository_name}投稿ユーザー"
+contributor = "{repository_name}投稿ユーザー（開発）"
 
 # Pattern for general user group names.
 # It should include '{repository_name}' placeholder.
-general_user = "{repository_name}一般ユーザー"
+general_user = "{repository_name}一般ユーザー（開発）"
 
 
 [users]
@@ -144,10 +148,10 @@ export_format_version = 1.0
 base_url = "https://sptest.cg.gakunin.jp"
 
 # Timeout (in seconds) for requests to mAP Core service.
-timeout = 20
+timeout = 180
 
 # Update strategy for mAP Core service. Possible values: "put" or "patch"
-update_strategy = "put"
+update_strategy = "patch"
 
 # Whether the user information is editable via this application.
 user_editable = false
@@ -212,12 +216,17 @@ master_name = "mymaster"
 # List of Redis Sentinel nodes.
 [[redis.sentinel.nodes]]
 # Hostname or IP address of a Redis Sentinel node.
-host = ""
+host = "sentinel-1"
 port = 26379
 
 [[redis.sentinel.nodes]]
 # Hostname or IP address of a Redis Sentinel node.
-host = ""
+host = "sentinel-2"
+port = 26379
+
+[[redis.sentinel.nodes]]
+# Hostname or IP address of a Redis Sentinel node.
+host = "sentinel-3"
 port = 26379
 
 
@@ -272,20 +281,33 @@ search_only_username = true
 enable_bulk_operation = false
 
 
-# [develop]
+[develop]
 # Enable or disable developer login feature.
-# developer_login = false
+developer_login = true
 
 # Developer account for testing.
-# [[develop.accounts]]
+[[develop.accounts]]
 # map ID of the developer account.
-# id = ""
+id = "00404105-6f3e-47bb-b839-ad093153b34c"
 
 # ePPN of the developer account.
-# eppn = ""
+eppn = "ivis_tomohiro_kuroda@jctest.exticgakunin.com"
 
 # isMemberOf attributes for the developer account.
-# is_member_of = ""
+is_member_of = "https://sptest.cg.gakunin.jp/gr/jc_roles_sysadm_test"
 
 # user name of the developer account.
-# user_name = ""
+user_name = "黒田 智太"
+
+[[develop.accounts]]
+# map ID of the developer account.
+id = "60a592fe-e042-4612-834a-fbb57861a3b8"
+
+# ePPN of the developer account.
+eppn = "10a4cabd9-eb32-4b9e-8367-72c0fb32a85e@openidp.nii.ac.jp"
+
+# isMemberOf attributes for the developer account.
+is_member_of = "https://sptest.cg.gakunin.jp/gr/jc_test_mori_repo_nii_ac_jp_ro_radm_test"
+
+# user name of the developer account.
+user_name = "情報太郎2"

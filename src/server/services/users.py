@@ -30,12 +30,13 @@ from server.const import (
     USER_ROLES,
 )
 from server.db import db
+from server.entities.bulk import FileContent
 from server.entities.map_error import MapError
 from server.entities.search_request import (
     SearchResponse,
     SearchResult,
 )
-from server.entities.summaries import UserSummary
+from server.entities.summaries import GroupSummary, RepositorySummary, UserSummary
 from server.entities.user_detail import UserDetail
 from server.exc import (
     ApiClientError,
@@ -374,7 +375,7 @@ def create(user: UserDetail) -> UserDetail:
     return UserDetail.from_map_user(result)
 
 
-def update(user: UserDetail) -> UserDetail:  # noqa: C901
+def update(user: UserDetail) -> UserDetail:  # ruff: ignore[complex-structure]
     """Update a User resource.
 
     Args:
@@ -387,7 +388,6 @@ def update(user: UserDetail) -> UserDetail:  # noqa: C901
         OAuthTokenError: If the access token is invalid or expired.
         CredentialsError: If the client credentials are invalid.
         InvalidFormError: If the form data to update is invalid.
-        ResourceInvalid: If the User resource data is invalid.
         ResourceNotFound: If the User resource is not found.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
@@ -412,7 +412,7 @@ def update(user: UserDetail) -> UserDetail:  # noqa: C901
     try:
         validated = validate_user_to_map_user(user, mode="update")
 
-        operations: list[PatchOperation[MapUser]] = build_patch_operations(
+        operations = build_patch_operations(
             current.to_map_user(),
             validated,
             exclude={"schemas", "meta"},
@@ -469,7 +469,8 @@ def update(user: UserDetail) -> UserDetail:  # noqa: C901
             error = E.NO_RIGHTS_UPDATE_USER % {"id": user_id}
             raise OAuthTokenError(error)
 
-        raise ResourceInvalid(result.detail)
+        error = E.RECEIVE_UNEXPECTED_RESPONSE
+        raise UnexpectedResponseError(error)
 
     current_app.logger.info(
         I.SUCCESS_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
@@ -477,7 +478,7 @@ def update(user: UserDetail) -> UserDetail:  # noqa: C901
     return UserDetail.from_map_user(result)
 
 
-def update_put(user: UserDetail) -> UserDetail:  # noqa: C901
+def update_put(user: UserDetail) -> UserDetail:  # ruff: ignore[complex-structure]
     """Update a User resource using PUT method.
 
     Args:
@@ -490,7 +491,6 @@ def update_put(user: UserDetail) -> UserDetail:  # noqa: C901
         OAuthTokenError: If the access token is invalid or expired.
         CredentialsError: If the client credentials are invalid.
         InvalidFormError: If the form data to update is invalid.
-        ResourceInvalid: If the User resource is invalid despite passing validation.
         ResourceNotFound: If the User resource is not found.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
@@ -566,7 +566,8 @@ def update_put(user: UserDetail) -> UserDetail:  # noqa: C901
             error = E.NO_RIGHTS_UPDATE_USER % {"id": user.id}
             raise OAuthTokenError(error)
 
-        raise ResourceInvalid(result.detail)
+        error = E.RECEIVE_UNEXPECTED_RESPONSE
+        raise UnexpectedResponseError(error)
 
     current_app.logger.info(
         I.SUCCESS_UPDATE_USER, {"id": user.id, "eppn": primary_eppn}
@@ -602,7 +603,7 @@ def update_affiliations(user: UserDetail) -> UserDetail:
         include={"groups"},
     )
 
-    from . import groups  # noqa: PLC0415
+    from . import groups  # ruff: ignore[import-outside-top-level]
 
     primary_eppn = user.eppns[0] if user.eppns else "N/A"
     errors: list[Exception] = []
@@ -733,7 +734,7 @@ def count(criteria: UsersCriteria) -> int:
 def handle_user_updated(
     _sender: object,
     user: UserDetail | None = None,
-    **kwargs,  # noqa: ANN003, ARG001
+    **kwargs,  # ruff: ignore[missing-type-kwargs, unused-function-argument]
 ) -> None:
     """Handle user_updated signal to clear cache of the updated user.
 
@@ -744,7 +745,8 @@ def handle_user_updated(
     """
     if not isinstance(user, UserDetail):
         return
-    users.get_by_id.clear_cache(user.id)  # pyright: ignore[reportFunctionMemberAccess]
+    if user.id:
+        users.get_by_id.clear_cache(user.id)  # pyright: ignore[reportFunctionMemberAccess]
     if user.eppns:
         users.get_by_eppn.clear_cache(*user.eppns)  # pyright: ignore[reportFunctionMemberAccess]
 
@@ -802,16 +804,9 @@ def _make_export_file_v1(
 
     permitted_repository_ids = get_permitted_repository_ids()
 
-    file_repositories, file_groups, file_users = _wite_user(
-        user_list, delimiter, file_path, permitted_repository_ids
-    )
-    file_content = {
-        "repositories": file_repositories,
-        "groups": file_groups,
-        "users": file_users,
-    }
+    exported_agg = _wite_user(user_list, delimiter, file_path, permitted_repository_ids)
     history_table.create_download_history(
-        file_id, str(file_path), file_content, operator_id, operator_name
+        file_id, str(file_path), exported_agg, operator_id, operator_name
     )
     db.session.commit()
     return file_path
@@ -822,7 +817,7 @@ def _wite_user(
     delimiter: str,
     file_path: Path,
     permitted_repository_ids: set[str],
-) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+) -> FileContent:
     """Write user details to file.
 
     Args:
@@ -832,47 +827,50 @@ def _wite_user(
         permitted_repository_ids (list[str]): A list of permitted repository IDs.
 
     Returns:
-        tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
-          A tuple containing lists of file repositories, file groups, and file users.
+        FileContent:
+            A dictionary aggregating user exported.
+            It has keys `repositories`, `groups`, and `users`.
 
     Raises:
         InvalidExportError:
           If the user cannot be exported due to insufficient permissions.
     """
-    file_repositories_dict: dict[str, dict[str, str]] = {}
-    file_groups_dict: dict[str, dict[str, str]] = {}
-    file_users_dict: dict[str, dict[str, str]] = {}
+    repository_agg: dict[str, RepositorySummary] = {}
+    group_agg: dict[str, GroupSummary] = {}
+    user_agg: dict[str, UserSummary] = {}
+
+    is_super = is_current_user_system_admin()
+
     for map_user in user_list:
         roles, groups = detect_affiliations([g.value for g in map_user.groups or []])
-        if not is_current_user_system_admin() and any(
+        if not is_super and any(
             role_group.role == USER_ROLES.SYSTEM_ADMIN for role_group in roles
         ):
             raise InvalidExportError(E.USER_CANNOT_EXPORT_SYSTEM_ADMIN)
-        if not is_current_user_system_admin() and not any(
+
+        if not is_super and not any(
             group.repository_id in permitted_repository_ids for group in groups
         ):
             raise InvalidExportError(E.USER_FORBIDDEN_EXPORT)
 
-        file_users_dict[map_user.id or ""] = {
-            "id": map_user.id or "",
-            "user_name": map_user.user_name or "",
-        }
+        user_id = t.cast("str", map_user.id)
+        user_agg[user_id] = UserSummary(id=user_id, user_name=map_user.user_name or "")
+
         group_ids = []
         for group in groups:
-            if group.repository_id not in permitted_repository_ids:
+            if not is_super and group.repository_id not in permitted_repository_ids:
                 continue
 
-            file_groups_dict[group.group_id or ""] = {
-                "id": group.group_id or "",
-                "display_name": "",
-            }
-            file_repositories_dict[group.repository_id or ""] = {
-                "id": group.repository_id or "",
-                "service_name": "",
-            }
-            group_ids.append(group.group_id or "")
+            group_id = t.cast("str", group.group_id)
+            group_agg[group_id] = GroupSummary(id=group_id)
+            repository_id = t.cast("str", group.repository_id)
+            repository_agg[repository_id] = RepositorySummary(id=repository_id)
+            group_ids.append(group_id)
+
         roles_list = [
-            r.role.value for r in roles if r.repository_id in permitted_repository_ids
+            r.role.value
+            for r in roles
+            if is_super or r.repository_id in permitted_repository_ids
         ] or [""]
         eppns = [eppn.value for eppn in map_user.edu_person_principal_names or []]
         emails = [email.value for email in map_user.emails or []]
@@ -884,7 +882,7 @@ def _wite_user(
                 map_user.id,
                 map_user.user_name,
                 group_ids[i] if i < len(group_ids) else group_ids[len(group_ids) - 1],
-                "",  # group name is not exported. it can't be get from mAP Core API search user endpoint  # noqa: E501
+                "",  # group name can't be get from mAP Core API search user endpoint
                 roles_list[i]
                 if i < len(roles_list)
                 else roles_list[len(roles_list) - 1],
@@ -892,11 +890,10 @@ def _wite_user(
                 map_user.preferred_language or "",
                 emails[i] if i < len(emails) else emails[len(emails) - 1],
             ]
-            file_path.write_text(
-                delimiter.join(row) + "\n",
-                encoding="utf-8",
-            )
-    file_repositories = list(file_repositories_dict.values())
-    file_groups = list(file_groups_dict.values())
-    file_users = list(file_users_dict.values())
-    return file_repositories, file_groups, file_users
+            file_path.write_text(delimiter.join(row) + "\n", encoding="utf-8")
+
+    return FileContent(
+        repositories=list(repository_agg.values()),
+        groups=list(group_agg.values()),
+        users=list(user_agg.values()),
+    )

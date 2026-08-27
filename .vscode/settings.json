@@ -1,4 +1,32 @@
 {
+  "workbench.colorCustomizations": {
+    "activityBar.activeBackground": "#cb0100",
+    "activityBar.background": "#cb0100",
+    "activityBar.foreground": "#e7e7e7",
+    "activityBar.inactiveForeground": "#e7e7e799",
+    "activityBarBadge.background": "#004000",
+    "activityBarBadge.foreground": "#e7e7e7",
+    "commandCenter.border": "#e7e7e799",
+    "sash.hoverBorder": "#cb0100",
+    "statusBar.background": "#980100",
+    "statusBar.foreground": "#e7e7e7",
+    "statusBarItem.hoverBackground": "#cb0100",
+    "statusBarItem.remoteBackground": "#000000",
+    "statusBarItem.remoteForeground": "#e7e7e7",
+    "titleBar.activeBackground": "#980100",
+    "titleBar.activeForeground": "#e7e7e7",
+    "titleBar.inactiveBackground": "#98010099",
+    "titleBar.inactiveForeground": "#e7e7e799",
+    "activityBarTop.activeBackground": "#cb0100",
+    "activityBarTop.background": "#cb0100",
+    "activityBarTop.foreground": "#e7e7e7",
+    "activityBarTop.inactiveForeground": "#e7e7e799",
+    "commandCenter.foreground": "#e7e7e7",
+    "statusBar.debuggingBackground": "#980100",
+    "statusBar.debuggingForeground": "#e7e7e7"
+},
+  "peacock.remoteColor": "#980100",
+
   "python.testing.pytestArgs": [
     "tests"
   ],

@@ -24,18 +24,18 @@ def session_required[**P, R](func: t.Callable[P, R]) -> t.Callable[..., R]:
     """
 
     @wraps(func)
-    def wrapper(*args: P.args, session_id: str | None = None, **kwargs: P.kwargs) -> R:  # pyright: ignore[reportGeneralTypeIssues] # noqa: ARG001
+    def wrapper(*args: P.args, session_id: str | None = None, **kwargs: P.kwargs) -> R:  # pyright: ignore[reportGeneralTypeIssues] # ruff: ignore[unused-function-argument]
         return func(*args, **kwargs)
 
     return wrapper
 
 
-def require_enabled[**P, R](setting: Features):  # noqa: ANN201, D103
+def require_enabled[**P, R](setting: Features):  # ruff: ignore[missing-return-type-undocumented-public-function, undocumented-public-function]
 
-    def decorator(func):  # noqa: ANN001, ANN202
+    def decorator(func):  # ruff: ignore[missing-type-function-argument, missing-return-type-private-function]
 
         @wraps(func)
-        def wrapper(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        def wrapper(*args, **kwargs):  # ruff: ignore[missing-type-args, missing-type-kwargs, missing-return-type-private-function]
             if not getattr(config.FEATURES, setting, False):
                 abort(404)
             return func(*args, **kwargs)

@@ -4,6 +4,6 @@
 
 """Provides messages used in the server application."""
 
-# ruff: noqa: N812
+# ruff: file-ignore[lowercase-imported-as-non-lowercase]
 
 from . import error as E, info as I, warning as W

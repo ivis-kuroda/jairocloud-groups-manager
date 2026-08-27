@@ -6,9 +6,8 @@
 
 import typing as t
 
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from uuid import UUID
 
 from flask import current_app
@@ -30,6 +29,8 @@ from server.exc import DatabaseError, InvalidQueryError, RecordNotFound
 from server.messages import E, I
 
 from .utils import (
+    HistoryCriteria,
+    OperatorsCriteria,
     get_permitted_repository_ids,
     is_current_user_system_admin,
 )
@@ -38,7 +39,7 @@ from .utils import (
 if t.TYPE_CHECKING:
     from sqlalchemy import sql
 
-    type FilterArg = sql._typing.ColumnExpressionArgument[bool]  # noqa: SLF001
+    type FilterArg = sql._typing.ColumnExpressionArgument[bool]  # ruff: ignore[private-member-access]
 
 
 def get_upload_history_data(
@@ -59,7 +60,7 @@ def get_upload_history_data(
 
     base_stmt = select(UploadHistory, Files).join(UploadHistory.file).filter(*filters)
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
-    try:
+    try:  # ruff: ignore[too-many-statements-in-try-clause]
         total = db.session.execute(count_stmt).scalar_one()
 
         if criteria.d == "desc":
@@ -191,7 +192,7 @@ def get_download_history_data(
         select(DownloadHistory, Files).join(DownloadHistory.file).filter(*filters)
     )
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
-    try:
+    try:  # ruff: ignore[too-many-statements-in-try-clause]
         total = db.session.execute(count_stmt).scalar_one()
 
         child = aliased(DownloadHistory)
@@ -289,7 +290,7 @@ def get_filter_items(
 
 
 def update_public_status(
-    *, tab: t.Literal["download", "upload"], history_id: UUID, public: bool
+    tab: t.Literal["download", "upload"], history_id: UUID, *, public: bool
 ) -> bool:
     """Invert the public status of a download/upload history record.
 
@@ -325,14 +326,14 @@ def update_public_status(
     return record.public
 
 
-def get_file_path(file_id: UUID) -> str:
+def get_file_path(file_id: UUID) -> Path:
     """Get the file path for the given file ID.
 
     Args:
         file_id (UUID): The ID of the file.
 
     Returns:
-        str: The file path.
+        Path: The file path in the filesystem.
 
     Raises:
         DatabaseError: If the file path could not be retrieved.
@@ -345,64 +346,6 @@ def get_file_path(file_id: UUID) -> str:
         raise DatabaseError(E.FAILED_GET_FILE_PATH % {"file_id": file_id}) from exc
 
     if not file:
-        raise RecordNotFound(E.FAILED_GET_FILE_PATH % {"file_id": file_id})
+        raise RecordNotFound(E.FILE_RECORD_NOT_FOUND % {"file_id": file_id})
 
-    return file.file_path
-
-
-class HistoryCriteria(t.Protocol):
-    """Criteria for searching history records."""
-
-    i: t.Annotated[str | None, "history ID (parent ID)"]
-    """Filter by parent history ID."""
-
-    r: t.Annotated[list[str] | None, "repositories"]
-    """Filter by affiliated repository IDs."""
-
-    g: t.Annotated[list[str] | None, "groups"]
-    """Filter by affiliated group IDs."""
-
-    u: t.Annotated[list[str] | None, "users"]
-    """Filter by affiliated user IDs."""
-
-    o: t.Annotated[list[str] | None, "operators"]
-    """Filter by operator user IDs."""
-
-    s: t.Annotated[date | None, "last modified date (from)"]
-    """Filter by last modified date (from)."""
-
-    e: t.Annotated[date | None, "last modified date (to)"]
-    """Filter by last modified date (to)."""
-
-    d: t.Annotated[t.Literal["asc", "desc"] | None, "sort order"]
-    """Sort order: 'asc' (ascending) or 'desc' (descending)."""
-
-    p: t.Annotated[int | None, "page number"]
-    """Page number to retrieve."""
-
-    l: t.Annotated[int | None, "page size"]  # noqa: E741
-    """Page size (number of items per page)."""
-
-
-class OperatorsCriteria(t.Protocol):
-    """Criteria for searching operators in history records."""
-
-    q: t.Annotated[str | None, "query"] = None
-    """Search term to filter operators."""
-
-    p: t.Annotated[int | None, "page number"] = None
-    """Page number to retrieve."""
-
-    l: t.Annotated[int | None, "page size"] = None  # noqa: E741
-    """Page size (number of items per page)."""
-
-
-def empty_history_criteria() -> HistoryCriteria:
-    """Create an empty HistoryCriteria object.
-
-    Returns:
-        HistoryCriteria: An empty HistoryCriteria object.
-    """
-    hints = t.get_type_hints(HistoryCriteria)
-    attrs = dict.fromkeys(hints)
-    return t.cast("HistoryCriteria", SimpleNamespace(**attrs))
+    return Path(file.file_path)

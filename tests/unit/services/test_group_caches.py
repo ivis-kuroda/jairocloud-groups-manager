@@ -2,7 +2,7 @@ import typing as t
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from uuid import uuid7
 
 import pytest
 
@@ -10,13 +10,13 @@ from redis import RedisError
 from weko_group_cache_db.config import setup_config as setup_wgcd_config
 from weko_group_cache_db.signals import ExecutedData, ProgressData
 
+import server.services.group_caches
+
 from server.api.schemas import CacheQuery
-from server.config import config
 from server.entities.cache import RepositoryCache, TaskDetail
 from server.entities.search_request import SearchResult
-from server.entities.summaries import RepositorySummary
 from server.exc import DatastoreError, GroupCacheError, RequestConflict
-from server.messages import E, W
+from server.messages import E, I, W
 from server.services.group_caches import (
     get_repository_cache,
     get_task_status,
@@ -27,7 +27,7 @@ from server.services.group_caches import (
     update_task,
 )
 
-from tests.helpers import unwrap
+from tests.helpers import assert_message, unwrap
 
 
 if t.TYPE_CHECKING:
@@ -35,357 +35,145 @@ if t.TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
-def setup_config(app):
+def _wgcd_config(config):
     setup_wgcd_config(config.CACHE_GROUPS)
 
 
-@pytest.fixture
-def cache_keys():
-    def _keys(fqdn_list: list[str]) -> list[bytes]:
-        return [f"{fqdn.replace('-', '_').replace('.', '_')}_gakunin_groups".encode() for fqdn in fqdn_list]
+@pytest.mark.parametrize("page", range(1, 4), ids=(f"page {p}" for p in range(1, 4)))
+def test_get_repository_cache_no_filter(page, repository_summaries, repository_caches, mocker: MockerFixture):
+    num_repo, q_length, offset = 10, 4, (page - 1) * 4 + 1
+    query = CacheQuery(q="Test", l=q_length, p=page)
 
-    return _keys
+    searched = repository_summaries[q_length * (page - 1) : q_length * page]
+    search_result = SearchResult(resources=searched, total=num_repo, page_size=q_length, offset=offset)
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    mock_search.return_value = search_result
+    checked_caches = repository_caches[q_length * (page - 1) : q_length * page]
+    mock_check = mocker.patch.object(server.services.group_caches, "check_cache_exists", return_value=checked_caches)
 
-
-def test_get_repository_cache(app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore):
-    num_repo = 20
-    query = CacheQuery(l=20, p=1)
-    repositories = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-
-    keys = cache_keys([repo.service_url.host for repo in repositories.resources[::2]])
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources, now, every_other=True)
-
-    _, _, group_cache = datastore
-    group_cache.hget.side_effect = lambda key, _: now.isoformat() if key.encode() in keys else None
-    expect = SearchResult(total=20, resources=caches, page_size=20, offset=1)
+    expected = SearchResult(resources=checked_caches, total=num_repo, page_size=q_length, offset=offset)
+    threshold = int(num_repo / q_length)
+    expected_length = q_length if page <= threshold else num_repo - q_length * threshold
 
     result = get_repository_cache(query)
 
-    assert result == expect
+    assert result == expected
+    assert len(result.resources) == expected_length
     mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_multi_scan(mocker: MockerFixture, app, gen_summaries, cache_keys, cached_data, datastore):
-    num_repo = 20
-    query = CacheQuery(l=20, p=1)
-    repositories = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    keys = cache_keys([repo.service_url.host for repo in repositories.resources[::2]])
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources, now, every_other=True)
-
-    _, _, group_cache = datastore
-    group_cache.hget.side_effect = lambda key, _: now.isoformat() if key.encode() in keys else None
-
-    expect = SearchResult(total=20, resources=caches, page_size=20, offset=1)
-
-    result = get_repository_cache(query)
-
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
+    (criteria,), _ = mock_search.call_args
+    assert criteria.q == query.q
+    assert criteria.k == "id"
+    assert criteria.d == "asc"
+    assert criteria.p == page
+    assert criteria.l == q_length
+    mock_check.assert_called_once_with(search_result.resources, status_filter=None)
 
 
-def test_get_repository_cache_all_cache_not_exceeding_page_size(
-    app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore
-):
-    num = 20
-    query = CacheQuery(f=["e"], l=20, p=1)
-    repositories: SearchResult[RepositorySummary] = gen_summaries(num)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources, now, every_other=False)
+@pytest.mark.parametrize("page", range(1, 3), ids=(f"page {p}" for p in range(1, 3)))
+def test_get_repository_cache_with_filter(page, repository_summaries, repository_caches, mocker: MockerFixture):
+    num_repo, q_length, offset = 10, 4, (page - 1) * 4 + 1
+    query = CacheQuery(q="Test", f=["e"], l=q_length, p=page)
 
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = now.isoformat()
+    non_existent = [3, 4, 8]
+    checked_caches = [c for i, c in enumerate(repository_caches) if i not in non_existent]
 
-    result = get_repository_cache(query)
-    expect = SearchResult(
-        total=num,
-        resources=caches,
-        page_size=20,
-        offset=1,
+    search_result = SearchResult(resources=repository_summaries, total=num_repo, page_size=q_length, offset=offset)
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    mock_search.return_value = search_result
+    mock_check = mocker.patch.object(server.services.group_caches, "check_cache_exists", return_value=checked_caches)
+
+    expected_caches = checked_caches[(page - 1) * q_length : page * q_length]
+    expected = SearchResult(
+        resources=expected_caches, total=num_repo - len(non_existent), page_size=q_length, offset=offset
     )
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_all_cache_exceeding_page_size(
-    app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore
-):
-    num = 30
-    query = CacheQuery(f=["e"], l=20, p=1)
-    repositories = gen_summaries(num)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources[:20], now, every_other=False)
-
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = now.isoformat()
-
-    expect = SearchResult(total=num, resources=caches, page_size=20, offset=1)
-    result = get_repository_cache(query)
-
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_all_cache_exceeding_page_size_next_page(
-    mocker: MockerFixture, app, gen_summaries, cache_keys, cached_data, datastore
-):
-    num = 30
-    query = CacheQuery(f=["e"], l=20, p=2)
-    repositories = gen_summaries(num)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources[20:30], now, every_other=False)
-
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = now.isoformat()
-    result = get_repository_cache(query)
-    expect = SearchResult(total=30, resources=caches, page_size=20, offset=21)
-
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_empty_cache(app, mocker: MockerFixture, gen_summaries, datastore):
-    num_repo = 20
-    query = CacheQuery(f=["e"], l=20, p=1)
-    repositories = gen_summaries(20)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = None
+    threshold = int((num_repo - len(non_existent)) / q_length)
+    expected_length = q_length if page <= threshold else num_repo - len(non_existent) - q_length * threshold
 
     result = get_repository_cache(query)
+
+    assert result == expected
+    assert len(result.resources) == expected_length
+    mock_search.assert_called_once()
+    (criteria,), _ = mock_search.call_args
+    assert criteria.q == query.q
+    assert criteria.k == "id"
+    assert criteria.d == "asc"
+    assert criteria.p == -1
+    assert criteria.l == q_length
+    mock_check.assert_called_once_with(search_result.resources, status_filter=query.f)
+
+
+def test_get_repository_cache_no_size(repository_summaries, repository_caches, mocker: MockerFixture):
+    num_repo, page, offset = 10, 1, 1
+    query = CacheQuery(q="Test", f=["n"], p=page)
+
+    non_existent = [3, 4, 8]
+    checked_caches = [c for i, c in enumerate(repository_caches) if i in non_existent]
+
+    search_result = SearchResult(resources=repository_summaries, total=num_repo, page_size=num_repo, offset=offset)
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    mock_search.return_value = search_result
+    mock_check = mocker.patch.object(server.services.group_caches, "check_cache_exists", return_value=checked_caches)
+
+    expected_caches = checked_caches[(page - 1) * num_repo : page * num_repo]
     expect = SearchResult(
-        total=0,
-        resources=[],
-        page_size=20,
-        offset=1,
+        resources=expected_caches, total=len(non_existent), page_size=len(non_existent), offset=offset
     )
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_half_cache(app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore):
-    num_repo = 20
-    query = CacheQuery(f=["e"], l=20, p=1)
-    repositories = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    keys = cache_keys([repo.service_url.host for repo in repositories.resources[::2]])
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources[::2], now, every_other=False)
-
-    _, _, group_cache = datastore
-    group_cache.hget.side_effect = lambda key, _: now.isoformat() if key.encode() in keys else None
 
     result = get_repository_cache(query)
-    expect = SearchResult(
-        total=10,
-        resources=caches,
-        page_size=20,
-        offset=1,
-    )
-    mock_search.assert_called_once()
-    assert result == expect
 
-    assert group_cache.hget.call_count == num_repo
-    mocker.stopall()
-
-
-def test_get_repository_cache_no_cache_not_exceeding_page_size(
-    app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore
-):
-    num_repo = 20
-    query = CacheQuery(f=["n"], l=20, p=1)
-    repositories = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    caches = cached_data(repositories.resources, None, every_other=False)
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = None
-
-    expect = SearchResult(total=num_repo, resources=caches, page_size=20, offset=1)
-
-    result = get_repository_cache(query)
     assert result == expect
     mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_no_cache_exceeding_page_size(
-    app, mocker: MockerFixture, gen_summaries, cache_keys, cached_data, datastore
-):
-    num_repo = 30
-    query = CacheQuery(f=["n"], l=20, p=1)
-    repositories = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    caches = cached_data(repositories.resources[:20], None, every_other=False)
-
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = None
-    result = get_repository_cache(query)
-    expect = SearchResult(
-        total=30,
-        resources=caches,
-        page_size=20,
-        offset=1,
-    )
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
+    (criteria,), _ = mock_search.call_args
+    assert criteria.q == query.q
+    assert criteria.k == "id"
+    assert criteria.d == "asc"
+    assert criteria.p == -1
+    assert criteria.l is None
+    mock_check.assert_called_once_with(search_result.resources, status_filter=query.f)
 
 
-def test_get_repository_cache_no_cache_exceeding_page_size_next_page(
-    mocker: MockerFixture, app, gen_summaries, cache_keys, cached_data, datastore
-):
-    num_repo = 30
-    query = CacheQuery(f=["n"], l=20, p=2)
-    repositories = gen_summaries(30)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    caches = cached_data(repositories.resources[20:30], None, every_other=False)
+def test_update_all(app, mocker: MockerFixture, datastore, repository_summaries, caplog):
 
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = None
-
-    result = get_repository_cache(query)
-    expect = SearchResult(
-        total=30,
-        resources=caches,
-        page_size=20,
-        offset=21,
-    )
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_no_cache_all_cache(mocker: MockerFixture, app, gen_summaries, cache_keys, datastore):
-    num_repo = 20
-    query = CacheQuery(f=["n"], l=20, p=1)
-    now = datetime.now(UTC)
-    repositories: SearchResult = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-
-    _, _, group_cache = datastore
-    group_cache.hget.return_value = now.isoformat()
-
-    result = get_repository_cache(query)
-    expect = SearchResult(
-        total=0,
-        resources=[],
-        page_size=20,
-        offset=1,
-    )
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
-
-
-def test_get_repository_cache_no_cache_half_cache(
-    mocker: MockerFixture, app, gen_summaries, cache_keys, cached_data, datastore
-):
-    num_repo = 20
-    query = CacheQuery(f=["n"], l=20, p=1)
-    repositories = gen_summaries(num_repo)
-    mock_search = mocker.patch("server.services.group_caches.repositories.search", return_value=repositories)
-    keys = cache_keys([repo.service_url.host for repo in repositories.resources[::2]])
-    now = datetime.now(UTC)
-    caches = cached_data(repositories.resources[1::2], None, every_other=False)
-
-    _, _, group_cache = datastore
-    group_cache.hget.side_effect = lambda key, _: now.isoformat() if key.encode() in keys else None
-
-    result = get_repository_cache(query)
-    expect = SearchResult(
-        total=10,
-        resources=caches,
-        page_size=20,
-        offset=1,
-    )
-    assert result == expect
-    mock_search.assert_called_once()
-    assert group_cache.hget.call_count == num_repo
-
-    mocker.stopall()
-
-
-def test_update_all(app, mocker: MockerFixture, datastore, gen_summaries):
-
-    mock_check = mocker.patch("server.services.group_caches.is_update_task_running")
+    mock_check = mocker.patch.object(server.services.group_caches, "is_update_task_running")
     mock_check.return_value = False
-    mock_search = mocker.patch("server.services.group_caches.repositories.search")
-    repositories = SearchResult(
-        resources=[gen_summaries(1).resources[0]],
-        total=1,
-        page_size=1,
-        offset=1,
-    )
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    repository = repository_summaries[0]
+    repositories = SearchResult(resources=[repository], total=1, page_size=1, offset=1)
     mock_search.return_value = repositories
-    mock_update_task = mocker.patch("server.services.group_caches.update_task.apply_async")
+    mock_task = mocker.MagicMock(id=(task_id := str(uuid7())))
+    mock_update_task = mocker.patch.object(server.services.group_caches.update_task, "delay", return_value=mock_task)
 
     query = SimpleNamespace(q=None, i=[], p=None, l=-1, k="id", d="asc")
 
     app_cache, _, _ = datastore
 
-    ids = [repositories.resources[0].id]
-    fqdn_list = [repositories.resources[0].service_url.host]
+    ids = [repository.id]
+    fqdn_list = [repository.service_url.host]
     op = "all"
 
     update(op, ids)
 
     mock_check.assert_called_once()
     mock_search.assert_called_once_with(query)
-    mock_update_task.assert_called_once_with((fqdn_list,))
+    mock_update_task.assert_called_once_with(fqdn_list)
     app_cache.delete.assert_called_once_with("jcgroups-test-weko-group-cache-db")
     app_cache.hset.assert_called_once_with("jcgroups-test-weko-group-cache-db", mapping={"status": "pending"})
-    mocker.stopall()
+    assert_message(caplog.records[0], I.GROUP_CACHE_UPDATE_STARTED, {"op": op, "task_id": task_id})
 
 
-def test_update_id_specified(app, mocker: MockerFixture, datastore, gen_summaries):
+def test_update_id_specified(app, mocker: MockerFixture, datastore, repository_summaries, caplog):
 
-    mock_check = mocker.patch("server.services.group_caches.is_update_task_running")
+    mock_check = mocker.patch.object(server.services.group_caches, "is_update_task_running")
     mock_check.return_value = False
-    mock_search = mocker.patch("server.services.group_caches.repositories.search")
-    repositories = SearchResult(
-        resources=[gen_summaries(1).resources[0]],
-        total=1,
-        page_size=1,
-        offset=1,
-    )
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    repository = repository_summaries[0]
+    repositories = SearchResult(resources=[repository], total=1, page_size=1, offset=1)
     mock_search.return_value = repositories
-    mock_update_task = mocker.patch("server.services.group_caches.update_task.apply_async")
+    mock_update_task = mocker.patch.object(server.services.group_caches.update_task, "delay")
 
-    ids = [repositories.resources[0].id]
-    fqdn_list = [repositories.resources[0].service_url.host]
+    ids = [repository.id]
+    fqdn_list = [repository.service_url.host]
     op = "id-specified"
     query = SimpleNamespace(q=None, i=ids, p=None, l=-1, k="id", d="asc")
 
@@ -395,18 +183,17 @@ def test_update_id_specified(app, mocker: MockerFixture, datastore, gen_summarie
 
     mock_check.assert_called_once()
     mock_search.assert_called_once_with(query)
-    mock_update_task.assert_called_once_with((fqdn_list,))
+    mock_update_task.assert_called_once_with(fqdn_list)
     app_cache.delete.assert_called_once_with("jcgroups-test-weko-group-cache-db")
     app_cache.hset.assert_called_once_with("jcgroups-test-weko-group-cache-db", mapping={"status": "pending"})
-    mocker.stopall()
 
 
-def test_update_raises_task_running(app, mocker: MockerFixture):
-    mock_check = mocker.patch("server.services.group_caches.is_update_task_running")
+def test_update_task_conflict(repository_summaries, mocker: MockerFixture):
+    mock_check = mocker.patch.object(server.services.group_caches, "is_update_task_running")
     mock_check.return_value = True
-    mock_update_task = mocker.patch("server.services.group_caches.update_task.apply_async")
+    mock_update_task = mocker.patch.object(server.services.group_caches.update_task, "delay")
 
-    fqdn_list = ["example.com"]
+    fqdn_list = [repository_summaries[0].service_url.host]
     op = "all"
 
     with pytest.raises(RequestConflict, match=str(E.GROUP_CACHE_UPDATE_CONFLICT)):
@@ -415,18 +202,17 @@ def test_update_raises_task_running(app, mocker: MockerFixture):
     mock_check.assert_called_once()
     mock_update_task.assert_not_called()
 
-    mocker.stopall()
 
-
-def test_update_raises_failed_task_running(app, mocker: MockerFixture, datastore, gen_summaries):
-    mock_check = mocker.patch("server.services.group_caches.is_update_task_running")
+def test_update_redis_error(app, mocker: MockerFixture, datastore, repository_summaries, caplog):
+    mock_check = mocker.patch.object(server.services.group_caches, "is_update_task_running")
     mock_check.return_value = False
-    mock_update_task = mocker.patch("server.services.group_caches.update_task.apply_async")
+    mock_update_task = mocker.patch.object(server.services.group_caches.update_task, "delay")
     mock_update_task.side_effect = RedisError("Failed to connect to Redis.")
 
-    mock_search = mocker.patch("server.services.group_caches.repositories.search")
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    repository = repository_summaries[0]
     repositories = SearchResult(
-        resources=[gen_summaries(1).resources[0]],
+        resources=[repository],
         total=1,
         page_size=1,
         offset=1,
@@ -435,8 +221,8 @@ def test_update_raises_failed_task_running(app, mocker: MockerFixture, datastore
 
     app_cache, _, _ = datastore
 
-    ids = [repositories.resources[0].id]
-    fqdn_list = [repositories.resources[0].service_url.host]
+    ids = [repository.id]
+    fqdn_list = [repository.service_url.host]
     op = "all"
 
     with pytest.raises(DatastoreError, match=str(E.FAILED_ENQUEUE_CACHE_UPDATE_TASK)):
@@ -444,54 +230,34 @@ def test_update_raises_failed_task_running(app, mocker: MockerFixture, datastore
 
     mock_check.assert_called_once()
     app_cache.hset.assert_called_once_with("jcgroups-test-weko-group-cache-db", mapping={"status": "pending"})
-
-    mock_update_task.assert_called_once_with((fqdn_list,))
-
-    mocker.stopall()
+    mock_update_task.assert_called_once_with(fqdn_list)
+    assert_message(caplog.records[0], E.FAILED_ENQUEUE_CACHE_UPDATE_TASK)
 
 
-def test_update_task_all(app, mocker: MockerFixture, gen_summaries):
-    repositories = gen_summaries(1).resources
-    mock_fetch_all = mocker.patch("server.services.group_caches.wgcd.fetch_all")
+def test_update_task(config, mocker: MockerFixture, repository_caches):
+    repository = repository_caches[0]
+    mock_fetch_all = mocker.patch.object(server.services.group_caches.wgcd, "fetch_all")
 
-    fqdn_list = [repositories[0].service_url.host]
+    fqdn_list = [repository.service_url.host]
 
     unwrap(update_task)(fqdn_list)
     mock_fetch_all.assert_called_once_with(
         directory_path=config.CACHE_GROUPS.directory_path,
         fqdn_list=fqdn_list,
     )
-    mocker.stopall()
 
 
-def test_is_update_task_running_pending(app, datastore):
+@pytest.mark.parametrize("status", ["pending", "started", "in_progress"])
+def test_is_update_task_running(datastore, status):
     app_cache, _, _ = datastore
-    app_cache.hget.return_value = "pending"
+    app_cache.hget.return_value = status
 
     result = is_update_task_running()
     assert result is True
     app_cache.hget.assert_called_once_with("jcgroups-test-weko-group-cache-db", "status")
 
 
-def test_is_update_task_running_started(app, datastore):
-    app_cache, _, _ = datastore
-    app_cache.hget.return_value = "started"
-
-    result = is_update_task_running()
-    assert result is True
-    app_cache.hget.assert_called_once_with("jcgroups-test-weko-group-cache-db", "status")
-
-
-def test_is_update_task_running_in_progress(app, datastore):
-    app_cache, _, _ = datastore
-    app_cache.hget.return_value = "in_progress"
-
-    result = is_update_task_running()
-    assert result is True
-    app_cache.hget.assert_called_once_with("jcgroups-test-weko-group-cache-db", "status")
-
-
-def test_is_update_task_running_completed(app, datastore):
+def test_is_update_task_running_completed(datastore):
     app_cache, _, _ = datastore
     app_cache.hget.return_value = "completed"
 
@@ -500,7 +266,7 @@ def test_is_update_task_running_completed(app, datastore):
     app_cache.hget.assert_called_once_with("jcgroups-test-weko-group-cache-db", "status")
 
 
-def test_is_update_task_running_not_exists(app, datastore):
+def test_is_update_task_running_not_exists(datastore):
     app_cache, _, _ = datastore
     app_cache.hget.return_value = None
 
@@ -509,22 +275,23 @@ def test_is_update_task_running_not_exists(app, datastore):
     app_cache.hget.assert_called_once_with("jcgroups-test-weko-group-cache-db", "status")
 
 
-def test_handle_progress(app, mocker: MockerFixture, datastore):
-    data = ProgressData(status="in_progress", total=10, done=5, current="example.com")
+def test_handle_progress(datastore, repository_summaries):
+    data = ProgressData(status="in_progress", total=10, done=5, current=repository_summaries[0].service_url.host)
     app_cache, _, _ = datastore
 
-    unwrap(handle_progress)(None, data)
+    unwrap(handle_progress)(data=data)
 
     cache_key = "jcgroups-test-weko-group-cache-db"
     app_cache.hset.assert_called_once_with(cache_key, mapping=data.model_dump(mode="json"))
 
 
-def test_handle_progress_redis_error(app, mocker: MockerFixture, datastore, caplog):
-    data = ProgressData(status="in_progress", total=10, done=5, current="example.com")
+def test_handle_progress_redis_error(app, datastore, repository_summaries, caplog):
+    fqdn = repository_summaries[0].service_url.host
+    data = ProgressData(status="in_progress", total=10, done=5, current=fqdn)
     app_cache, _, _ = datastore
-    app_cache.hset.side_effect = RedisError("Redis error")
+    app_cache.hset.side_effect = RedisError("Failed to connect to Redis.")
 
-    unwrap(handle_progress)(None, data)
+    unwrap(handle_progress)(data=data)
 
     cache_key = "jcgroups-test-weko-group-cache-db"
     app_cache.hset.assert_called_once_with(cache_key, mapping=data.model_dump(mode="json"))
@@ -532,83 +299,69 @@ def test_handle_progress_redis_error(app, mocker: MockerFixture, datastore, capl
     assert str(W.FAILED_UPDATE_TASK_PROGRESS % {"done": 5, "total": 10}) in caplog.text
 
 
-def test_handle_excuted(app, mocker: MockerFixture, datastore):
-    data = ExecutedData(
-        fqdn="example.com",
-        status="success",
-        retries=0,
-        error_type=None,
-        error_message=None,
-        updated_at=datetime.now(UTC),
-    )
+def test_handle_excuted(datastore, repository_summaries):
+    fqdn = repository_summaries[0].service_url.host
+    data = ExecutedData(fqdn=fqdn, status="success", updated_at=datetime.now(UTC))
     app_cache, _, _ = datastore
 
-    unwrap(handle_excuted)(None, data)
+    unwrap(handle_excuted)(None, data=data)
 
     cache_key = "jcgroups-test-weko-group-cache-db"
-    field_name = "example_com_0"
+    rid = fqdn.replace(".", "_").replace("-", "_")
+    field_name = f"{rid}_0"
     app_cache.hset.assert_called_once_with(cache_key, mapping={field_name: data.model_dump_json()})
 
 
-def test_handle_excuted_redis_error(app, mocker: MockerFixture, datastore, caplog):
-    data = ExecutedData(
-        fqdn="example.com",
-        status="success",
-        retries=0,
-        error_type=None,
-        error_message=None,
-        updated_at=datetime.now(UTC),
-    )
+def test_handle_excuted_redis_error(app, datastore, repository_summaries, caplog):
+    fqdn = repository_summaries[0].service_url.host
+    data = ExecutedData(fqdn=fqdn, status="success", updated_at=datetime.now(UTC))
     app_cache, _, _ = datastore
-    app_cache.hset.side_effect = RedisError("Redis error")
+    app_cache.hset.side_effect = RedisError("Failed to connect to Redis.")
 
-    unwrap(handle_excuted)(None, data)
+    unwrap(handle_excuted)(None, data=data)
 
     cache_key = "jcgroups-test-weko-group-cache-db"
-    field_name = "example_com_0"
+    rid = fqdn.replace(".", "_").replace("-", "_")
+    field_name = f"{rid}_0"
     app_cache.hset.assert_called_once_with(cache_key, mapping={field_name: data.model_dump_json()})
 
-    assert (
-        str(W.FAILED_UPDATE_TASK_EXECUT_STATUS % {"rid": "example_com", "status": "success", "retries": 0})
-        in caplog.text
+    assert_message(
+        caplog.records[0],
+        W.FAILED_UPDATE_TASK_EXECUT_STATUS,
+        {"rid": rid, "status": "success", "retries": 0},
     )
 
 
-def test_get_task_status(app, mocker: MockerFixture, datastore):
+def test_get_task_status(config, datastore, repository_summaries, repository_caches, mocker: MockerFixture):
+    cached_data: RepositoryCache = repository_caches[0]
+    assert cached_data.service_url
+    assert cached_data.service_url.host
+    assert cached_data.updated
+    fqdn = cached_data.service_url.host
+    rid = fqdn.replace(".", "_").replace("-", "_")
+    ex_data = ExecutedData(fqdn=fqdn, status=(status := "success"), updated_at=cached_data.updated)
+    cached_data.status = status
     task_data = {
-        b"current": b"example.com",
+        b"current": fqdn.encode(),
         b"status": b"in_progress",
         b"done": b"5",
         b"total": b"10",
-        b"example_com_0": b'{"fqdn": "example.com", "status": "success", "updated_at": "2026-01-01T00:00:00Z"}',
+        f"{rid}_0".encode(): ex_data.model_dump_json().encode(),
     }
-    ids = ["example_com"]
+
+    assert ex_data == ExecutedData.model_validate_json(task_data[f"{rid}_0".encode()])
 
     app_cache, _, _ = datastore
     app_cache.hgetall.return_value = task_data
-    mocker.patch("server.services.group_caches.make_criteria_object")
-    mock_query = MagicMock()
-    mock_query.i = ids
-    mock_search = mocker.patch("server.services.group_caches.repositories.search")
-    mock_search.return_value = SearchResult(
-        resources=[RepositorySummary(id="example_com", service_name="Example Repository")],
-        total=1,
-        page_size=1,
-        offset=1,
-    )
+    mocker.patch.object(server.services.group_caches, "make_criteria_object")
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+    mock_search.return_value = SearchResult(resources=[repository_summaries[0]], total=1, page_size=1, offset=1)
 
-    result = unwrap(get_task_status)()
+    expect = TaskDetail(results=[cached_data], status="in_progress", current=rid, total=10, done=5)
 
-    expect_result = [
-        RepositoryCache(
-            id="example_com",
-            service_name="Example Repository",
-            updated=datetime.fromisoformat("2026-01-01T00:00:00+00:00"),
-            status="success",
-        )
-    ]
+    result = get_task_status()
 
-    assert result == TaskDetail(results=expect_result, status="in_progress", current="example_com", total=10, done=5)
+    assert result == expect
 
     app_cache.hgetall.assert_called_once_with("jcgroups-test-weko-group-cache-db")
     app_cache.delete.assert_not_called()
@@ -619,29 +372,34 @@ def test_get_task_status_not_running(app, datastore):
     app_cache.hgetall.return_value = {}
     app_cache.hget.return_value = "completed"
 
-    result = unwrap(get_task_status)()
+    result = get_task_status()
 
     assert result is None
 
 
-def test_get_task_status_no_task(app, datastore):
+def test_get_task_status_no_task(datastore, mocker: MockerFixture):
     app_cache, _, _ = datastore
     app_cache.hgetall.return_value = {}
 
-    result = unwrap(get_task_status)()
+    mock_search = mocker.patch.object(server.services.group_caches.RepositoryService, "search")
+
+    result = get_task_status()
 
     assert result is None
+    mock_search.assert_not_called()
 
 
-def test_get_task_status_redis_error(app, datastore):
+def test_get_task_status_redis_error(app, datastore, caplog):
     app_cache, _, _ = datastore
     app_cache.hgetall.side_effect = RedisError("Redis error")
 
     with pytest.raises(DatastoreError, match=str(E.FAILED_FETCH_UPDATE_TASK_STATUS)):
         unwrap(get_task_status)()
 
+    assert_message(caplog.records[0], E.FAILED_FETCH_UPDATE_TASK_STATUS)
 
-def test_get_task_status_parse_error(app, datastore):
+
+def test_get_task_status_parse_error(app, datastore, caplog):
     app_cache, _, _ = datastore
 
     cache_data = {
@@ -655,3 +413,5 @@ def test_get_task_status_parse_error(app, datastore):
     error = str(E.FAILED_PARSE_UPDATE_TASK_STATUS)
     with pytest.raises(GroupCacheError, match=error):
         unwrap(get_task_status)()
+
+    assert_message(caplog.records[0], E.FAILED_PARSE_UPDATE_TASK_STATUS)

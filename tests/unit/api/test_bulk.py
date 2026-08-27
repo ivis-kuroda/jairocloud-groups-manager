@@ -41,7 +41,7 @@ def test_upload_file(app: Flask, login_users, mocker: MockerFixture):
     form_file = BulkFileForm(bulk_file=FileStorage(filename="test.tsv"))
     mock_task = mocker.Mock(id=task_id, spec=AsyncResult)
 
-    mocker.patch.object(server.api.bulk.repositories, "get_by_id", return_value=mocker.Mock())
+    mocker.patch.object(server.api.bulk.RepositoryService, "get_by_id", return_value=mocker.Mock())
     mocker.patch.object(server.api.bulk, "get_permitted_repository_ids", return_value=[rid])
     mock_upload = mocker.patch.object(server.api.bulk.bulks, "upload_file", return_value=tmp_id)
     mock_delay = mocker.patch.object(server.api.bulk.bulks.validate_upload_data, "delay")
@@ -64,7 +64,7 @@ def test_upload_file_repository_not_found(app, mocker: MockerFixture, caplog):
     form = TargetRepositoryForm(repository_id=(rid := "test_repo_ac_jp"))
     form_file = BulkFileForm(bulk_file=FileStorage(filename="test.tsv"))
 
-    mocker.patch.object(server.api.bulk.repositories, "get_by_id", return_value=None)
+    mocker.patch.object(server.api.bulk.RepositoryService, "get_by_id", return_value=None)
 
     res, status = unwrap(bulk.upload_file)(form, form_file)
 
@@ -75,7 +75,7 @@ def test_upload_file_repository_not_found(app, mocker: MockerFixture, caplog):
 
 
 def test_upload_file_repository_forbidden(app: Flask, login_users, mocker: MockerFixture, caplog):
-    mocker.patch.object(server.api.bulk.repositories, "get_by_id", return_value=mocker.Mock())
+    mocker.patch.object(server.api.bulk.RepositoryService, "get_by_id", return_value=mocker.Mock())
 
     form = TargetRepositoryForm(repository_id=(rid := "test_repo_ac_jp"))
     form_file = BulkFileForm(bulk_file=FileStorage(filename="test.tsv"))

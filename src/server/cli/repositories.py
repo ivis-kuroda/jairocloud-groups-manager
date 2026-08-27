@@ -13,7 +13,7 @@ from pydantic import HttpUrl
 
 from server.entities.repository_detail import RepositoryDetail
 from server.messages import E, I
-from server.services import repositories as repository_services
+from server.services.resources import RepositoryService
 from server.services.utils import resolve_repository_id
 
 
@@ -27,7 +27,7 @@ def repositories() -> None:
 def get(fqdn: str) -> None:
     """Get Service resource of the Repository."""
     repository_id = resolve_repository_id(fqdn=fqdn)
-    obj = repository_services.get_by_id(repository_id, raw=True)
+    obj = RepositoryService.get_by_id(repository_id, raw=True)
     if obj is None:
         current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"rid": repository_id})
         return
@@ -42,7 +42,7 @@ def get(fqdn: str) -> None:
 def detail(fqdn: str, *, more_detail: bool) -> None:
     """Get Repository details."""
     repository_id = resolve_repository_id(fqdn=fqdn)
-    detail = repository_services.get_by_id(repository_id, more_detail=more_detail)
+    detail = RepositoryService.get_by_id(repository_id, more_detail=more_detail)
     if detail is None:
         current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"rid": repository_id})
         return
@@ -76,7 +76,7 @@ def create(name: str, fqdn: str, entity_id: tuple[str] | str | None = None) -> N
         service_url=service_url,
         entity_ids=list(entity_id),
     )
-    repository_services.create(detail)
+    RepositoryService.create(detail)
 
 
 @repositories.command()
@@ -92,7 +92,7 @@ def delete(fqdn: str, *, yes: bool) -> None:
             default="",
         )
     else:
-        detail = repository_services.get_by_id(repository_id)
+        detail = RepositoryService.get_by_id(repository_id)
         service_name = t.cast("str", detail.service_name) if detail else ""
 
-    repository_services.delete_by_id(repository_id, service_name)
+    RepositoryService.delete_by_id(repository_id, service_name)

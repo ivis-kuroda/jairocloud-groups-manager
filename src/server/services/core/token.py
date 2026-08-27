@@ -19,7 +19,6 @@ from server.config import config
 from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT, OAUTH_CALLBACK_CHANNEL
 from server.datastore import app_cache
 from server.entities.map_error import MapError
-from server.entities.user_detail import UserDetail
 from server.exc import (
     CertificatesError,
     CredentialsError,
@@ -33,10 +32,12 @@ from server.services.service_settings import (
     save_client_credentials,
     save_oauth_token,
 )
+from server.services.utils import make_user_detail
 
 
 if t.TYPE_CHECKING:
     from server.entities.map_user import MapUser
+    from server.entities.user_detail import UserDetail
 
 
 def get_access_token() -> str:
@@ -98,10 +99,8 @@ def prepare_issuing_url() -> str:
             creds = auth.issue_client_credentials(entity_id, config.SP)
         except requests.HTTPError as exc:
             current_app.logger.error(E.FAILED_ISSUE_CREDENTIALS)
-
-            response = t.cast("requests.Response", exc.response)
-            if response.status_code == HTTPStatus.BAD_REQUEST:
-                description = response.json().get("error_description")
+            if exc.response and exc.response.status_code == HTTPStatus.BAD_REQUEST:
+                description = exc.response.json().get("error_description")
                 current_app.logger.error(
                     E.RECEIVE_RESPONSE_MESSAGE, {"message": description}
                 )
@@ -293,4 +292,4 @@ def get_token_owner() -> UserDetail:
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
-    return UserDetail.from_map_user(result)
+    return make_user_detail(result)

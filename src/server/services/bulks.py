@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from http import HTTPStatus
 from itertools import zip_longest
 from pathlib import Path
+from typing import get_args
 from uuid import UUID, uuid7
 
 import openpyxl
@@ -22,15 +23,16 @@ from celery import shared_task
 from flask import current_app
 from pydantic import ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
+from sqlalchemy.exc import SQLAlchemyError
 
 from server.clients import bulks
-from server.config import config
-from server.const import USER_NAME_MAX_LENGTH, USER_ROLES
+from server.const import DEFAULT_SEARCH_COUNT, USER_NAME_MAX_LENGTH, USER_ROLES
 from server.db import db
+from server.db.history import ResultStatus
 from server.entities.bulk import (
     EachResult,
     ExecuteResults,
-    RepositoryMember,
+    FileContent,
     ResultSummary,
     UserAggregated,
     ValidateResults,
@@ -40,7 +42,7 @@ from server.entities.map_error import MapError
 from server.entities.map_group import MapGroup
 from server.entities.map_user import EPPN, Email, Group, MapUser
 from server.entities.patch_request import RemoveOperation
-from server.entities.summaries import GroupSummary
+from server.entities.summaries import GroupSummary, RepositorySummary
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.exc import (
     DatastoreError,
@@ -51,19 +53,23 @@ from server.exc import (
     InvalidFormError,
     OAuthTokenError,
     RecordNotFound,
-    TaskExecutionError,
     UnexpectedResponseError,
 )
 from server.messages import E, I
-from server.services.utils.permissions import (
+from server.storage import current_storage, current_temporary_storage
+
+from . import groups, history_table, users
+from .token import get_access_token, get_client_secret
+from .utils import (
+    build_update_member_operations,
+    detect_affiliations,
     get_permitted_repository_ids,
     is_current_user_system_admin,
+    make_criteria_object,
+    make_user_detail,
+    session_required,
+    validate_user_to_map_user,
 )
-from server.services.utils.transformers import validate_user_to_map_user
-
-from . import groups, history_table, users, utils
-from .token import get_access_token, get_client_secret
-from .utils import session_required
 
 
 if t.TYPE_CHECKING:
@@ -83,46 +89,60 @@ def upload_file(repository_id: str, bulk_file: FileStorage) -> UUID:
 
     Raises:
         FileUploadError: If there is an error saving the uploaded file.
+        DatastoreError: If there is an error connecting to the datastore.
     """
-    temp_id = uuid7()
-    temp_dir = Path(config.STORAGE.local.temporary)
+    tmp_id = uuid7()
     original_filename = bulk_file.filename or "upload_file"
-    new_filename = f"{temp_id}_{Path(original_filename).name}"
-    file_path = temp_dir / new_filename
-    file_content = {"repositories": [{"id": repository_id}]}
-    history_table.create_file(
-        file_id=temp_id, file_path=str(file_path), file_content=file_content
-    )
+    new_filename = f"{tmp_id}_{Path(original_filename).name}"
+    file_path = current_temporary_storage / new_filename
+
+    file_content = FileContent(repositories=[RepositorySummary(id=repository_id)])
     try:
         bulk_file.save(str(file_path))
+        history_table.create_file_record(
+            file_id=tmp_id, file_path=str(file_path), file_content=file_content
+        )
+        db.session.commit()
+
     except (PermissionError, FileNotFoundError) as exc:
+        current_app.logger.error(E.FAILED_SAVE_UPLOADED_FILE, {"file_path": file_path})
         db.session.rollback()
         raise FileUploadError(
             E.FAILED_SAVE_UPLOADED_FILE % {"file_path": file_path}
         ) from exc
-    db.session.commit()
+
+    except SQLAlchemyError as exc:
+        current_app.logger.error(E.FAILED_SAVE_UPLOADED_FILE, {"file_path": file_path})
+        db.session.rollback()
+        raise DatastoreError(
+            E.FAILED_SAVE_UPLOADED_FILE % {"file_path": file_path}
+        ) from exc
+    finally:
+        hour = 60 * 60
+        delete_temporary_file.apply_async((tmp_id,), countdown=hour)
+
     current_app.logger.info(I.SUCCESS_UPLOAD_FILES, {"file_path": file_path})
-    delete_temporary_file.apply_async((str(temp_id),), countdown=3600)
-    return temp_id
+    return tmp_id
 
 
 @shared_task()
 @session_required
 def validate_upload_data(
-    operator_id: str, operator_name: str, temp_file_id: UUID
+    operator_id: str, operator_name: str, tmp_file_id: UUID
 ) -> UUID:
     """Validate the uploaded file data for bulk operation.
 
     Args:
         operator_id (str): The ID of the operator performing the upload.
         operator_name (str): The name of the operator performing the upload.
-        temp_file_id (UUID): The ID of the temporary file.
+        tmp_file_id (UUID): The ID of the temporary file.
 
     Returns:
         UUID: The ID of the upload history record.
     """
-    record = history_table.get_file_by_id(temp_file_id)
+    record = history_table.get_file_by_id(tmp_file_id)
     file_path = record.file_path
+    # file content must contain one repository
     repository_id = record.file_content["repositories"][0]["id"]
     repository_member = get_repository_member(repository_id)
 
@@ -134,6 +154,7 @@ def validate_upload_data(
     create_users: list[UserDetail] = build_user_detail_from_dict_by_name(
         new_data, repository_id
     ).root
+
     updata_users_id = {u.id for u in updata_users if u.id is not None}
     missing_users = _get_missing_users(repository_member, updata_users_id)
     repo_user_by_id = _get_repo_user_by_id(repository_member, updata_users_id)
@@ -143,23 +164,22 @@ def validate_upload_data(
     )
 
     results = ValidateResults(
-        results=check_results,
+        items=check_results,
         summary=summary,
-        missing_user=missing_users,
-        offset=0,
-        page_size=len(check_results),
+        missing_users=missing_users,
     )
     result = history_table.create_upload(
         operator_id=operator_id,
         operator_name=operator_name,
-        file_id=temp_file_id,
-        results=results.model_dump(mode="json"),
+        file_id=tmp_file_id,
+        results=results,
     )
-    current_app.logger.info(I.SUCCESS_VALIDATE, {"file_id": temp_file_id})
+    db.session.commit()
+    current_app.logger.info(I.SUCCESS_VALIDATE, {"file_id": tmp_file_id})
     return result.id
 
 
-def get_repository_member(repository_id: str) -> RepositoryMember:
+def get_repository_member(repository_id: str) -> _RepositoryMember:
     """Get the members of the specified repository from mAP Core API.
 
     Args:
@@ -169,14 +189,15 @@ def get_repository_member(repository_id: str) -> RepositoryMember:
         RepositoryMember: The members of the repository.
     """
     result = groups.search(
-        utils.make_criteria_object("groups", r=[repository_id]), raw=True
-    ).resources
-    group_ids = {g.id for g in result if g.id}
+        make_criteria_object("groups", r=[repository_id], l=-1), raw=True
+    )
+    founds = result.resources
+    group_ids = {g.id for g in founds if g.id}
     user_ids = {
-        m.value for g in result if g.members for m in g.members if m.type == "User"
+        m.value for g in founds if g.members for m in g.members if m.type == "User"
     }
 
-    return RepositoryMember(groups=group_ids, users=user_ids)
+    return _RepositoryMember(groups=group_ids, users=user_ids)
 
 
 def build_user_from_file(
@@ -188,7 +209,7 @@ def build_user_from_file(
         file_path (str): Path to the input file containing user data.
 
     Returns:
-        tuple[dict[str, dict[str, list[str]]], dict[str, dict[str, list[str]]]]:
+        tuple[dict, dict]:
             A tuple containing two dictionaries:
             - The first dictionary contains user data keyed by user ID.
             - The second dictionary contains new user data keyed by user name.
@@ -218,10 +239,10 @@ def build_user_from_file(
             continue
 
         if i == header_row_index:
-            header = [str(h).strip() if h is not None else "" for h in row]
-            idx_of = {name: idx for idx, name in enumerate(header)}
-            id_idx = idx_of.get("id")
-            user_name_idx = idx_of.get("user_name")
+            headers = [str(h).strip() if h is not None else "" for h in row]
+            idx_of = {name: idx for idx, name in enumerate(headers)}
+            id_idx = headers.index("id")
+            user_name_idx = headers.index("user_name")
             continue
 
         columns = list(row)
@@ -237,19 +258,20 @@ def build_user_from_file(
             bucket = new_data[user_name_value]
             exclude = {"user_name"}
         for col, j in idx_of.items():
-            if col not in exclude:
-                bucket[col].append(columns[j])
+            if col in exclude:
+                continue
+            bucket[col].append(columns[j])
 
     return dict(data), dict(new_data)
 
 
-def _read_file(file_path: str):  # noqa: ANN202
+def _read_file(file_path: str):  # ruff: ignore[missing-return-type-private-function]
     """Read a user data file and return a list of `UserDetail` instances.
 
     Args:
         file_path (str): Path to the input file containing user data.
 
-    Returns:
+    Yields:
         Generator yielding rows of user data from the file.
 
     Raises:
@@ -261,25 +283,25 @@ def _read_file(file_path: str):  # noqa: ANN202
     if not path.exists():
         raise FileNotFound(E.FILE_EXPIRED % {"path": path})
 
-    iterator = None
     suffix = path.suffix.lower()
     if suffix in {".csv", ".tsv"}:
         delimiter = "," if suffix == ".csv" else "\t"
         with path.open("r", encoding="utf-8-sig", newline="") as f:
-            iterator = csv.reader(f, delimiter=delimiter)
+            yield from csv.reader(f, delimiter=delimiter)
     elif suffix == ".xlsx":
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        ws = wb.active
-        if not ws:
-            current_app.logger.error(E.FILE_NOT_ACTIVE_SHEET, {"path": path})
-            raise FileValidationError(E.INVALID_FILE_STRUCTURE)
+        try:
+            ws = wb.active
+            if not ws:
+                current_app.logger.error(E.FILE_NOT_ACTIVE_SHEET, {"path": path})
+                raise FileValidationError(E.INVALID_FILE_STRUCTURE)
 
-        iterator = ws.iter_rows(values_only=True)
+            yield from ws.iter_rows(values_only=True)
+        finally:
+            wb.close()
 
     else:
         raise FileFormatError(E.FILE_FORMAT_UNSUPPORTED % {"suffix": path.suffix})
-
-    return iterator
 
 
 def build_user_detail_from_dict(
@@ -355,7 +377,6 @@ def build_user_detail_from_dict(
     try:
         return UserAggregated(root=users)
     except ValidationError as exc:
-        current_app.logger.error(exc)
         raise FileValidationError(E.INVALID_FILE_STRUCTURE) from exc
 
 
@@ -428,7 +449,6 @@ def build_user_detail_from_dict_by_name(
     try:
         return UserAggregated(root=users)
     except ValidationError as exc:
-        current_app.logger.error(exc)
         raise FileValidationError(E.INVALID_FILE_STRUCTURE) from exc
 
 
@@ -440,37 +460,43 @@ def _resolve_non_sysadmin_role(role: str | None) -> USER_ROLES | None:
 
 
 def _get_missing_users(
-    repository_member: RepositoryMember, file_users_id: set[str]
+    members: _RepositoryMember, included_users: set[str]
 ) -> list[UserDetail]:
-    missing_user_ids = list(repository_member.users - file_users_id)
-    if not missing_user_ids:
+    _, all_users = members
+    missing_users = list(all_users - included_users)
+    if not missing_users:
         return []
-    user_list = users.search(
-        utils.make_criteria_object("users", i=missing_user_ids), raw=True
-    ).resources
-    return [UserDetail.from_map_user(u) for u in user_list]
+
+    result = users.search(
+        make_criteria_object("users", i=missing_users, l=-1), raw=True
+    )
+    user_list = result.resources
+
+    return [make_user_detail(u) for u in user_list]
 
 
 def _get_repo_user_by_id(
-    repository_member: RepositoryMember, file_users_id: set[str]
+    members: _RepositoryMember, included_users: set[str]
 ) -> dict[str, UserDetail]:
-    update_users_ids = list(repository_member.users & file_users_id)
+    _, all_users = members
+    update_users_ids = list(all_users & included_users)
     if not update_users_ids:
         return {}
-    user_list = users.search(
-        utils.make_criteria_object("users", i=update_users_ids), raw=True
-    ).resources
+
+    result = users.search(
+        make_criteria_object("users", i=update_users_ids, l=-1), raw=True
+    )
+    user_list = result.resources
+
     return {
-        user.id: user
-        for user in (UserDetail.from_map_user(u) for u in user_list)
-        if user.id
+        user.id: user for user in (make_user_detail(u) for u in user_list) if user.id
     }
 
 
 def _build_check_results(
     update_users: list[UserDetail],
     create_users: list[UserDetail],
-    repository_member: RepositoryMember,
+    repository_member: _RepositoryMember,
     repo_user_by_id: dict[str, UserDetail],
 ) -> tuple[list[EachResult], ResultSummary]:
     count_create = 0
@@ -605,56 +631,63 @@ def _check_immutable_attributes(
     return None
 
 
-def get_validate_task_result(task_id: str) -> AsyncResult[UUID]:
+def get_validate_task_result(task_id: UUID) -> AsyncResult[UUID]:
     """Get the result of a validation task.
 
     Args:
-        task_id (str): The ID of the validation task.
+        task_id (UUID): The ID of the validation task.
 
     Returns:
-        AsyncResult[UUID]: The result of the validation task.
+        AsyncResult[UUID]: The async result of the validation task.
 
     Raises:
         DatastoreError: If there is an error connecting to the datastore.
-        TaskExecutionError: If the task with the given ID does not exist.
     """
     try:
-        res = validate_upload_data.AsyncResult(task_id)
+        res = validate_upload_data.AsyncResult(str(task_id))
     except RedisConnectionError as exc:
         current_app.logger.error(E.FAILED_CONNECT_REDIS, {"error": str(exc)})
         raise DatastoreError(E.FAILED_CONNECT_REDIS % {"error": str(exc)}) from exc
-    if not res:
-        current_app.logger.error(E.TASK_NOT_FOUND, {"task_id": task_id})
-        raise TaskExecutionError(E.TASK_NOT_FOUND % {"task_id": task_id})
+
     return res
 
 
 def get_validate_result(
-    history_id: UUID, status_filter: list[str], offset: int, size: int
+    history_id: UUID, query: _BulkResultCriteria
 ) -> ValidateResults:
     """Get the validation result summary for the specified upload history ID.
 
     Args:
         history_id (UUID): The ID of the upload history.
-        status_filter (list[str]): Filter for Displayed Status
-        offset (int): the offset for pagination
-        size (int): page size
+        query (BulkResultCriteria): The criteria for filtering and pagination.
 
     Returns:
-        ValidateSummary: The summary of the validation result.
-    """
-    results = history_table.get_paginated_upload_results(
-        history_id, offset, size, status_filter
-    )
-    check_results = [EachResult.model_validate(it) for it in results]
+        ValidateResults: The summary of the validation result.
 
-    summary = history_table.get_upload_results(history_id, "summary")
-    missing_user = history_table.get_upload_results(history_id, "missingUser")
+    Raises:
+        RecordNotFound: If the upload history does not exist.
+    """
+    status_filter: list[ResultStatus] = (
+        [RESULT_STATUS[status] for status in query.f] if query.f else []
+    )
+    page, size = query.p or 1, query.l or DEFAULT_SEARCH_COUNT
+
+    results = history_table.get_upload_results_with_pagination(
+        history_id, page, size, status_filter
+    )
+    result_items = [EachResult.model_validate(it) for it in results]
+
+    try:
+        summary = history_table.get_upload_results(history_id, "summary")
+        missing_users = history_table.get_upload_results(history_id, "missing_users")
+    except RecordNotFound:  # ruff: ignore[useless-try-except]
+        raise
+
     result = ValidateResults.model_validate({
-        "results": check_results,
+        "items": result_items,
         "summary": summary,
-        "missingUser": missing_user or [],
-        "offset": offset,
+        "missing_users": missing_users or [],
+        "offset": (page - 1) * size,
         "pageSize": size,
     })
     current_app.logger.info(I.SUCCESS_GET_VALIDATE_RESULT, {"history_id": history_id})
@@ -663,13 +696,13 @@ def get_validate_result(
 
 @shared_task()
 def update_users(
-    history_id: UUID, temp_file_id: UUID, remove_users: list[str] | None
+    history_id: UUID, tmp_file_id: UUID, remove_users: list[str] | None
 ) -> UUID:
     """Perform bulk update of users based on the validation results.
 
     Args:
         history_id (UUID): The ID of the upload history.
-        temp_file_id (UUID): The ID of the temporary file.
+        tmp_file_id (UUID): The ID of the temporary file.
         remove_users (list[str] | None):
           The list of user IDs to be removed by repository.
 
@@ -695,26 +728,29 @@ def update_users(
 
     # file content must contain at least one repository.
     repository_id = upload_data.file.file_content["repositories"][0]["id"]
-    check_results: list[EachResult] = upload_data.results.get("results", [])
+    result_items: list[EachResult] = [
+        EachResult.model_validate(item) for item in upload_data.results.get("items", [])
+    ]
 
-    summary = upload_data.results.get("summary", {})
-    if summary.get("error", 1) > 0:
+    summary = ResultSummary.model_validate(upload_data.results.get("summary", {}))
+    if summary.error > 0:
         current_app.logger.error(E.VALIDATION_ERROR_BLOCK)
         raise FileValidationError(E.VALIDATION_ERROR_BLOCK)
 
     bulk_ops, count_delete = _build_bulk_operations_from_check_results(
-        repository_id, check_results, remove_users
+        repository_id, result_items, remove_users
     )
-    summary.update({"delete": count_delete})
+    summary.delete = count_delete
+    new_results = ValidateResults(items=result_items, summary=summary)
 
-    file_id = save_file(temp_file_id)
+    file_id = save_file_as_permanent(tmp_file_id)
     history_table.update_upload_status(
         history_id=history_id,
         status="P",
         file_id=file_id,
-        new_results={"results": check_results, "summary": summary},
+        new_results=new_results,
     )
-    history_table.delete_file_by_id(temp_file_id)
+    history_table.delete_file_by_id(tmp_file_id)
 
     try:
         access_token = get_access_token()
@@ -742,35 +778,35 @@ def update_users(
         if (
             operation.status
             and int(operation.status) >= HTTPStatus.BAD_REQUEST
-            and i < len(check_results)
+            and i < len(result_items)
         ):
-            check_results[i].status = "error"
+            result_items[i].status = "error"
             count_error += 1
 
-    summary.update({"error": count_error})
+    summary.error = count_error
+    new_results = ValidateResults(items=result_items, summary=summary)
     if count_error > 0:
         history_table.update_upload_status(
             history_id=history_id,
             status="F",
-            new_results={"results": check_results, "summary": summary},
+            new_results=new_results,
         )
-        db.session.commit()
     else:
         history_table.update_upload_status(
             history_id=history_id,
             status="S",
         )
-        db.session.commit()
+    db.session.commit()
 
     current_app.logger.info(I.SUCCESS_BULK_OPERATION, {"history_id": history_id})
     return history_id
 
 
-def save_file(temp_file_id: UUID) -> UUID:
+def save_file_as_permanent(tmp_file_id: UUID) -> UUID:
     """Save the temporary file as a permanent file for bulk operation.
 
     Args:
-        temp_file_id (UUID): The ID of the temporary file.
+        tmp_file_id (UUID): The ID of the temporary file.
 
     Returns:
         UUID: The ID of the saved permanent file.
@@ -780,30 +816,33 @@ def save_file(temp_file_id: UUID) -> UUID:
         FileFormatError: If the file format is invalid.
     """
     try:
-        files = history_table.get_file_by_id(temp_file_id)
+        files = history_table.get_file_by_id(tmp_file_id)
         repository_id = files.file_content["repositories"][0]["id"]
     except (KeyError, AttributeError) as exc:
-        current_app.logger.error(exc)
-        raise FileNotFound(
-            E.FAILED_GET_FILE_RECORD % {"file_id": temp_file_id}
-        ) from exc
+        current_app.logger.error(E.FAILED_GET_FILE_RECORD, {"file_id": tmp_file_id})
+        raise FileNotFound(E.FAILED_GET_FILE_RECORD % {"file_id": tmp_file_id}) from exc
 
     file_path = Path(files.file_path)
     if not file_path.exists():
         raise FileNotFound(E.FILE_EXPIRED % {"path": file_path})
+
     if file_path.suffix not in {".csv", ".tsv", ".xlsx"}:
         raise FileFormatError(E.FILE_FORMAT_UNSUPPORTED % {"suffix": file_path.suffix})
 
-    target_dir = Path(config.STORAGE.local.storage) / datetime.now(UTC).strftime(
-        "%Y/%m"
-    )
+    permanent_id = uuid7()
+    target_dir = current_storage / datetime.now(UTC).strftime("%Y/%m")
+    save_path = target_dir / f"{permanent_id}{file_path.suffix}"
+
     target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = target_dir / file_path.name
-    file_path.rename(target_path)
-    return history_table.create_file(
-        file_path=str(target_path),
-        file_content={"repositories": [{"id": repository_id}]},
-    ).id
+    file_path.rename(save_path)
+
+    file_content = FileContent(repositories=[RepositorySummary(id=repository_id)])
+    file_record = history_table.create_file_record(
+        str(save_path), file_content, file_id=permanent_id
+    )
+    history_table.delete_file_by_id(tmp_file_id)
+
+    return file_record.id
 
 
 def build_map_user_from_check_result(user: EachResult) -> MapUser:
@@ -841,7 +880,7 @@ def build_remove_user_path(user: UserDetail, repository_id: str) -> BulkOperatio
             request body representing the bulk remove operation.
     """
     user_groups = [g.id for g in user.groups] if user.groups else []
-    affiliations = utils.detect_affiliations(user_groups)
+    affiliations = detect_affiliations(user_groups)
     group_list = affiliations.groups
 
     condition = " or ".join(
@@ -899,16 +938,16 @@ def _build_bulk_operations_from_check_results(
     ])
 
     delete_user_list = users.search(
-        utils.make_criteria_object("users", i=remove_users), raw=True
+        make_criteria_object("users", i=remove_users), raw=True
     ).resources
 
     group_user_ops = {}
     for map_user in delete_user_list:
-        user = UserDetail.from_map_user(map_user)
+        user = make_user_detail(map_user)
         if not user.id:
             continue
         user_groups = [g.id for g in user.groups] if user.groups else []
-        group_list = utils.detect_affiliations(user_groups).groups
+        group_list = detect_affiliations(user_groups).groups
         for gid in group_list:
             group_user_ops.setdefault(gid.group_id, {"add": set(), "remove": set()})[
                 "remove"
@@ -933,20 +972,17 @@ def _build_groups_update_bulk_operations(
     group_user_ops: dict[str, dict[str, set[str]]],
 ) -> list[BulkOperation]:
     bulk_ops: list[BulkOperation] = []
-    system_user_id = users.get_system_admins()
+    system_admins = users.get_system_admins()
     for gid, ops in group_user_ops.items():
         target = groups.get_by_id(gid, raw=True)
-        user_list = set()
+        current_users = set()
         if isinstance(target, MapGroup) and target.members:
-            user_list = {u.value for u in target.members if u.type == "User"}
+            current_users = {u.value for u in target.members if u.type == "User"}
 
         add_user = ops["add"]
         remove_user = ops["remove"]
-        data_list = utils.build_update_member_operations(
-            add=add_user,
-            remove=remove_user,
-            system_admins=system_user_id,
-            user_list=user_list,
+        data_list = build_update_member_operations(
+            add_user, remove_user, current_users, system_admins
         )
         bulk_ops.extend([
             BulkOperation(
@@ -960,40 +996,32 @@ def _build_groups_update_bulk_operations(
     return bulk_ops
 
 
-def get_execute_task_result(task_id: str) -> AsyncResult[UUID]:
+def get_execute_task_result(task_id: UUID) -> AsyncResult[UUID]:
     """Get the result of an execution task.
 
     Args:
-        task_id (str): The ID of the execution task.
+        task_id (UUID): The ID of the execution task.
 
     Returns:
         AsyncResult[UUID]: The result of the execution task.
 
     Raises:
         DatastoreError: If there is an error connecting to the datastore.
-        TaskExecutionError: If the task with the given ID does not exist.
     """
     try:
-        res = update_users.AsyncResult(task_id)
+        res = update_users.AsyncResult(str(task_id))
     except RedisConnectionError as exc:
         current_app.logger.error(E.FAILED_CONNECT_REDIS, {"error": str(exc)})
         raise DatastoreError(E.FAILED_CONNECT_REDIS % {"error": str(exc)}) from exc
-    if not res:
-        current_app.logger.error(E.TASK_NOT_FOUND, {"task_id": task_id})
-        raise TaskExecutionError(E.TASK_NOT_FOUND % {"task_id": task_id})
     return res
 
 
-def get_upload_result(
-    history_id: UUID, status_filter: list[str], offset: int, size: int
-) -> ExecuteResults:
+def get_upload_result(history_id: UUID, query: _BulkResultCriteria) -> ExecuteResults:
     """Get the bulk operation result summary with filtering and pagination.
 
     Args:
         history_id (UUID): The ID of the upload history.
-        status_filter (list[str]): The list of status filters to apply.
-        size (int): The number of items to return.
-        offset (int): The offset for pagination.
+        query (BulkResultCriteria): The query parameters for filtering and pagination.
 
     Returns:
         ExecuteResults: The summary of the bulk operation result.
@@ -1001,12 +1029,17 @@ def get_upload_result(
     Raises:
         RecordNotFound: If the upload history with the given ID does not exist.
     """
+    status_filter: list[ResultStatus] = (
+        [RESULT_STATUS[status] for status in query.f] if query.f else []
+    )
+    page, size = query.p or 1, query.l or DEFAULT_SEARCH_COUNT
+
     upload = history_table.get_upload_by_id(history_id)
     if not upload:
-        raise RecordNotFound(E.UPDATE_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
+        raise RecordNotFound(E.UPLOAD_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
 
-    raw_results: list[dict] = history_table.get_paginated_upload_results(
-        history_id, offset, size, status_filter or []
+    raw_results: list[dict] = history_table.get_upload_results_with_pagination(
+        history_id, page, size, status_filter
     )
 
     summary = history_table.get_upload_results(history_id, "summary")
@@ -1014,14 +1047,14 @@ def get_upload_result(
     payload = {
         "items": raw_results,
         "summary": summary,
-        "fileId": upload.file_id,
-        "fileName": Path(upload.file.file_path).name,
+        "file_id": upload.file_id,
+        "file_name": Path(upload.file.file_path).name,
         "operator": upload.operator_name or upload.operator_id,
-        "startTimestamp": upload.timestamp,
-        "endTimestamp": upload.end_timestamp,
-        "total": 0,
-        "offset": offset,
-        "pageSize": size,
+        "start_timestamp": upload.timestamp,
+        "end_timestamp": upload.end_timestamp,
+        "total": 0,  # TODO(ivis-kuroda): need to implement total count.
+        "offset": (page - 1) * size,
+        "page_size": size,
     }
     result = ExecuteResults.model_validate(payload)
     current_app.logger.info(
@@ -1031,20 +1064,19 @@ def get_upload_result(
 
 
 @shared_task()
-def delete_temporary_file(temp_id: str) -> None:
+def delete_temporary_file(tmp_id: UUID) -> None:
     """Delete the temporary file with the given ID.
 
     Args:
-        temp_id(str): delete file id
+        tmp_id(UUID): The ID of the temporary file.
     """
-    temp_file_id = UUID(temp_id)
     try:
-        file_path = history_table.get_file_by_id(temp_file_id).file_path
+        file_path = history_table.get_file_by_id(tmp_id).file_path
     except RecordNotFound:
         return
     if Path(file_path).exists():
         Path(file_path).unlink()
-    history_table.delete_file_by_id(temp_file_id)
+    history_table.delete_file_by_id(tmp_id)
 
 
 def chack_permission_to_operation(history_id: UUID, operator_id: str) -> bool:
@@ -1062,8 +1094,8 @@ def chack_permission_to_operation(history_id: UUID, operator_id: str) -> bool:
     """
     upload = history_table.get_upload_by_id(history_id)
     if not upload:
-        current_app.logger.error(E.UPDATE_HISTORY_RECORD_NOT_FOUND, {"id": history_id})
-        raise RecordNotFound(E.UPDATE_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
+        current_app.logger.error(E.UPLOAD_HISTORY_RECORD_NOT_FOUND, {"id": history_id})
+        raise RecordNotFound(E.UPLOAD_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
     return upload.operator_id == operator_id
 
 
@@ -1081,9 +1113,41 @@ def chack_permission_to_view(history_id: UUID) -> bool:
     """
     if is_current_user_system_admin():
         return True
+
     upload = history_table.get_upload_by_id(history_id)
     if not upload:
-        current_app.logger.error(E.UPDATE_HISTORY_RECORD_NOT_FOUND, {"id": history_id})
-        raise RecordNotFound(E.UPDATE_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
+        current_app.logger.error(E.UPLOAD_HISTORY_RECORD_NOT_FOUND, {"id": history_id})
+        raise RecordNotFound(E.UPLOAD_HISTORY_RECORD_NOT_FOUND % {"id": history_id})
+
     repository_id = upload.file.file_content["repositories"][0]["id"]
     return repository_id not in get_permitted_repository_ids() and upload.public
+
+
+class _RepositoryMember(t.NamedTuple):
+    """Tuple for members of a repository."""
+
+    groups: set[str]
+    """The groups belonging to the repository."""
+
+    users: set[str]
+    """The users belonging to the repository."""
+
+
+RESULT_STATUS: tuple[ResultStatus, ...] = get_args(ResultStatus.__value__)
+"""Mapping of status query parameter values to their corresponding status strings."""
+
+
+class _BulkResultCriteria(t.Protocol):
+    """Protocol for search criteria for bulk operation results."""
+
+    f: t.Annotated[list[t.Literal[0, 1, 2, 3, 4]] | None, "filter"]
+    """Filter by status.
+
+    0 (create), 1 (update), 2 (delete), 3 (skip), 4 (error).
+    """
+
+    p: t.Annotated[int | None, "page"]
+    """Page number to retrieve."""
+
+    l: t.Annotated[int | None, "length"]  # ruff: ignore[ambiguous-variable-name]
+    """Page size (number of items per page)."""

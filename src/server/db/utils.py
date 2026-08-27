@@ -85,14 +85,14 @@ def __get_db() -> SQLAlchemy:
     return current_app.extensions["sqlalchemy"]
 
 
-def _db():  # noqa: ANN202, for intersection-type inference
+def _db():  # ruff: ignore[missing-return-type-private-function], for intersection-type inference
     def __type_assertion(_: object) -> t.TypeIs[SQLAlchemy]:
         return True
 
-    proxy = LocalProxy(lambda: __get_db())  # noqa: PLW0108
+    proxy = LocalProxy(lambda: __get_db())  # ruff: ignore[unnecessary-lambda]
 
     if not __type_assertion(proxy):
-        raise NotImplementedError(E.UNEXPECTED_SERVER_ERROR)  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
     return proxy
 

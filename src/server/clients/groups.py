@@ -55,10 +55,12 @@ def search(
         exclude (set[str] | None):
             Attribute names to exclude from the response. Optional.
         access_token (str): OAuth access token for authorization.
-        client_secret (str): Client secret for Basic Authentication.
+        client_secret (str): Client secret for Authentication.
 
     Returns:
-        GroupsSearchResponse: The search response containing Group resources.
+        SearchResponse | MapError:
+            The search response containing Group resources. If the search fails,
+            returns an Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -106,7 +108,7 @@ def get_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapGroupResponse: The Group resource if found, otherwise Error response.
+        MapGroup | MapError: The Group resource if found, otherwise Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -152,7 +154,7 @@ def post(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapGroupResponse:
+        MapGroup | MapError:
             The created Group resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -209,7 +211,7 @@ def put_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapGroupResponse:
+        MapGroup | MapError:
             The updated Group resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -263,17 +265,17 @@ def patch_by_id(
     """Patch a Group resource by its ID in mAP API.
 
     Args:
-        group_id (str): ID of the Group resource.
+        group_id (str): ID of the Group resource to update.
         operations (Sequence[PatchOperation]): List of patch operations to apply.
         include (set[str] | None):
             Attribute names to include in update. Optional.
         exclude (set[str] | None):
             Attribute names to exclude from update. Optional.
         access_token (str): OAuth access token for authorization.
-        client_secret (str): Client secret for Basic Authentication.
+        client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapGroupResponse:
+        MapGroup | MapError:
             The updated Group resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -285,7 +287,7 @@ def patch_by_id(
     attributes_params = _build_attribute_params(include, exclude)
 
     payload = PatchRequestPayload(operations=operations).model_dump(
-        mode="json", by_alias=True, exclude_none=False
+        mode="json", by_alias=True, exclude_none=True
     )
 
     response = requests.patch(
@@ -298,7 +300,8 @@ def patch_by_id(
         timeout=config.MAP_CORE.timeout,
     )
 
-    if response.status_code > HTTPStatus.BAD_REQUEST:
+    status_code = response.status_code
+    if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
     resource = adapter.validate_json(response.text, extra="ignore")
@@ -320,10 +323,10 @@ def delete_by_id(
     Args:
         group_id (str): ID of the Group resource.
         access_token (str): OAuth access token for authorization.
-        client_secret (str): Client secret for Basic Authentication.
+        client_secret (str): Client secret for Authentication.
 
     Returns:
-        MapError:
+        MapError | None:
             The None if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -376,31 +379,11 @@ def _build_attribute_params(
 
 @group_updated.connect
 @group_deleted.connect
-def handle_group_updated(
-    _sender: object = None,
-    *_args,  # noqa: ANN002
-    group: MapGroup | None = None,
-    **_kwargs,  # noqa: ANN003
-) -> None:
-    """Handle group_updated signal to clear cache of the updated group.
-
-    Args:
-        sender: The sender of the signal.
-        group (MapGroup): The updated Group resource.
-    """
-    if not isinstance(group, MapGroup) or not group.id:
-        return
-
-    get_by_id.clear_cache(group.id)
-
-
-@group_updated.connect
-@group_deleted.connect
 def handle_group_updated_by_id(
     _sender: object = None,
-    *_args,  # noqa: ANN002
+    *_args,  # ruff: ignore[missing-type-args]
     group_id: str | None = None,
-    **_kwargs,  # noqa: ANN003
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
 ) -> None:
     """Handle group_updated signal to clear cache of the updated group by ID.
 
@@ -418,11 +401,11 @@ def handle_group_updated_by_id(
 @group_deleted.connect
 def handle_group_updated_by_ids(
     _sender: object = None,
-    *_args,  # noqa: ANN002
+    *_args,  # ruff: ignore[missing-type-args]
     group_ids: list[str] | None = None,
-    **_kwargs,  # noqa: ANN003
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
 ) -> None:
-    """Handle group_updated signal to clear cache of the updated groups by IDs.
+    """Handle group updated signal to clear cache of the updated groups by IDs.
 
     Args:
         sender: The sender of the signal.
@@ -439,10 +422,10 @@ def handle_group_updated_by_ids(
 @group_deleted.connect
 def handle_reset_search_cache(
     _sender: object = None,
-    *_args,  # noqa: ANN002
-    **_kwargs,  # noqa: ANN003
+    *_args,  # ruff: ignore[missing-type-args]
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
 ) -> None:
-    """Handle users signals to clear cache of the search results.
+    """Handle groups signals to clear cache of the search results.
 
     Args:
         sender: The sender of the signal.

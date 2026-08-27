@@ -26,7 +26,8 @@ from server.exc import (
     RecordNotFound,
 )
 from server.messages import E
-from server.services import bulks, history_table, repositories
+from server.services import bulks, history_table
+from server.services.resources import RepositoryService
 from server.services.utils import get_permitted_repository_ids, require_enabled
 
 from .helpers import roles_required, validate_files
@@ -68,7 +69,7 @@ def upload_file(
     user = t.cast("LoginUser", current_user)
     repository_id = form.repository_id
 
-    if repositories.get_by_id(repository_id) is None:
+    if RepositoryService.get_by_id(repository_id) is None:
         current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"id": repository_id})
         return ErrorResponse(
             message=E.REPOSITORY_NOT_FOUND % {"id": repository_id}

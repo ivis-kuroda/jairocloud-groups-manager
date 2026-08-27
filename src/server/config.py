@@ -7,7 +7,7 @@
 Provides validation, loading, and global access to runtime configuration.
 """
 
-# ruff: noqa: S105, N802
+# ruff:file-ignore[hardcoded-password-string, invalid-function-name, unnecessary-lambda]
 
 import ast
 import operator
@@ -19,7 +19,8 @@ from datetime import timedelta
 from flask import current_app
 from pydantic import (
     AnyUrl,
-    BaseModel,
+    BaseModel as _BaseModel,
+    ConfigDict,
     Field,
     StringConstraints,
     computed_field,
@@ -68,19 +69,13 @@ class RuntimeConfig(BaseSettings):
     LOG: LogConfig
     """Logging configuration."""
 
-    SESSION: SessionConfig = Field(
-        default_factory=lambda: SessionConfig(),  # noqa: PLW0108
-    )
+    SESSION: SessionConfig = Field(default_factory=lambda: SessionConfig())
     """Session configuration."""
 
-    API: ApiConfig = Field(
-        default_factory=lambda: ApiConfig(),  # noqa: PLW0108
-    )
+    API: ApiConfig = Field(default_factory=lambda: ApiConfig())
     """API configuration."""
 
-    STORAGE: StorageConfig = Field(
-        default_factory=lambda: StorageConfig(),  # noqa: PLW0108
-    )
+    STORAGE: StorageConfig = Field(default_factory=lambda: StorageConfig())
     """Storage configuration."""
 
     MAP_CORE: MapCoreConfig
@@ -99,8 +94,7 @@ class RuntimeConfig(BaseSettings):
     """Users related configuration values."""
 
     POSTGRES: PostgresConfig = Field(
-        default_factory=lambda: PostgresConfig(),  # noqa: PLW0108
-        exclude=True,
+        default_factory=lambda: PostgresConfig(), exclude=True
     )
     """PostgreSQL database configuration values."""
 
@@ -267,6 +261,23 @@ class RuntimeConfig(BaseSettings):
     """Base model configuration."""
 
 
+class BaseModel(_BaseModel):
+    """Base model class for configuration schemas.
+
+    This class is used as a base for all configuration schema models.
+    It provides common configuration settings and validation behavior.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        alias_generator=lambda s: s.lower(),
+        validate_default=True,
+        validate_by_name=True,
+    )
+    """Base model configuration."""
+
+
 class LogConfig(BaseModel):
     """Schema for logging configuration."""
 
@@ -308,21 +319,22 @@ class StorageConfig(BaseModel):
     """Schema for storage configuration."""
 
     type: t.Literal["local"] = "local"
-    """Type of storage backend to use."""
+    """Type of storage backend to use.
 
-    local: LocalStorageConfig = Field(
-        default_factory=lambda: LocalStorageConfig(),  # noqa: PLW0108
-    )
+    Note: In the future, support for "ObjectStorage" will be added.
+    """
+
+    local: LocalStorageConfig = Field(default_factory=lambda: LocalStorageConfig())
     """Configuration for local storage backend."""
 
 
 class LocalStorageConfig(BaseModel):
     """Schema for local storage configuration."""
 
-    temporary: str = "/var/tmp/jcgroups"  # noqa: S108
+    temporary: str = "/var/tmp/jcgroups"  # ruff:ignore[hardcoded-temp-file]
     """Path to the temporary directory."""
 
-    storage: str = "/var/tmp/jcgroups"  # noqa: S108
+    storage: str = "/var/tmp/jcgroups"  # ruff:ignore[hardcoded-temp-file]
     """Path to the storage directory."""
 
 
@@ -435,7 +447,8 @@ class GroupIdPatternsConfig(BaseModel):
     user_defined: HasRepoAndUserDefinedId
     """Pattern for user-defined group IDs."""
 
-    def __getitem__(self, key: USER_ROLES | t.Literal["user_defined"]) -> str:  # noqa: D105
+    def __getitem__(self, key: USER_ROLES | t.Literal["user_defined"]) -> str:
+        """Get the ID pattern via dictionary-like access."""  # ruff:ignore[docstring-missing-returns]
         return getattr(self, key)
 
 
@@ -457,7 +470,8 @@ class GroupNamePatternsConfig(BaseModel):
     general_user: HasRepoName
     """Name pattern for general user groups."""
 
-    def __getitem__(self, key: USER_ROLES) -> str:  # noqa: D105
+    def __getitem__(self, key: USER_ROLES) -> str:
+        """Get the name pattern via dictionary-like access."""  # ruff:ignore[docstring-missing-returns]
         return getattr(self, key)
 
 
@@ -521,17 +535,13 @@ class RedisConfig(BaseModel):
     key_prefix: str = "jcgroups-"
     """Prefix for cache keys used by the application."""
 
-    database: RedisDatabaseConfig = Field(
-        default_factory=lambda: RedisDatabaseConfig(),  # noqa: PLW0108
-    )
+    database: RedisDatabaseConfig = Field(default_factory=lambda: RedisDatabaseConfig())
 
-    single: RedisSingleConfig = Field(
-        default_factory=lambda: RedisSingleConfig(),  # noqa: PLW0108
-    )
+    single: RedisSingleConfig = Field(default_factory=lambda: RedisSingleConfig())
     """Configuration for single Redis server, when cache_type is "RedisCache"."""
 
     sentinel: RedisSentinelCacheConfig = Field(
-        default_factory=lambda: RedisSentinelCacheConfig(),  # noqa: PLW0108
+        default_factory=lambda: RedisSentinelCacheConfig()
     )
     """Configuration for Redis Sentinel, when cache_type is "RedisSentinelCache"."""
 
@@ -734,11 +744,11 @@ def __get_config() -> RuntimeConfig:
     return ext.config
 
 
-def _config():  # noqa: ANN202, for intersection-type inference
+def _config():  # ruff:ignore[missing-return-type-private-function], for intersection-type inference
     def __type_assertion(_: object) -> t.TypeIs[RuntimeConfig]:
         return True
 
-    proxy = LocalProxy(lambda: __get_config())  # noqa: PLW0108
+    proxy = LocalProxy(lambda: __get_config())
 
     if not __type_assertion(proxy):
         raise NotImplementedError  # pragma: no cover

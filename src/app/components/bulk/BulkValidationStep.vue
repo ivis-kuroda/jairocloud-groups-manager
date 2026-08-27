@@ -237,7 +237,7 @@ const { isStuck } = useSticky(indicatorWrapper,
     </div>
 
     <BulkUserTable
-      :data="validationResults?.results ?? []" :total-count="totalCount ?? 0"
+      :data="validationResults?.items ?? []" :total-count="totalCount ?? 0"
       :page-info="pageInfo" :offset="offset"
       :title="$t('bulk.validation.results')" :status="isPolling ? 'loading' : getResultStatus"
     />

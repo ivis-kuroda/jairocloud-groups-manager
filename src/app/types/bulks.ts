@@ -19,7 +19,7 @@ interface MissingUser {
 }
 
 interface ValidationResults {
-  results: EachResult[]
+  items: EachResult[]
   summary: Summary
   missingUsers: MissingUser[]
   total: number
@@ -36,7 +36,7 @@ interface Summary {
 }
 
 interface ExecuteResults {
-  results: EachResult[]
+  items: EachResult[]
   summary: Summary
   fileInfo: {
     fileName: string

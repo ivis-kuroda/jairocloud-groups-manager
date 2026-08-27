@@ -15,49 +15,44 @@ export interface LoginUser {
 }
 
 /**
- * Interface representing the authentication state
- */
-interface AuthState {
-  _isAuthenticated: boolean
-  _authChecked: boolean
-  _user?: LoginUser | undefined
-}
-
-/**
  * Pinia store for managing authentication state
  */
-export const useAuthStore = defineStore('auth', {
-  state: (): AuthState => ({
-    _isAuthenticated: false,
-    _authChecked: false,
-    _user: undefined,
-  }),
+export const useAuthStore = defineStore('auth', () => {
+  const _isAuthenticated = ref(false)
+  const _authChecked = ref(false)
+  const _user = ref<LoginUser | undefined>(undefined)
 
-  getters: {
-    isAuthenticated: state => computed(() => state._isAuthenticated),
-    authChecked: state => computed(() => state._authChecked),
-    currentUser: state => readonly(computed(() => state._user)),
-  },
+  const isAuthenticated = computed(() => _isAuthenticated.value)
+  const authChecked = computed(() => _authChecked.value)
+  const currentUser = computed(() => _user.value as Readonly<LoginUser | undefined>)
 
-  actions: {
-    setAuthenticated(status: boolean) {
-      this._isAuthenticated = status
-    },
+  function setAuthenticated(status: boolean) {
+    _isAuthenticated.value = status
+  }
 
-    setUser(user?: LoginUser) {
-      this._user = user
-      this._isAuthenticated = !!user
-      this._authChecked = true
-    },
+  function setUser(user?: LoginUser) {
+    _user.value = user
+    _isAuthenticated.value = !!user
+    _authChecked.value = true
+  }
 
-    setAuthChecked(checked: boolean) {
-      this._authChecked = checked
-    },
+  function setAuthChecked(checked: boolean) {
+    _authChecked.value = checked
+  }
 
-    unsetUser() {
-      this._user = undefined
-      this._isAuthenticated = false
-      this._authChecked = true
-    },
-  },
+  function unsetUser() {
+    _user.value = undefined
+    _isAuthenticated.value = false
+    _authChecked.value = true
+  }
+
+  return {
+    isAuthenticated,
+    authChecked,
+    currentUser,
+    setAuthenticated,
+    setUser,
+    setAuthChecked,
+    unsetUser,
+  }
 })

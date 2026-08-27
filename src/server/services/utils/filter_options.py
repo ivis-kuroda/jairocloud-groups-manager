@@ -191,7 +191,7 @@ def search_users_options() -> list[FilterOption[UserSummary]]:
 
 @cache
 def _a(o: str) -> str:
-    return FilterOption._alias_generator(o)  # noqa: SLF001
+    return FilterOption._alias_generator(o)  # ruff: ignore[private-member-access]
 
 
 def _initial_options() -> list[FilterOption]:

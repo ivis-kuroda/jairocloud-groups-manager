@@ -159,7 +159,7 @@ const wayf = {
    * var wayf_hide_categories =  new Array("other", "library"); \
    * [Optional, commented out by default]
    */
-  hideCategories: [] as string[],
+  hideCategories: ['all'] as string[],
 
   /**
    * EntityIDs of Identity Provider whose category is hidden but that shall be shown anyway \
@@ -170,6 +170,8 @@ const wayf = {
    * [Optional, commented out by default]
    */
   unhideIdps: [
+    'https://jctest.exticgakunin.com/auth/gakunin/saml2/assertions',
+    'https://core-stg.orthros.gakunin.nii.ac.jp/idp',
   ] as string[],
 
   /**

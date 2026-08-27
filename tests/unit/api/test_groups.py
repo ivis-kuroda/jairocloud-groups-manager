@@ -50,7 +50,7 @@ def test_get_invalid_query_error(mocker: MockerFixture):
     assert_message(res.message, E.UNSUPPORTED_SEARCH_FILTER)
 
 
-def test_post(app, group_details, mocker: MockerFixture):
+def test_post(use_blueprint, app, group_details, mocker: MockerFixture):
     body = expected = group_details[0]
     mock_create = mocker.patch.object(server.api.groups.groups, "create", return_value=expected)
 
@@ -432,8 +432,8 @@ def test_delete_post_partial_failure(group_details, mocker: MockerFixture):
     assert_message(res.message, E.FAILED_PARTIAL_DELETE_GROUPS, {"ids": group_details[1].id})
 
 
-def test_delete_post_rolegroup(app, group_details, rolegroups, mocker: MockerFixture, caplog):
-    gids = [group_details[0].id, rolegroups[USER_ROLES.CONTRIBUTOR].id]
+def test_delete_post_rolegroup(app, group_details, rolegroup_details, mocker: MockerFixture, caplog):
+    gids = [group_details[0].id, rolegroup_details[USER_ROLES.CONTRIBUTOR].id]
     body = DeleteGroupsBody(group_ids=set(gids))
     detected = [(gids[1],)], [(gids[0],)]
     mocker.patch.object(server.api.groups, "detect_affiliations", return_value=detected)

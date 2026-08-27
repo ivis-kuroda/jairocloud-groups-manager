@@ -7,14 +7,14 @@
 from .base import LogMessage
 
 
-UNINIT_SERVER_CONFIG = LogMessage(
+EXTENSION_NOT_INITIALIZED = LogMessage(
     "E000",
-    "Server configuration has not been initialized.",
+    "Server app extension has not been initialized.",
 )
 
 INVALID_SERVER_CONFIG = LogMessage(
     "E001",
-    "Server configuration is invalid or incomplete.",
+    "Server runtime configuration is invalid or incomplete.",
 )
 
 UNSUPPORTED_EXPRESSION = LogMessage(
@@ -227,6 +227,11 @@ NO_RIGHTS_CREATE_REPOSITORY = LogMessage(
     "No creation rights for Repository with current access token.",
 )
 
+FAILED_CREATE_ROLEGROUP = LogMessage(
+    "E115",
+    "Failed to create role groups for Repository (id: %(rid)s, rolegroup: %(gid)s).",
+)
+
 FAILED_UPDATE_REPOSITORY = LogMessage(
     "E120",
     "Failed to update Service resource for Repository (id: %(id)s).",
@@ -360,14 +365,19 @@ FAILED_DELETE_GROUPS = LogMessage(
     "Failed to delete Group resources (ids: %(ids)s).",
 )
 
-SOME_GROUP_UNRECOGNIZED = LogMessage(
+FAILED_PARTIAL_DELETE_GROUPS = LogMessage(
     "E232",
+    "Failed to delete some Group resources (ids: %(ids)s).",
+)
+
+SOME_GROUP_UNRECOGNIZED = LogMessage(
+    "E233",
     "Some Group IDs are unrecognized (ids: %(ids)s), "
     "so any of the specified groups has not been deleted.",
 )
 
 ROLEGROUP_CANNOT_DELETE = LogMessage(
-    "E233",
+    "E234",
     "Role-type Group resource cannot be deleted.",
 )
 
@@ -430,10 +440,6 @@ FAILED_SEARCH_USERS = LogMessage(
     "Failed to search User resources (filter: %(filter)s).",
 )
 
-FAILED_COUNT_USERS = LogMessage(
-    "E301",
-    "Failed to count User resources (filter: %(filter)s).",
-)
 
 USER_FORBIDDEN = LogMessage(
     "E303",
@@ -640,12 +646,7 @@ FAILED_UPDATE_HISTORY_RECORD_STATUS = LogMessage(
     "Failed to update upload history status (id: %(history_id)s) in database.",
 )
 
-INVALID_UPLOAD_HISTORY_RECORD_ATTRIBUTES = LogMessage(
-    "E614",
-    "Results must include 'summary' and 'results' keys",
-)
-
-UPDATE_HISTORY_RECORD_NOT_FOUND = LogMessage(
+UPLOAD_HISTORY_RECORD_NOT_FOUND = LogMessage(
     "E615",
     "Record (id: %(id)s) not found in database.",
 )
@@ -662,7 +663,7 @@ FAILED_DELETE_FILE_RECORD = LogMessage(
 
 INVALID_QUERY = LogMessage(
     "E618",
-    "offset: %(offset)s and size: %(size)s must be non-negative integers.",
+    "page: %(page)s and size: %(size)s must be non-negative integers.",
 )
 
 FAILED_CREATE_FILE_RECORD = LogMessage(
@@ -723,16 +724,21 @@ FAILED_UPDATE_PUBLIC = LogMessage(
 
 FILE_NOT_FOUND = LogMessage(
     "E704",
-    "File not found (path: %(path)s).",
+    "File not found in system (path: %(path)s).",
+)
+
+FILE_RECORD_NOT_FOUND = LogMessage(
+    "E705",
+    "File not found in database (id: %(file_id)s).",
 )
 
 FAILED_GET_FILTER_ITEMS = LogMessage(
-    "E705",
+    "E706",
     "Failed to get filter items for history search (key: %(key)s).",
 )
 
 FAILED_GET_FILE_PATH = LogMessage(
-    "E706",
+    "E707",
     "Failed to get file path for file (id: %(file_id)s) from database.",
 )
 

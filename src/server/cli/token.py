@@ -4,9 +4,14 @@
 
 """Command-line interface for token management."""
 
+import time
+import typing as t
+
 import click
+import redis.exceptions
 
 from flask import current_app
+from redis import client
 
 from server.const import OAUTH_CALLBACK_CHANNEL
 from server.datastore import app_cache
@@ -27,34 +32,46 @@ def token() -> None:
 
 @token.command()
 def issue() -> None:
-    """Issue access token."""  # noqa: DOC501
+    """Issue access token."""  # ruff: ignore[docstring-missing-exception]
     url = prepare_issuing_url()
     current_app.logger.info(I.REQUEST_FOR_AUTH_CODE, {"url": url})
 
-    pubsub = app_cache.pubsub()
-    pubsub.subscribe(OAUTH_CALLBACK_CHANNEL)
+    with app_cache.pubsub() as pubsub:
+        current_app.logger.info(I.WAITING_TOKEN_ISSUED)
 
-    current_app.logger.info(I.WAITING_TOKEN_ISSUED)
-    try:
-        for message in pubsub.listen():
-            if message["type"] != "message":
-                continue
+        try:
+            result = _wait_for_token_result(pubsub, OAUTH_CALLBACK_CHANNEL)
 
-            match message["data"]:
-                case b"issued":
-                    current_app.logger.info(I.SUCCESS_ISSUE_TOKEN)
-                    break
-                case b"failed":
-                    current_app.logger.error(E.FAILED_ISSUE_TOKEN)
-                    break
-                case _:
-                    pass
+            if result == b"issued":
+                current_app.logger.info(I.SUCCESS_ISSUE_TOKEN)
+            else:
+                current_app.logger.error(E.FAILED_ISSUE_TOKEN)
 
-    except KeyboardInterrupt:
-        current_app.logger.warning(W.STOP_WAITING_TOKEN_ISSUED)
-        raise
-    finally:
-        pubsub.unsubscribe(OAUTH_CALLBACK_CHANNEL)
+        except KeyboardInterrupt:
+            current_app.logger.warning(W.STOP_WAITING_TOKEN_ISSUED)
+            raise
+
+
+def _wait_for_token_result(
+    pubsub: client.PubSub, channel: str
+) -> t.Literal[b"issued", b"failed"]:
+    pubsub.subscribe(channel)
+
+    while True:
+        try:
+            for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                data = message["data"]
+                if data in {b"issued", b"failed"}:
+                    return data
+
+        except redis.exceptions.TimeoutError:
+            continue
+        except redis.exceptions.ConnectionError:
+            time.sleep(1)
+            continue
 
 
 @token.command()
@@ -79,9 +96,5 @@ def refresh() -> None:
 def whoami() -> None:
     """Get the user details of the token owner."""
     owner = get_token_owner()
-    current_app.logger.info(
-        I.SUCCESS_GET_TOKEN_OWNER,
-        {
-            "user": owner.model_dump_json(indent=2, ensure_ascii=False),
-        },
-    )
+    json = owner.model_dump_json(indent=2, ensure_ascii=False)
+    current_app.logger.info(I.SUCCESS_GET_TOKEN_OWNER, {"json": json})

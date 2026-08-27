@@ -1,0 +1,121 @@
+jairocloud-groups-manager v1.0.0a3
+├── celery[redis] v5.6.3
+│   ├── billiard v4.2.4
+│   ├── click v8.4.1
+│   ├── click-didyoumean v0.3.1
+│   │   └── click v8.4.1
+│   ├── click-plugins v1.1.1.2
+│   │   └── click v8.4.1
+│   ├── click-repl v0.3.0
+│   │   ├── click v8.4.1
+│   │   └── prompt-toolkit v3.0.52
+│   │       └── wcwidth v0.8.1
+│   ├── kombu v5.6.2
+│   │   ├── amqp v5.3.1
+│   │   │   └── vine v5.1.0
+│   │   ├── packaging v26.2
+│   │   ├── tzdata v2026.2
+│   │   └── vine v5.1.0
+│   ├── python-dateutil v2.9.0.post0
+│   │   └── six v1.17.0
+│   ├── tzlocal v5.3.1
+│   ├── vine v5.1.0
+│   └── kombu[redis] v5.6.2 (extra: redis)
+│       ├── amqp v5.3.1 (*)
+│       ├── packaging v26.2
+│       ├── tzdata v2026.2
+│       ├── vine v5.1.0
+│       └── redis v6.4.0 (extra: redis)
+├── flask v3.1.3
+│   ├── blinker v1.9.0
+│   ├── click v8.4.1
+│   ├── itsdangerous v2.2.0
+│   ├── jinja2 v3.1.6
+│   │   └── markupsafe v3.0.3
+│   ├── markupsafe v3.0.3
+│   └── werkzeug v3.1.8
+│       └── markupsafe v3.0.3
+├── flask-login v0.6.3
+│   ├── flask v3.1.3 (*)
+│   └── werkzeug v3.1.8 (*)
+├── flask-pydantic v0.14.0
+│   ├── flask v3.1.3 (*)
+│   └── pydantic v2.13.4
+│       ├── annotated-types v0.7.0
+│       ├── pydantic-core v2.46.4
+│       │   └── typing-extensions v4.15.0
+│       ├── typing-extensions v4.15.0
+│       └── typing-inspection v0.4.2
+│           └── typing-extensions v4.15.0
+├── flask-sqlalchemy v3.1.1
+│   ├── flask v3.1.3 (*)
+│   └── sqlalchemy v2.0.50
+│       ├── greenlet v3.5.1
+│       └── typing-extensions v4.15.0
+├── openpyxl v3.1.5
+│   └── et-xmlfile v2.0.0
+├── psycopg[binary] v3.3.4
+│   └── psycopg-binary v3.3.4 (extra: binary)
+├── pydantic[email] v2.13.4
+│   ├── annotated-types v0.7.0
+│   ├── pydantic-core v2.46.4 (*)
+│   ├── typing-extensions v4.15.0
+│   ├── typing-inspection v0.4.2 (*)
+│   └── email-validator v2.3.0 (extra: email)
+│       ├── dnspython v2.8.0
+│       └── idna v3.18
+├── pydantic-settings v2.14.2
+│   ├── pydantic v2.13.4 (*)
+│   ├── python-dotenv v1.2.2
+│   └── typing-inspection v0.4.2 (*)
+├── requests v2.34.2
+│   ├── certifi v2026.5.20
+│   ├── charset-normalizer v3.4.7
+│   ├── idna v3.18
+│   └── urllib3 v2.7.0
+├── sqlalchemy-utils v0.42.1
+│   └── sqlalchemy v2.0.50 (*)
+├── weko-group-cache-db v1.0.0rc6
+│   ├── backoff v2.2.1
+│   ├── blinker v1.9.0
+│   ├── inflect v7.5.0
+│   │   ├── more-itertools v11.1.0
+│   │   └── typeguard v4.5.2
+│   │       └── typing-extensions v4.15.0
+│   ├── pydantic-settings v2.14.2 (*)
+│   ├── redis v6.4.0
+│   ├── requests v2.34.2 (*)
+│   ├── rich-click v1.9.8
+│   │   ├── click v8.4.1
+│   │   └── rich v15.0.0
+│   │       ├── markdown-it-py v4.2.0
+│   │       │   └── mdurl v0.1.2
+│   │       └── pygments v2.20.0
+│   └── werkzeug v3.1.8 (*)
+├── celery-types v0.26.0 (group: dev)
+│   └── typing-extensions v4.15.0
+├── pyright v1.1.410 (group: dev)
+│   ├── nodeenv v1.10.0
+│   └── typing-extensions v4.15.0
+├── pytest v9.1.0 (group: dev)
+│   ├── iniconfig v2.3.0
+│   ├── packaging v26.2
+│   ├── pluggy v1.6.0
+│   └── pygments v2.20.0
+├── pytest-cov v7.1.0 (group: dev)
+│   ├── coverage v7.14.1
+│   ├── pluggy v1.6.0
+│   └── pytest v9.1.0 (*)
+├── pytest-mock v3.15.1 (group: dev)
+│   └── pytest v9.1.0 (*)
+├── pytest-profiling v1.8.1 (group: dev)
+│   ├── gprof2dot v2025.4.14
+│   ├── pytest v9.1.0 (*)
+│   └── six v1.17.0
+├── pytest-timeout v2.4.0 (group: dev)
+│   └── pytest v9.1.0 (*)
+└── taskipy v1.14.1 (group: dev)
+    ├── colorama v0.4.6
+    ├── psutil v6.1.1
+    └── tomli v2.4.1
+(*) Package tree already displayed

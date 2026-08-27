@@ -6,7 +6,7 @@
 
 import typing as t
 
-from datetime import datetime  # noqa: TC003
+from datetime import datetime  # ruff: ignore[typing-only-standard-library-import]
 
 from sqlalchemy import JSON, DateTime, String, func
 from sqlalchemy.dialects import postgresql

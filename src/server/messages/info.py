@@ -71,7 +71,7 @@ ACCESS_TOKEN_AVAILABLE = LogMessage(
 
 SUCCESS_GET_TOKEN_OWNER = LogMessage(
     "I036",
-    "Successfully get token owner's User resource from mAP Core API. \n%(user)s",
+    "Successfully get token owner's User resource from mAP Core API. \n%(json)s",
 )
 
 

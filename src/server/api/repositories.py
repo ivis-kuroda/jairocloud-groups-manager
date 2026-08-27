@@ -21,7 +21,7 @@ from server.exc import (
     ResourceNotFound,
 )
 from server.messages import E
-from server.services import repositories
+from server.services.resources import RepositoryService
 from server.services.utils import (
     get_permitted_repository_ids,
     is_current_user_system_admin,
@@ -52,7 +52,7 @@ def get(
         - If query is invalid, error message and status code 400
     """
     try:
-        results = repositories.search(query)
+        results = RepositoryService.search(query)
     except InvalidQueryError as exc:
         traceback.print_exc()
         return ErrorResponse(message=exc.message), 400
@@ -80,7 +80,7 @@ def post(
         - If id already exists, status code 409
     """
     try:
-        created = repositories.create(body)
+        created = RepositoryService.create(body)
     except InvalidFormError as exc:
         traceback.print_exc()
         return ErrorResponse(message=exc.message), 400
@@ -112,7 +112,7 @@ def id_get(repository_id: str) -> tuple[RepositoryDetail | ErrorResponse, int]:
         - If logged-in user does not have permission, status code 403
         - If repository not found, status code 404
     """
-    result = repositories.get_by_id(repository_id, more_detail=True)
+    result = RepositoryService.get_by_id(repository_id, more_detail=True)
     if result is None:
         current_app.logger.error(E.REPOSITORY_NOT_FOUND, {"id": repository_id})
         return ErrorResponse(
@@ -149,7 +149,7 @@ def id_put(
     """
     body.id = repository_id
     try:
-        updated = repositories.update(body)
+        updated = RepositoryService.update(body)
     except InvalidFormError as exc:
         traceback.print_exc()
         return ErrorResponse(message=exc.message), 400
@@ -178,7 +178,7 @@ def id_delete(
         - If repository not found, status code 404
     """
     try:
-        repositories.delete_by_id(repository_id, query.confirmation)
+        RepositoryService.delete_by_id(repository_id, query.confirmation)
     except InvalidFormError as exc:
         traceback.print_exc()
         return ErrorResponse(message=exc.message), 400

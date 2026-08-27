@@ -104,7 +104,7 @@ def __get_store(name: str) -> Redis:
     return ext.datastore[name]
 
 
-def _stores(name: str):  # noqa: ANN202, for intersection-type inference
+def _stores(name: str):  # ruff: ignore[missing-return-type-private-function], for intersection-type inference
     def __type_assertion(_: object) -> t.TypeIs[Redis]:
         return True
 

@@ -6,20 +6,14 @@
 
 import typing as t
 
-from datetime import date, datetime
+from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from server.entities.summaries import UserSummary
 
 from .common import camel_case_config
-
-
-ignore_extra_config = ConfigDict(
-    extra="ignore",
-    validate_assignment=True,
-)
 
 
 class DownloadHistoryData(BaseModel):
@@ -103,43 +97,3 @@ class UploadHistoryData(BaseModel):
 
     model_config = camel_case_config
     """Configure to use camelCase aliasing."""
-
-
-class HistoryQuery(BaseModel):
-    """Query parameters for searching history data."""
-
-    s: t.Annotated[date | None, "start"] = None
-    """Filter by last modified date (from)."""
-
-    e: t.Annotated[date | None, "end"] = None
-    """Filter by last modified date (to)."""
-
-    u: t.Annotated[list[str] | None, "users"] = None
-    """Filter by affiliated user IDs."""
-
-    r: t.Annotated[list[str] | None, "repositories"] = None
-    """Filter by affiliated repository IDs."""
-
-    g: t.Annotated[list[str] | None, "groups"] = None
-    """Filter by affiliated group IDs."""
-
-    o: t.Annotated[list[str] | None, "operator"] = None
-    """Filter by operator IDs"""
-
-    i: t.Annotated[str | None, "id"] = None
-    """Filter by Parent ID to retrieve child elements """
-
-    d: t.Annotated[
-        t.Literal["asc", "desc"] | None,
-        "direction",
-    ] = None
-    """Sort order: 'asc' (ascending) or 'desc' (descending)."""
-
-    p: t.Annotated[int | None, "page"] = None
-    """Page number to retrieve."""
-
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
-    """Page size (number of items per page)."""
-
-    model_config = ignore_extra_config
-    """Configure to ignore extra fields."""

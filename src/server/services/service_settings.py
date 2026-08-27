@@ -9,6 +9,8 @@ Provides functions to get and save service configuration data in the database.
 
 import typing as t
 
+from enum import StrEnum
+
 from pydantic_core import PydanticSerializationError, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -17,6 +19,14 @@ from server.db.service_settings import ServiceSettings
 from server.entities.auth import ClientCredentials, OAuthToken
 from server.exc import CredentialsError, DatabaseError, OAuthTokenError
 from server.messages import E
+
+
+class SETTING_KEY(StrEnum):  # ruff: ignore[invalid-class-name]
+    """Unique keys of service settings."""
+
+    CLIENT_CREDENTIALS = "client_credentials"
+
+    OAUTH_TOKEN = "oauth_token"  # ruff: ignore[hardcoded-password-string]
 
 
 def get_client_credentials() -> ClientCredentials | None:
@@ -32,7 +42,7 @@ def get_client_credentials() -> ClientCredentials | None:
         CredentialsError: If the stored credentials are invalid.
     """
     try:
-        setting = _get_setting("client_credentials")
+        setting = _get_setting(SETTING_KEY.CLIENT_CREDENTIALS)
         if setting is None:
             return None
 
@@ -58,7 +68,9 @@ def save_client_credentials(credentials: ClientCredentials) -> None:
         CredentialsError: If the provided credentials are invalid.
     """
     try:
-        _save_setting("client_credentials", credentials.model_dump(mode="json"))
+        _save_setting(
+            SETTING_KEY.CLIENT_CREDENTIALS, credentials.model_dump(mode="json")
+        )
     except SQLAlchemyError as exc:
         error = E.FAILED_SAVE_CLIENT_CREDENTIALS
         raise DatabaseError(error) from exc
@@ -78,7 +90,7 @@ def get_oauth_token() -> OAuthToken | None:
         OAuthTokenError: If the stored token is invalid.
     """
     try:
-        setting = _get_setting("oauth_token")
+        setting = _get_setting(SETTING_KEY.OAUTH_TOKEN)
         if setting is None:
             return None
 
@@ -104,7 +116,7 @@ def save_oauth_token(token: OAuthToken) -> None:
         OAuthTokenError: If the provided token is invalid.
     """
     try:
-        _save_setting("oauth_token", token.model_dump(mode="json"))
+        _save_setting(SETTING_KEY.OAUTH_TOKEN, token.model_dump(mode="json"))
     except SQLAlchemyError as exc:
         error = E.FAILED_SAVE_OAUTH_TOKEN
         raise DatabaseError(error) from exc
@@ -113,7 +125,7 @@ def save_oauth_token(token: OAuthToken) -> None:
         raise OAuthTokenError(error) from exc
 
 
-def _get_setting(key: str) -> dict[str, t.Any] | None:
+def _get_setting(key: SETTING_KEY) -> dict[str, t.Any] | None:
     """Get the value of a service setting by key.
 
     Args:
@@ -126,7 +138,7 @@ def _get_setting(key: str) -> dict[str, t.Any] | None:
     return setting.value if setting else None
 
 
-def _save_setting(key: str, value: dict[str, t.Any]) -> None:
+def _save_setting(key: SETTING_KEY, value: dict[str, t.Any]) -> None:
     """Save or update the value of a service setting.
 
     Args:

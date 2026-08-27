@@ -44,7 +44,7 @@ def is_user_logged_in(current_user: CurrentUser) -> t.TypeIs[LoginUser]:
 
 
 @before_request.connect
-def refresh_session(_sender: object = None, *_, **__) -> None:  # noqa: ANN002, ANN003
+def refresh_session(_sender: object = None, *_, **__) -> None:  # ruff: ignore[missing-type-args, missing-type-kwargs]
     """Extend the TTL of the Redis login state for login users."""
     if config.SESSION.strategy == "absolute":
         return

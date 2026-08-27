@@ -4,7 +4,6 @@
 
 """Base of command-line interface."""
 
-import pathlib
 import tomllib
 import typing as t
 
@@ -32,7 +31,7 @@ def register_cli_commands(app: Flask) -> None:
     @app.cli.command()
     def version() -> None:
         """Display application version."""
-        with pathlib.Path("pyproject.toml").open("rb") as f:
+        with Path("pyproject.toml").open("rb") as f:
             pyproject = tomllib.load(f)
 
         name = pyproject["project"]["name"]

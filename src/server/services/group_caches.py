@@ -34,7 +34,7 @@ from server.exc import (
     TaskExecutionError,
 )
 from server.messages import E, I, W
-from server.services import repositories
+from server.services.resources import RepositoryService
 
 from .utils import make_criteria_object, resolve_repository_id
 
@@ -68,7 +68,7 @@ def get_repository_cache(query: GroupCacheCriteria) -> SearchResult[RepositoryCa
         p=query.p if not query.f else -1,
         l=query.l,
     )
-    searched = repositories.search(repository_query)
+    searched = RepositoryService.search(repository_query)
 
     page_size = searched.page_size
     start = (query.p - 1) * page_size if query.p else 0
@@ -161,7 +161,7 @@ def update(op: GroupCacheOperation, repository_ids: list[str] | None = None) -> 
     query = make_criteria_object(
         "repositories", i=repository_ids, l=-1, k="id", d="asc"
     )
-    repositories_result = repositories.search(query)
+    repositories_result = RepositoryService.search(query)
     fqdn_list = [
         t.cast("str", repo.service_url.host)
         for repo in repositories_result.resources
@@ -301,7 +301,7 @@ def get_task_status() -> TaskDetail | None:
     repository_query = make_criteria_object(
         "repositories", i=repository_ids, l=len(repository_ids)
     )
-    searchd = repositories.search(repository_query)
+    searchd = RepositoryService.search(repository_query)
     repository_map = {repo.id: repo for repo in searchd.resources}
     try:
         detail_results = [

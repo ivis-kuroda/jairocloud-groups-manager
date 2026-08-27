@@ -1,0 +1,118 @@
+{
+  "summary": {
+    "create": 1,
+    "update": 2,
+    "delete": 0,
+    "skip": 1,
+    "error": 1
+  },
+  "results": [
+    {
+      "id": "test_user_id_1",
+      "eppn": [
+        "test-user-1@idp.example.com"
+      ],
+      "email": [
+        "test-user-1@example.com"
+      ],
+      "userName": "Test User 1",
+      "groups": [
+        "test_group_1",
+        "test_group_2"
+      ],
+      "status": "update",
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "test_user_id_2",
+      "eppn": [
+        "test-user-2@idp.example.com"
+      ],
+      "email": [
+        "test-user-2@example.com"
+      ],
+      "userName": "Test User 2",
+      "groups": [
+        "test_group_1"
+      ],
+      "status": "create",
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "test_user_id_3",
+      "eppn": [
+        "test-user-3@idp.example.com"
+      ],
+      "email": [
+        "test-user-3@example.com"
+      ],
+      "userName": "Test User 3",
+      "groups": [
+        "test_group_2"
+      ],
+      "status": "skip",
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "test_user_id_4",
+      "eppn": [
+        "test-user-4@idp.example.com"
+      ],
+      "email": [
+        "test-user-4@example.com"
+      ],
+      "userName": "Test User 4",
+      "groups": [
+        "test_group_1",
+        "test_group_2"
+      ],
+      "status": "update",
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "test_user_id_5",
+      "eppn": [
+        "test-user-5@idp.example.com"
+      ],
+      "email": [
+        "test-user-5@example.com"
+      ],
+      "userName": "Test User 5",
+      "groups": [
+        "test_group_3"
+      ],
+      "status": "error",
+      "code": "Group ID does not exist",
+      "message": null
+    }
+  ],
+  "missing_users": [
+    {
+      "id": "test_user_id_6",
+      "userName": "Test User 6",
+      "eppns": [
+        "test-user-6@idp.example.com"
+      ],
+      "emails": [
+        "test-user-6@example.com"
+      ],
+      "groups": [
+        {
+          "id": "test_group_1"
+        }
+      ],
+      "repositoryRoles": [
+        {
+          "id": "test_repo_ac_jp",
+          "userRole": "general_user"
+        }
+      ]
+    }
+  ],
+  "offset": 0,
+  "page_size": 5
+}

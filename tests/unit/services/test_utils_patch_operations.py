@@ -46,7 +46,7 @@ def alias(mocker: MockerFixture):
 
 
 @pytest.fixture
-def original_alias(alias):
+def use_alias(alias):
     original, _ = alias
     server.services.utils.patch_operations._a = original
 
@@ -71,9 +71,9 @@ def test_build_patch_operations(map_users, mocker: MockerFixture):
     mock_diff.assert_called_once_with(MapUser, base, head, include=None, exclude=None)
 
 
-def test_build_patch_operations_with_different_types(config, user_details):
+def test_build_patch_operations_with_different_types(config, user_details, map_users):
     base: UserDetail = user_details[USER_ROLES.CONTRIBUTOR]
-    head = base.to_map_user().model_copy(
+    head = map_users[USER_ROLES.CONTRIBUTOR].model_copy(
         update={
             "user_name": f"updated_{base.user_name}",
         },
@@ -265,7 +265,7 @@ def test__select_fields_nested(map_groups):
     assert fields == expected
 
 
-def test__alias_generator(original_alias, mocker: MockerFixture):
+def test__alias_generator(use_alias, mocker: MockerFixture):
     mock_generator = mocker.MagicMock(side_effect=to_camel)
     mocker.patch.object(MapUser, "model_config", {"alias_generator": mock_generator})
 
@@ -274,7 +274,7 @@ def test__alias_generator(original_alias, mocker: MockerFixture):
     mock_generator.assert_called_once_with("user_name")
 
 
-def test__alias_serialization(original_alias, mocker: MockerFixture):
+def test__alias_serialization(use_alias, mocker: MockerFixture):
     mock_generator = mocker.NonCallableMock(spec_set=AliasGenerator)
     mock_generator.serialization_alias.side_effect = to_camel
     mocker.patch.object(MapUser, "model_config", {"alias_generator": mock_generator})
@@ -284,7 +284,7 @@ def test__alias_serialization(original_alias, mocker: MockerFixture):
     mock_generator.serialization_alias.assert_called_once_with("user_name")
 
 
-def test__alias_not_set(original_alias, mocker: MockerFixture):
+def test__alias_not_set(use_alias, mocker: MockerFixture):
     mock_config = mocker.MagicMock(spec=dict)
     mock_config.get.return_value = None
     mocker.patch.object(MapUser, "model_config", mock_config)

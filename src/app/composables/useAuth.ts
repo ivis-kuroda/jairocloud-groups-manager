@@ -12,7 +12,7 @@ export function useAuth() {
   const { publicRoutes, loginRoute, loggedinRedirectRoute } = useAppConfig()
 
   const authStore = useAuthStore()
-  const { isAuthenticated, authChecked, currentUser } = useAuthStore()
+  const { isAuthenticated, authChecked, currentUser } = storeToRefs(authStore)
 
   const checkin = async ({
     to,

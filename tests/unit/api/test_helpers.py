@@ -3,49 +3,96 @@ import typing as t
 from http import HTTPStatus
 from io import BytesIO
 
+import pytest
+
 from flask import Flask, make_response
+from flask_login import login_user
+from flask_pydantic import validate
 from pydantic import BaseModel, ConfigDict
 from werkzeug.datastructures import FileStorage
+from werkzeug.exceptions import Forbidden, Unauthorized
 
 import server.api.helpers
 
-from server.api import helpers
-from server.api.schemas import ErrorResponse
+from server.api.helpers import _check_file_size, roles_required, validate_files
 from server.const import USER_ROLES
 from server.messages import E
 
-from tests.helpers import assert_message
+from tests.helpers import assert_message, regex
 
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
     from server.config import RuntimeConfig
+    from server.entities.login_user import LoginUser
 
 
-def test_roles_required_grants_access(app, user_affils, mocker: MockerFixture):
+def test_roles_required(app: Flask, login_users, user_affils, mocker: MockerFixture):
     required = USER_ROLES.SYSTEM_ADMIN
-    mocker.patch.object(server.api.helpers, "get_current_user_affiliations", return_value=user_affils[required])
+    user: LoginUser = login_users[required]
+    mocker.patch.object(server.api.helpers, "is_user_logged_in", return_value=True)
+    mock_detect = mocker.patch.object(server.api.helpers, "detect_affiliations_from_is_member_of")
+    mock_detect.return_value = user_affils[required]
     mock_highest = mocker.patch.object(server.api.helpers, "get_highest_role", return_value=required)
 
-    res = helpers.roles_required(required)(simple_view)()
+    with app.test_request_context():
+        login_user(user)
+
+        res = roles_required(required)(simple_view)()
 
     assert res.status_code == HTTPStatus.OK
     assert res.get_data(as_text=True) == "ok"
+    mock_detect.assert_called_once_with(user.is_member_of)
     mock_highest.assert_called_once_with([required])
 
 
-def test_roles_required_denies_access(app, user_affils, mocker: MockerFixture):
+def test_roles_required_model_view(app: Flask, login_users, user_affils, mocker: MockerFixture):
+    required = USER_ROLES.SYSTEM_ADMIN
+    user: LoginUser = login_users[required]
+    mocker.patch.object(server.api.helpers, "is_user_logged_in", return_value=True)
+    mock_detect = mocker.patch.object(server.api.helpers, "detect_affiliations_from_is_member_of")
+    mock_detect.return_value = user_affils[required]
+    mock_highest = mocker.patch.object(server.api.helpers, "get_highest_role", return_value=required)
+
+    body = TestModel(type="request", message=HTTPStatus.OK.phrase)
+    expected = TestModel(type="response", message=HTTPStatus.OK.phrase)
+
+    with app.test_request_context(method="POST", json=body.model_dump(mode="json")):
+        login_user(user)
+
+        res = roles_required(required)(model_view)()
+
+    assert res.status_code == HTTPStatus.OK
+    assert res.json == expected.model_dump(mode="json")
+    mock_detect.assert_called_once_with(user.is_member_of)
+    mock_highest.assert_called_once_with([required])
+
+
+def test_roles_required_unauthorized(app: Flask, login_users, mocker: MockerFixture):
+    required = USER_ROLES.SYSTEM_ADMIN
+    user: LoginUser = login_users[required]
+    mocker.patch.object(server.api.helpers, "is_user_logged_in", return_value=False)
+
+    with app.test_request_context():
+        login_user(user)
+
+        with pytest.raises(Unauthorized, match=regex(E.UNAUTHORIZED)):
+            roles_required(required)(simple_view)()
+
+
+def test_roles_required_forbidden(app: Flask, login_users, user_affils, mocker: MockerFixture):
     required, client = USER_ROLES.SYSTEM_ADMIN, USER_ROLES.REPOSITORY_ADMIN
-    mocker.patch.object(server.api.helpers, "get_current_user_affiliations", return_value=user_affils[client])
+    user: LoginUser = login_users[client]
+    mocker.patch.object(server.api.helpers, "is_user_logged_in", return_value=True)
+    mocker.patch.object(server.api.helpers, "detect_affiliations_from_is_member_of", return_value=user_affils[client])
     mocker.patch.object(server.api.helpers, "get_highest_role", return_value=client)
 
-    expected = ErrorResponse(message=E.FORBIDDEN)
+    with app.test_request_context():
+        login_user(user)
 
-    res = helpers.roles_required(required)(simple_view)()
-
-    assert res.status_code == HTTPStatus.FORBIDDEN
-    assert res.json == expected.model_dump(mode="json")
+        with pytest.raises(Forbidden, match=regex(E.FORBIDDEN)):
+            roles_required(required)(simple_view)()
 
 
 def test_validate_files(app: Flask, config: RuntimeConfig):
@@ -57,7 +104,7 @@ def test_validate_files(app: Flask, config: RuntimeConfig):
     with app.test_request_context(
         method="POST", data={"file": (mock_file, "test.txt")}, content_type="multipart/form-data"
     ):
-        res = helpers.validate_files(file_view)()
+        res = validate_files(file_view)()
 
         assert res.get_data() == content
 
@@ -74,7 +121,7 @@ def test_validate_files_multiple(app: Flask, config: RuntimeConfig):
         data={"files": [(mock_file1, "test1.txt"), (mock_file2, "test2.txt")]},
         content_type="multipart/form-data",
     ):
-        res = helpers.validate_files(files_view)()
+        res = validate_files(files_view)()
 
     assert res.status_code == HTTPStatus.OK
     assert res.get_data() == content1 + b";" + content2
@@ -91,7 +138,7 @@ def test_validate_files_multiple_key(app: Flask, config: RuntimeConfig):
         data={"file1": (mock_file1, "test1.txt"), "file2": (mock_file2, "test2.txt")},
         content_type="multipart/form-data",
     ):
-        res = helpers.validate_files(multiple_key_file_view)()
+        res = validate_files(multiple_key_file_view)()
 
         assert res.status_code == HTTPStatus.OK
         assert res.get_data() == content1 + b";" + content2
@@ -101,7 +148,7 @@ def test_validate_files_no_file(app: Flask, config: RuntimeConfig):
     config.API.max_upload_size = 200
 
     with app.test_request_context():
-        res = helpers.validate_files(file_view)()
+        res = validate_files(file_view)()
 
     assert res.status_code == HTTPStatus.BAD_REQUEST
     assert "file_params" in res.json["validation_error"]
@@ -115,7 +162,7 @@ def test_validate_files_validation_error(app: Flask, config: RuntimeConfig):
     with app.test_request_context(
         method="POST", data={"invalid_key": (mock_file, "test.txt")}, content_type="multipart/form-data"
     ):
-        res = helpers.validate_files(file_view)()
+        res = validate_files(file_view)()
 
     assert res.status_code == HTTPStatus.BAD_REQUEST
     assert "file_params" in res.json["validation_error"]
@@ -129,7 +176,7 @@ def test_validate_files_too_large(app: Flask, config: RuntimeConfig):
     with app.test_request_context(
         method="POST", data={"file": (mock_file, "test.txt")}, content_type="multipart/form-data"
     ):
-        res = helpers.validate_files(file_view)()
+        res = validate_files(file_view)()
 
     assert res.status_code == HTTPStatus.BAD_REQUEST
     assert "file_size" in res.json["validation_error"]
@@ -146,7 +193,7 @@ def test_validate_files_multiple_too_large(app: Flask, config: RuntimeConfig):
         data={"file1": (mock_file1, "test1.txt"), "file2": (mock_file2, "test2.txt")},
         content_type="multipart/form-data",
     ):
-        res = helpers.validate_files(multiple_key_file_view)()
+        res = validate_files(multiple_key_file_view)()
 
     assert res.status_code == HTTPStatus.BAD_REQUEST
     assert "file_size" in res.json["validation_error"]
@@ -157,7 +204,7 @@ def test_validate_files_files_in_kwargs_annotation_false_value(app: Flask, mocke
     mock_check = mocker.patch.object(server.api.helpers, "_check_file_size")
 
     with app.test_request_context():
-        res = helpers.validate_files(no_file_view)()
+        res = validate_files(no_file_view)()
 
     assert res.status_code == HTTPStatus.OK
     assert res.get_data(as_text=True) == "ok"
@@ -170,7 +217,7 @@ def test__check_file_size(config: RuntimeConfig, mocker: MockerFixture):
     file_mock = mocker.Mock()
     file_mock.tell.return_value = actual_size
 
-    assert not helpers._check_file_size("file", file_mock)
+    assert not _check_file_size("file", file_mock)
 
 
 def test__check_file_size_too_large(config: RuntimeConfig, mocker: MockerFixture):
@@ -180,7 +227,7 @@ def test__check_file_size_too_large(config: RuntimeConfig, mocker: MockerFixture
     file_mock.tell.return_value = actual_size
     field_name = "file"
 
-    result = helpers._check_file_size(field_name, file_mock)
+    result = _check_file_size(field_name, file_mock)
 
     error = result[0]
     assert error["loc"] == [field_name]
@@ -191,8 +238,13 @@ def test__check_file_size_too_large(config: RuntimeConfig, mocker: MockerFixture
 
 
 def test__check_file_size_no_files(config):
-    result = helpers._check_file_size("file", None)
+    result = _check_file_size("file", None)
     assert not result
+
+
+class TestModel(BaseModel):
+    type: t.Literal["request", "response"]
+    message: str
 
 
 class TestFileModel(BaseModel):
@@ -213,6 +265,11 @@ class TestMultiplekeyFilesModel(BaseModel):
 
 def simple_view():
     return make_response("ok", HTTPStatus.OK)
+
+
+@validate()
+def model_view(body: TestModel):
+    return TestModel(type="response", message=body.message)
 
 
 def file_view(files: TestFileModel):

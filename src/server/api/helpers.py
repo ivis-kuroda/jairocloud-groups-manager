@@ -13,7 +13,9 @@ from typing import get_origin
 
 from flask import Response, abort, jsonify, make_response, request
 from flask_login import current_user
-from flask_pydantic.core import _sanitize_ctx_errors  # noqa: PLC2701
+from flask_pydantic.core import (
+    _sanitize_ctx_errors,  # ruff: ignore[import-private-name]
+)
 from pydantic import BaseModel, ValidationError
 from werkzeug.datastructures import FileStorage
 
@@ -87,7 +89,7 @@ def roles_required[**P, R](
     return decorator
 
 
-def validate_files(func: t.Callable) -> t.Callable:  # noqa: C901
+def validate_files(func: t.Callable) -> t.Callable:  # ruff: ignore[complex-structure]
     """Decorator to validate file uploads in Flask routes.
 
     Args:
@@ -98,7 +100,7 @@ def validate_files(func: t.Callable) -> t.Callable:  # noqa: C901
     """
 
     @wraps(func)
-    def wrapper(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+    def wrapper(*args, **kwargs):  # ruff: ignore[missing-type-args, missing-type-kwargs, missing-return-type-private-function]
         fl, err = None, {}
 
         files_in_kwargs = func.__annotations__.get("files")

@@ -4,8 +4,6 @@
 
 """Models for Repository entity for client side."""
 
-# ruff: noqa: PLC0415
-
 import typing as t
 
 from datetime import datetime
@@ -13,7 +11,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field, HttpUrl, PrivateAttr
 
 from .common import camel_case_config, forbid_extra_config
-from .map_service import MapService
 
 
 class RepositoryDetail(BaseModel):
@@ -62,31 +59,3 @@ class RepositoryDetail(BaseModel):
 
     model_config = camel_case_config | forbid_extra_config
     """Configure to use camelCase aliasing and forbid extra fields."""
-
-    @classmethod
-    def from_map_service(
-        cls, service: MapService, *, more_detail: bool = True
-    ) -> RepositoryDetail:
-        """Create a RepositoryDetail instance from a MapService instance.
-
-        Args:
-            service (MapService): The MapService instance to convert.
-            more_detail (bool):
-                If True, include more details such as groups and users count.
-
-        Returns:
-            RepositoryDetail: The created RepositoryDetail instance.
-        """
-        from server.services.utils.transformers import make_repository_detail
-
-        return make_repository_detail(service=service, more_detail=more_detail)
-
-    def to_map_service(self) -> MapService:
-        """Convert RepositoryDetail to MapService instance.
-
-        Returns:
-            MapService: The converted MapService instance.
-        """
-        from server.services.utils.transformers import make_map_service
-
-        return make_map_service(self)

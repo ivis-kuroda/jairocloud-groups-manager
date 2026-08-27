@@ -20,7 +20,7 @@ if t.TYPE_CHECKING:
 def test_get(repository_summaries, mocker: MockerFixture):
     total, page_size, offset = len(repository_summaries), len(repository_summaries), 0
     searched = expected = SearchResult(total=total, page_size=page_size, offset=offset, resources=repository_summaries)
-    mock_search = mocker.patch.object(server.api.repositories.repositories, "search", return_value=searched)
+    mock_search = mocker.patch.object(server.api.repositories.RepositoryService, "search", return_value=searched)
     query = RepositoriesQuery()
 
     res, status = unwrap(repositories.get)(query)
@@ -31,7 +31,7 @@ def test_get(repository_summaries, mocker: MockerFixture):
 
 
 def test_get_invalid_query_error(mocker: MockerFixture):
-    mock_search = mocker.patch.object(server.api.repositories.repositories, "search")
+    mock_search = mocker.patch.object(server.api.repositories.RepositoryService, "search")
     mock_search.side_effect = InvalidQueryError(E.UNSUPPORTED_SEARCH_FILTER)
     query = RepositoriesQuery()
 
@@ -42,21 +42,22 @@ def test_get_invalid_query_error(mocker: MockerFixture):
     assert_message(res.message, E.UNSUPPORTED_SEARCH_FILTER)
 
 
-def test_post(app, repository_details, mocker: MockerFixture):
+def test_post(use_blueprint, app, test_config, repository_details, mocker: MockerFixture):
+    server_name = test_config.SERVER_NAME
     body = expected = repository_details[0]
-    mock_create = mocker.patch.object(server.api.repositories.repositories, "create", return_value=expected)
+    mock_create = mocker.patch.object(server.api.repositories.RepositoryService, "create", return_value=expected)
 
     res, status, header = unwrap(repositories.post)(body)
 
     assert status == HTTPStatus.CREATED
     assert res == expected
-    assert header["Location"] == f"https://localhost/api/repositories/{expected.id}"
+    assert header["Location"] == f"https://{server_name}/api/repositories/{expected.id}"
     mock_create.assert_called_once_with(body)
 
 
 def test_post_invalid_form_error(repository_details, mocker: MockerFixture):
     body = repository_details[0]
-    mock_create = mocker.patch.object(server.api.repositories.repositories, "create")
+    mock_create = mocker.patch.object(server.api.repositories.RepositoryService, "create")
     mock_create.side_effect = InvalidFormError(E.REPOSITORY_REQUIRES_ENTITY_ID)
 
     res, status, *_ = unwrap(repositories.post)(body)
@@ -69,7 +70,7 @@ def test_post_invalid_form_error(repository_details, mocker: MockerFixture):
 
 def test_post_conflict(repository_details, mocker: MockerFixture):
     body = repository_details[0]
-    mock_create = mocker.patch.object(server.api.repositories.repositories, "create")
+    mock_create = mocker.patch.object(server.api.repositories.RepositoryService, "create")
     mock_create.side_effect = ResourceInvalid(E.REPOSITORY_DUPLICATE_ID % {"id": body.id})
 
     res, status, *_ = unwrap(repositories.post)(body)
@@ -82,7 +83,7 @@ def test_post_conflict(repository_details, mocker: MockerFixture):
 
 def test_id_get(repository_details, mocker: MockerFixture):
     target = expected = repository_details[0]
-    mock_get = mocker.patch.object(server.api.repositories.repositories, "get_by_id", return_value=target)
+    mock_get = mocker.patch.object(server.api.repositories.RepositoryService, "get_by_id", return_value=target)
     mocker.patch.object(server.api.repositories, "has_permission", return_value=True)
 
     res, status = unwrap(repositories.id_get)(target.id)
@@ -94,7 +95,7 @@ def test_id_get(repository_details, mocker: MockerFixture):
 
 def test_id_get_not_found(app, mocker: MockerFixture, caplog):
     rid = "non-existent-repo"
-    mocker.patch.object(server.api.repositories.repositories, "get_by_id", return_value=None)
+    mocker.patch.object(server.api.repositories.RepositoryService, "get_by_id", return_value=None)
     mock_permission = mocker.patch.object(server.api.repositories, "has_permission")
 
     res, status = unwrap(repositories.id_get)(rid)
@@ -108,7 +109,7 @@ def test_id_get_not_found(app, mocker: MockerFixture, caplog):
 
 def test_id_get_forbidden(app, repository_details, mocker: MockerFixture, caplog):
     target = repository_details[0]
-    mocker.patch.object(server.api.repositories.repositories, "get_by_id", return_value=target)
+    mocker.patch.object(server.api.repositories.RepositoryService, "get_by_id", return_value=target)
     mock_permission = mocker.patch.object(server.api.repositories, "has_permission", return_value=False)
 
     res, status = unwrap(repositories.id_get)(target.id)
@@ -123,7 +124,7 @@ def test_id_get_forbidden(app, repository_details, mocker: MockerFixture, caplog
 def test_id_put(repository_details, mocker: MockerFixture):
     body = expected = repository_details[0]
     rid, body.id = body.id, None
-    mock_update = mocker.patch.object(server.api.repositories.repositories, "update", return_value=body)
+    mock_update = mocker.patch.object(server.api.repositories.RepositoryService, "update", return_value=body)
     mock_permission = mocker.patch.object(server.api.repositories, "has_permission")
 
     res, status = unwrap(repositories.id_put)(rid, body)
@@ -137,7 +138,7 @@ def test_id_put(repository_details, mocker: MockerFixture):
 
 def test_id_put_invalid_form_error(repository_details, mocker: MockerFixture):
     body = repository_details[0]
-    mock_update = mocker.patch.object(server.api.repositories.repositories, "update")
+    mock_update = mocker.patch.object(server.api.repositories.RepositoryService, "update")
     mock_update.side_effect = InvalidFormError(E.REPOSITORY_REQUIRES_ENTITY_ID)
 
     res, status = unwrap(repositories.id_put)(body.id, body)
@@ -149,7 +150,7 @@ def test_id_put_invalid_form_error(repository_details, mocker: MockerFixture):
 
 def test_id_put_not_found(repository_details, mocker: MockerFixture):
     body = repository_details[0]
-    mock_update = mocker.patch.object(server.api.repositories.repositories, "update")
+    mock_update = mocker.patch.object(server.api.repositories.RepositoryService, "update")
     mock_update.side_effect = ResourceNotFound(E.REPOSITORY_NOT_FOUND % {"id": body.id})
 
     res, status = unwrap(repositories.id_put)(body.id, body)
@@ -161,7 +162,7 @@ def test_id_put_not_found(repository_details, mocker: MockerFixture):
 
 def test_id_delete(repository_details, mocker: MockerFixture):
     target = repository_details[0]
-    mock_delete = mocker.patch.object(server.api.repositories.repositories, "delete_by_id")
+    mock_delete = mocker.patch.object(server.api.repositories.RepositoryService, "delete_by_id")
     query = RepositoryDeleteQuery(confirmation=target.service_name)
 
     res, status = unwrap(repositories.id_delete)(target.id, query)
@@ -174,7 +175,7 @@ def test_id_delete(repository_details, mocker: MockerFixture):
 def test_id_delete_invalid_form_error(repository_details, mocker: MockerFixture):
     target = repository_details[0]
     query = RepositoryDeleteQuery(confirmation="invalid-confirmation")
-    mock_delete = mocker.patch.object(server.api.repositories.repositories, "delete_by_id")
+    mock_delete = mocker.patch.object(server.api.repositories.RepositoryService, "delete_by_id")
     mock_delete.side_effect = InvalidFormError(E.REPOSITORY_NAME_NOT_MATCH % {"id": target.id})
 
     res, status = unwrap(repositories.id_delete)(target.id, query)
@@ -187,7 +188,7 @@ def test_id_delete_invalid_form_error(repository_details, mocker: MockerFixture)
 def test_id_delete_not_found(repository_details, mocker: MockerFixture):
     target = repository_details[0]
     query = RepositoryDeleteQuery(confirmation=target.service_name)
-    mock_delete = mocker.patch.object(server.api.repositories.repositories, "delete_by_id")
+    mock_delete = mocker.patch.object(server.api.repositories.RepositoryService, "delete_by_id")
     mock_delete.side_effect = ResourceNotFound(E.REPOSITORY_NOT_FOUND % {"id": target.id})
 
     res, status = unwrap(repositories.id_delete)(target.id, query)

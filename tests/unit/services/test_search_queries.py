@@ -597,13 +597,13 @@ class DummyModelWithAlias(BaseModel):
     ],
 )
 def test__path_generator(app, mocker: MockerFixture, model, expected):
-    path = search_queries._path_generator(model)  # noqa: SLF001
+    path = search_queries._path_generator(model)
     assert path("dummy_name") == expected
 
 
 def test__get_id_prefix_not_match(app, test_config, mocker: MockerFixture):
     mocker.patch("server.config.config.REPOSITORIES.id_patterns.sp_connector", "invalid_pattern")
-    test_func = unwrap(search_queries._get_id_prefix)  # noqa: SLF001
+    test_func = unwrap(search_queries._get_id_prefix)
     with pytest.raises(ConfigurationError) as exc:
         test_func()
     assert str(exc.value) == str(E.INVALID_SERVER_CONFIG)

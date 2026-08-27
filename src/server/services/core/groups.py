@@ -16,16 +16,14 @@ from flask import current_app
 from pydantic_core import ValidationError
 
 from server.clients import bulks, groups
-from server.config import config
 from server.const import (
     MAP_DUPLICATE_ID_PATTERN,
     MAP_NO_RIGHTS_UPDATE_PATTERN,
     MAP_NOT_FOUND_PATTERN,
 )
 from server.entities.bulk_request import BulkOperation
-from server.entities.group_detail import GroupDetail, Repository
 from server.entities.map_error import MapError
-from server.entities.map_group import MapGroup, MemberUser
+from server.entities.map_group import MapGroup, Member, MemberUser
 from server.entities.search_request import SearchResponse, SearchResult
 from server.entities.summaries import GroupSummary
 from server.exc import (
@@ -37,6 +35,7 @@ from server.exc import (
     RequestConflict,
     ResourceInvalid,
     ResourceNotFound,
+    SystemAdminNotFound,
     UnexpectedResponseError,
 )
 from server.messages import E, I, W
@@ -48,18 +47,19 @@ from server.services.utils import (
     detect_affiliated_repository,
     make_group_detail,
     make_group_summary,
+    make_map_group,
     prepare_group,
     prepare_role_groups,
     validate_group_to_map_group,
 )
 from server.signals import group_created, group_updated
 
-from . import users
 from .token import get_access_token, get_client_secret
 
 
 if t.TYPE_CHECKING:
     from server.clients.groups import GroupsSearchResponse
+    from server.entities.group_detail import GroupDetail, Repository
 
 
 @t.overload
@@ -89,7 +89,6 @@ def search(
 
     Raises:
         InvalidQueryError: If the query construction is invalid.
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
@@ -101,8 +100,8 @@ def search(
         "members",
         "services",
     }
-    access_token, client_secret = get_access_token(), get_client_secret()
     query = build_search_query(criteria)
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
         results: GroupsSearchResponse = groups.search(
             query,
@@ -112,8 +111,7 @@ def search(
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_SEARCH_GROUPS, {"filter": query.filter})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -125,9 +123,6 @@ def search(
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_SEARCH_GROUPS, {"filter": query.filter})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError, InvalidQueryError:
-        raise
 
     if isinstance(results, MapError):
         current_app.logger.error(E.FAILED_SEARCH_GROUPS, {"filter": query.filter})
@@ -174,19 +169,17 @@ def get_by_id(
         - MapGroup: The raw Group object from mAP Core API.
 
     Raises:
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapGroup | MapError = groups.get_by_id(
             group_id, access_token=access_token, client_secret=client_secret
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_GET_GROUP, {"id": group_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -198,9 +191,6 @@ def get_by_id(
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_GET_GROUP, {"id": group_id})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError:
-        raise
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_GET_GROUP, {"id": group_id})
@@ -213,27 +203,25 @@ def get_by_id(
     return make_group_detail(result, more_detail=more_detail)
 
 
-def create(group: GroupDetail, admins: set[str]) -> GroupDetail:
+def create(group: GroupDetail, system_admins: set[str]) -> GroupDetail:
     """Create group to mAP Core API.
 
     Args:
         group (GroupDetail):
             Detail information about the group created from the input data.
-        admins (set[str]): Set of user IDs who are system administrators.
+        system_admins (set[str]): Set of user IDs who are system administrators.
 
     Returns:
         GroupDetail: The created Group detail object.
 
     Raises:
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         ResourceInvalid: If the Group resource data is invalid.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
+    map_group = prepare_group(group, administrators=system_admins)
     access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        map_group = prepare_group(group, administrators=admins)
-
         result: MapGroup | MapError = groups.post(
             map_group,
             exclude=({"external_id", "meta"}),
@@ -242,8 +230,7 @@ def create(group: GroupDetail, admins: set[str]) -> GroupDetail:
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_CREATE_GROUP, {"id": group.id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -255,9 +242,6 @@ def create(group: GroupDetail, admins: set[str]) -> GroupDetail:
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_CREATE_GROUP, {"id": group.id})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError:
-        raise
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_CREATE_GROUP, {"id": group.id})
@@ -278,20 +262,22 @@ def create(group: GroupDetail, admins: set[str]) -> GroupDetail:
     return make_group_detail(result)
 
 
-def create_role_groups(repository_id: str, service_name: str, admins: set[str]) -> None:
+def create_role_groups(
+    repository_id: str, service_name: str, system_admins: set[str]
+) -> None:
     """Create role groups for a Repository resource.
 
     Args:
         repository_id (str): ID of the Repository resource.
         service_name (str): Service name of the Repository resource.
-        admins (set[str]): Set of user IDs who are system administrators.
+        system_admins (set[str]): Set of user IDs who are system administrators.
 
     Raises:
         CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
-    role_groups = prepare_role_groups(repository_id, service_name, admins)
+    role_groups = prepare_role_groups(repository_id, service_name, system_admins)
     access_token, client_secret = get_access_token(), get_client_secret()
 
     for group in role_groups:
@@ -309,7 +295,7 @@ def create_role_groups(repository_id: str, service_name: str, admins: set[str]) 
                 E.FAILED_CREATE_ROLEGROUP, {"rid": repository_id, "gid": group.id}
             )
 
-            if code == HTTPStatus.UNAUTHORIZED:
+            if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
                 raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
             raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -352,13 +338,14 @@ def update(group: GroupDetail) -> GroupDetail:
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
     if (current := get_by_id(group_id := t.cast("str", group.id))) is None:
+        current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group_id})
         raise ResourceNotFound(E.GROUP_NOT_FOUND % {"id": group_id})
 
     access_token, client_secret = get_access_token(), get_client_secret()
     try:
         validated = validate_group_to_map_group(group, mode="update")
         operations = build_patch_operations(
-            current.to_map_group(),
+            make_map_group(current),
             validated,
             include={"display_name", "description"},
         )
@@ -372,11 +359,10 @@ def update(group: GroupDetail) -> GroupDetail:
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group.id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group.id})
@@ -393,7 +379,7 @@ def update(group: GroupDetail) -> GroupDetail:
         current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group.id})
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         if m := re.search(MAP_NOT_FOUND_PATTERN, result.detail):
-            raise ResourceNotFound(E.REPOSITORY_NOT_FOUND % {"id": m.group(1)})
+            raise ResourceNotFound(E.GROUP_NOT_FOUND % {"id": m.group(1)})
 
         if re.search(MAP_NO_RIGHTS_UPDATE_PATTERN, result.detail):
             raise OAuthTokenError(E.NO_RIGHTS_UPDATE_GROUP % {"id": group.id})
@@ -438,11 +424,10 @@ def update_put(group: GroupDetail) -> GroupDetail:
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group.id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group.id})
@@ -459,7 +444,7 @@ def update_put(group: GroupDetail) -> GroupDetail:
         current_app.logger.error(E.FAILED_UPDATE_GROUP, {"id": group.id})
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         if m := re.search(MAP_NOT_FOUND_PATTERN, result.detail):
-            raise ResourceNotFound(E.REPOSITORY_NOT_FOUND % {"id": m.group(1)})
+            raise ResourceNotFound(E.GROUP_NOT_FOUND % {"id": m.group(1)})
 
         if re.search(MAP_NO_RIGHTS_UPDATE_PATTERN, result.detail):
             raise OAuthTokenError(E.NO_RIGHTS_UPDATE_GROUP % {"id": group.id})
@@ -499,11 +484,10 @@ def delete_multiple(group_ids: set[str]) -> set[str] | None:
         result = bulks.post(operations, access_token, client_secret)
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_DELETE_GROUPS, {"ids": ", ".join(group_ids)})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_DELETE_GROUPS, {"ids": ", ".join(group_ids)})
@@ -591,11 +575,10 @@ def delete_by_id(group_id: str) -> GroupDetail:
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_DELETE_GROUP, {"id": group_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_DELETE_GROUP, {"id": group_id})
@@ -626,15 +609,21 @@ def delete_by_id(group_id: str) -> GroupDetail:
     return make_group_detail(current)
 
 
-def update_member(  # ruff:ignore[complex-structure]
-    group_id: str, add: set[str] | None = None, remove: set[str] | None = None
+def update_members(
+    group_id: str,
+    /,
+    add: set[str] | None = None,
+    remove: set[str] | None = None,
+    *,
+    system_admins: set[str],
 ) -> GroupDetail:
-    """Update group members by group_id in mAP Core API .
+    """Update group members by group ID in mAP Core API .
 
     Args:
         group_id (str): ID of the Group resource.
-        add (list[str]): List of user IDs to add .
-        remove (list[str]): List of user IDs to remove.
+        add (set[str]): Set of user IDs to add.
+        remove (set[str]): Set of user IDs to remove.
+        system_admins (set[str]): Set of user IDs who are system administrators.
 
     Returns:
         GroupDetail: updated group detail
@@ -645,19 +634,19 @@ def update_member(  # ruff:ignore[complex-structure]
         RequestConflict: If the User id exists in both "add" and "remove".
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
-    if config.MAP_CORE.update_strategy == "put":
-        return update_member_put(group_id, add, remove)
-
-    add, remove = add or set(), remove or set()
-    if add & remove:
+    if (add := add or set()) & (remove := remove or set()):
         raise RequestConflict(
             E.CONFLICT_MEMBER_OPERATION
             % {"id": group_id, "uids": ", ".join(add & remove)}
         )
 
-    current = get_by_id(group_id, raw=True)
-    if current is None:
+    if (current := get_by_id(group_id, raw=True)) is None:
         raise ResourceNotFound(E.GROUP_NOT_FOUND % {"id": group_id})
+
+    current_users = {u.value for u in (current.members or []) if u.type == "User"}
+    operations = build_update_member_operations(
+        add, remove, current_users, system_admins
+    )
 
     logging_params = {
         "id": group_id,
@@ -665,29 +654,20 @@ def update_member(  # ruff:ignore[complex-structure]
         "remove": ", ".join(remove) or "N/A",
     }
     access_token, client_secret = get_access_token(), get_client_secret()
-    current_users: set[str] = {
-        u.value for u in (current.members or []) if u.type == "User"
-    }
     try:
-        system_admins = users.get_system_admins()
-        operations = build_update_member_operations(
-            add, remove, current_users, system_admins
-        )
-
         result: MapGroup | MapError = groups.patch_by_id(
             group_id,
             operations,
-            include=({"members"}),
+            include={"members"},
             access_token=access_token,
             client_secret=client_secret,
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
@@ -696,9 +676,6 @@ def update_member(  # ruff:ignore[complex-structure]
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except OAuthTokenError:
-        raise
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
@@ -714,20 +691,26 @@ def update_member(  # ruff:ignore[complex-structure]
     current_app.logger.info(I.SUCCESS_UPDATE_GROUP_MEMBERS, logging_params)
 
     with suppress(JAIROCloudGroupsManagerError):
-        group_updated.send(update_member, group_id=result.id)
+        group_updated.send(update_members, group_id=result.id)
 
-    return GroupDetail.from_map_group(result)
+    return make_group_detail(result)
 
 
-def update_member_put(  # ruff:ignore[complex-structure]
-    group_id: str, add: set[str] | None = None, remove: set[str] | None = None
+def update_member_put(
+    group_id: str,
+    /,
+    add: set[str] | None = None,
+    remove: set[str] | None = None,
+    *,
+    system_admins: set[str],
 ) -> GroupDetail:
     """Update group members by group_id in mAP Core API (replace with PUT).
 
     Args:
         group_id (str): ID of the Group resource.
-        add (list[str]): List of user IDs to add .
-        remove (list[str]): List of user IDs to remove.
+        add (set[str]): Set of user IDs to add.
+        remove (set[str]): Set of user IDs to remove.
+        system_admins (set[str]): Set of user IDs who are system administrators.
 
     Returns:
         GroupDetail: updated group detail
@@ -738,26 +721,17 @@ def update_member_put(  # ruff:ignore[complex-structure]
         RequestConflict: If the User id exists in both "add" and "remove".
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
-    if config.MAP_CORE.update_strategy == "patch":
-        return update_member(group_id, add, remove)
-
-    add, remove = add or set(), remove or set()
-    if add & remove:
+    if (add := add or set()) & (remove := remove or set()):
         raise RequestConflict(
             E.CONFLICT_MEMBER_OPERATION
             % {"id": group_id, "uids": ", ".join(add & remove)}
         )
 
-    current = get_by_id(group_id, raw=True)
-    if current is None:
+    if (current := get_by_id(group_id, raw=True)) is None:
         raise ResourceNotFound(E.GROUP_NOT_FOUND % {"id": group_id})
 
-    existing = {m.value for m in current.members or [] if m.type == "User"}
-    current.members = [
-        m for m in (current.members or []) if m.type == "Group" or m.value not in remove
-    ]
-    current.members.extend(
-        MemberUser(type="User", value=uid) for uid in add if uid not in existing
+    current.members = _updated_members(
+        add, remove, current.members or [], system_admins
     )
 
     logging_params = {
@@ -769,17 +743,16 @@ def update_member_put(  # ruff:ignore[complex-structure]
     try:
         result: MapGroup | MapError = groups.put_by_id(
             current,
-            exclude=({"external_id", "meta"}),
+            include=({"members"}),
             access_token=access_token,
             client_secret=client_secret,
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
@@ -788,9 +761,6 @@ def update_member_put(  # ruff:ignore[complex-structure]
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except OAuthTokenError:
-        raise
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_UPDATE_GROUP_MEMBERS, logging_params)
@@ -804,4 +774,48 @@ def update_member_put(  # ruff:ignore[complex-structure]
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
     current_app.logger.info(I.SUCCESS_UPDATE_GROUP_MEMBERS, logging_params)
-    return GroupDetail.from_map_group(result)
+
+    with suppress(JAIROCloudGroupsManagerError):
+        group_updated.send(update_members, group_id=result.id)
+
+    return make_group_detail(result)
+
+
+def _updated_members(
+    add: set[str],
+    remove: set[str],
+    current: list[Member],
+    system_admins: set[str],
+) -> list[Member]:
+    """Calculate the updated members after adding and removing users.
+
+    Args:
+        add (set[str]): Set of user IDs to add.
+        remove (set[str]): Set of user IDs to remove.
+        current (list[Member]): List of current members in the group.
+        system_admins (set[str]): Set of user IDs who are system administrators.
+
+    Returns:
+        list[Member]: Updated list of members after applying add and remove operations.
+
+    Raises:
+        SystemAdminNotFound: If no administrators are provided.
+    """
+    if not system_admins:
+        raise SystemAdminNotFound(E.GROUP_REQUIRES_SYSTEM_ADMIN)
+
+    current_users = {m.value for m in current if m.type == "User"}
+
+    # Avoid adding users already in the group
+    users_to_add = add - current_users
+    # Avoid removing system admins, removing users not in the group
+    users_to_remove = (remove - system_admins) & current_users
+
+    if not (current_users - users_to_remove) | users_to_add:
+        # If this would leave the group with no members, add system admins instead.
+        # This situation is highly unlikely.
+        users_to_add |= system_admins
+
+    return [
+        m for m in current if m.type == "Group" or m.value not in users_to_remove
+    ] + [MemberUser(type="User", value=uid) for uid in users_to_add]

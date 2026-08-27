@@ -11,10 +11,12 @@
 
   "features": {
     "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.14"
+      "version": "3.14",
+      "installTools": false
     },
     "ghcr.io/devcontainers/features/node:2": {
-      "version": "24"
+      "version": "24",
+      "pnpmVersion": "11"
     },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
       "version": "latest",
@@ -30,7 +32,6 @@
     "FLASK_ENV": "development",
     "FLASK_DEBUG": "1",
     "FLASK_APP": "server.app"
-
   },
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
@@ -49,7 +50,7 @@
           "editor.rulers": [88],
           "editor.formatOnSave": true,
           "editor.codeActionsOnSave": {
-            "source.fixAll.ruff": "explicit",
+            "source.fixAll": "explicit",
             "source.organizeImports": "explicit"
           },
           "editor.defaultFormatter": "charliermarsh.ruff"
@@ -63,7 +64,7 @@
         "[vue]": {
           "editor.rulers": [100]
         },
-        "typescript.tsdk": "./node_modules/typescript/lib",
+        "js/ts.tsdk.path": "./node_modules/typescript/lib",
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "always"
         },
@@ -80,6 +81,7 @@
         "charliermarsh.ruff",
 
         "vue.volar",
+        "vitest.explorer",
         "bradlc.vscode-tailwindcss",
         "dbaeumer.vscode-eslint",
         "lokalise.i18n-ally",
@@ -87,7 +89,11 @@
         "editorconfig.editorconfig",
         "shardulm94.trailing-spaces",
         "mhutchie.git-graph",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+
+        "cweijan.vscode-database-client2",
+        "github.copilot-chat",
+        "saoudrizwan.claude-dev"
       ],
       "ignoreExtensions": ["*"]
     }

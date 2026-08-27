@@ -4,7 +4,7 @@
 
 """Provides utilities for search queries."""
 
-# ruff: noqa: DOC201 DOC501
+# ruff: file-ignore[docstring-missing-returns, docstring-missing-exception]
 
 import re
 import typing as t
@@ -350,7 +350,7 @@ def _user_groups_filter(criteria: UsersCriteria, path: str) -> str:
     return t.cast("str", _combine_filter_exprs(filter_expr))
 
 
-def _system_admin_user_groups_filter(  # noqa: PLR0911
+def _system_admin_user_groups_filter(  # ruff: ignore[too-many-return-statements]
     criteria: UsersCriteria, path: str, specified_roles: list[USER_ROLES]
 ) -> str:
     """Generate a filter string for user affiliated group IDs for system admin."""
@@ -422,7 +422,7 @@ def _path_generator(model: type[BaseModel]) -> t.Callable[[str], str]:
         if alias_generator and not callable(alias_generator):
             alias_generator = alias_generator.serialization_alias
         if alias_generator is None:
-            alias_generator = lambda x: x  # noqa: E731
+            alias_generator = lambda x: x  # ruff: ignore[lambda-assignment]
 
         return ".".join([alias_generator(p) for p in path.split(".")])
 
@@ -673,7 +673,7 @@ class _Options(t.NamedTuple):
     sort_order: t.Literal["ascending", "descending"] | None
 
 
-def _curculate_options(  # noqa: C901
+def _curculate_options(  # ruff: ignore[complex-structure]
     criteria: Criteria, path_generator: t.Callable[[str], str]
 ) -> _Options:
     """Calculate search options from criteria.
@@ -777,7 +777,7 @@ class Criteria(t.Protocol):
     p: t.Annotated[int | None, "page number"]
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "page size"]  # noqa: E741
+    l: t.Annotated[int | None, "page size"]  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
 
@@ -859,7 +859,7 @@ def make_criteria_object(
     k: RepositoriesSortableKeys | None = None,
     d: t.Literal["asc", "desc"] | None = None,
     p: int | None = None,
-    l: int | None = None,  # noqa: E741
+    l: int | None = None,  # ruff: ignore[ambiguous-variable-name]
     super: bool = False,
 ) -> RepositoriesCriteria: ...
 @t.overload
@@ -875,7 +875,7 @@ def make_criteria_object(
     k: GroupsSortableKeys | None = None,
     d: t.Literal["asc", "desc"] | None = None,
     p: int | None = None,
-    l: int | None = None,  # noqa: E741
+    l: int | None = None,  # ruff: ignore[ambiguous-variable-name]
     super: bool = False,
 ) -> GroupsCriteria: ...
 @t.overload
@@ -892,7 +892,7 @@ def make_criteria_object(
     k: UsersSortableKeys | None = None,
     d: t.Literal["asc", "desc"] | None = None,
     p: int | None = None,
-    l: int | None = None,  # noqa: E741
+    l: int | None = None,  # ruff: ignore[ambiguous-variable-name]
     super: bool = False,
 ) -> UsersCriteria: ...
 def make_criteria_object(
@@ -986,7 +986,7 @@ class HistoryCriteria(t.Protocol):
     p: t.Annotated[int | None, "page number"]
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "page size"]  # noqa: E741
+    l: t.Annotated[int | None, "page size"]  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
 
@@ -999,7 +999,7 @@ class OperatorsCriteria(t.Protocol):
     p: t.Annotated[int | None, "page number"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "page size"] = None  # noqa: E741
+    l: t.Annotated[int | None, "page size"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
 
@@ -1015,7 +1015,7 @@ class GroupCacheCriteria(t.Protocol):
     p: t.Annotated[int | None, "page"] = None
     """Page number for pagination."""
 
-    l: t.Annotated[int | None, "per"] = None  # noqa: E741
+    l: t.Annotated[int | None, "per"] = None  # ruff: ignore[ambiguous-variable-name]
     """Number of items per page for pagination."""
 
 

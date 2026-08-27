@@ -9,38 +9,29 @@ import typing as t
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, RootModel
+from pydantic import BaseModel, EmailStr, Field, RootModel
 
 from server.entities.common import camel_case_config, forbid_extra_config
+from server.entities.summaries import GroupSummary, RepositorySummary, UserSummary
 from server.entities.user_detail import UserDetail
-
-
-class RepositoryMember(BaseModel):
-    """Model for members of a repository."""
-
-    groups: set[str]
-    """The groups belonging to the repository."""
-
-    users: set[str]
-    """The users belonging to the repository."""
 
 
 class ValidateResults(BaseModel):
     """Model for summary of bulk validation result."""
 
-    results: list[EachResult]
+    items: list[EachResult]
     """The list of validation results for each user."""
 
     summary: ResultSummary
     """The summary of the validation operation."""
 
-    missing_user: list[UserDetail] = []
-    """The list of missing users."""
+    missing_users: list[UserDetail] = Field(default_factory=list)
+    """The list of users not contained in the file."""
 
-    offset: int
+    offset: int | None = None
     """The offset for pagination."""
 
-    page_size: int
+    page_size: int | None = None
     """The page size for pagination."""
 
     model_config = camel_case_config | forbid_extra_config
@@ -50,19 +41,23 @@ class ValidateResults(BaseModel):
 class ResultSummary(BaseModel):
     """Summary of the history operation."""
 
-    create: int
+    create: int = 0
     """Number of created items."""
-    update: int
+
+    update: int = 0
     """Number of updated items."""
-    delete: int
+
+    delete: int = 0
     """Number of deleted items."""
-    skip: int
+
+    skip: int = 0
     """Number of skipped items."""
-    error: int
+
+    error: int = 0
     """Number of error items."""
 
-    model_config = camel_case_config | forbid_extra_config
-    """Configure camelCase aliasing and forbid extra fields."""
+    model_config = forbid_extra_config
+    """Configure forbid extra fields."""
 
 
 class EachResult(BaseModel):
@@ -140,27 +135,17 @@ class UserAggregated(RootModel):
     """List of user details."""
 
 
-class Aggregated(t.TypedDict):
-    """Model for aggregated data."""
-
-    summary: dict[str, int]
-    """Summary of the aggregation."""
-
-    results: list[EachResult]
-    """List of check results."""
-
-    missing_user: list[UserDetail]
-    """List of missing users."""
-
-
-class FileContent(t.TypedDict):
+class FileContent(BaseModel):
     """Model for file content as dictionary."""
 
-    repositories: dict[str, str]
-    """Dictionary of repositories."""
+    repositories: list[RepositorySummary] = Field(default_factory=list)
+    """List of repositories."""
 
-    groups: dict[str, str]
-    """Dictionary of groups."""
+    groups: list[GroupSummary] = Field(default_factory=list)
+    """List of groups."""
 
-    users: dict[str, str]
-    """Dictionary of users."""
+    users: list[UserSummary] = Field(default_factory=list)
+    """List of users."""
+
+    model_config = camel_case_config | forbid_extra_config
+    """Configure camelCase aliasing and forbid extra fields."""

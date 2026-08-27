@@ -69,7 +69,7 @@ class UnsafeOperationError(JAIROCloudGroupsManagerError):
     """
 
 
-class SystemAdminNotFound(UnsafeOperationError):  # noqa: N818
+class SystemAdminNotFound(UnsafeOperationError):  # ruff: ignore[error-suffix-on-exception-name]
     """Exception for system administrator not found.
 
     Error caused by the absence of a system administrator in the system.
@@ -104,7 +104,7 @@ class TaskExecutionError(DatastoreError):
     """
 
 
-class RecordNotFound(JAIROCloudGroupsManagerError):  # noqa: N818
+class RecordNotFound(JAIROCloudGroupsManagerError):  # ruff: ignore[error-suffix-on-exception-name]
     """Exception for record not found errors.
 
     Error caused by requests for non-existing records.
@@ -125,14 +125,14 @@ class ApiClientError(JAIROCloudGroupsManagerError):
     """
 
 
-class ResourceInvalid(ApiClientError):  # noqa: N818
+class ResourceInvalid(ApiClientError):  # ruff: ignore[error-suffix-on-exception-name]
     """Exception for resource invalid errors from mAP Core API server.
 
     Error caused by invalid resource data in requests.
     """
 
 
-class ResourceNotFound(ApiClientError):  # noqa: N818
+class ResourceNotFound(ApiClientError):  # ruff: ignore[error-suffix-on-exception-name]
     """Exception for resource not found errors from mAP Core API server.
 
     Error caused by requests for non-existing resources.
@@ -153,7 +153,7 @@ class ApiRequestError(JAIROCloudGroupsManagerError):
     """
 
 
-class RequestConflict(ApiRequestError):  # noqa: N818
+class RequestConflict(ApiRequestError):  # ruff: ignore[error-suffix-on-exception-name]
     """Exception for the request conflict errors.
 
     Error caused by conflicts in the request content.
@@ -195,7 +195,7 @@ class FileValidationError(BulkOperationError):
     """
 
 
-class FileNotFound(BulkOperationError):  # noqa: N818
+class FileNotFound(BulkOperationError):  # ruff: ignore[error-suffix-on-exception-name]
     """Exception for file not found errors in bulk operations.
 
     Error caused by missing files during bulk operations.

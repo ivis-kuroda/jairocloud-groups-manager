@@ -15,7 +15,8 @@ from server.const import USER_ROLES
 from server.entities.search_request import SearchResult
 from server.exc import InvalidQueryError
 from server.messages import E
-from server.services import groups, repositories, users
+from server.services import groups, users
+from server.services.resources import RepositoryService
 from server.services.utils import make_criteria_object
 
 from .helpers import roles_required
@@ -46,7 +47,7 @@ def get(
     base_criteria = {"q": query.q, "l": query.l}
     categories: dict[str, tuple[t.Callable, t.Callable]] = {
         "repositories": (
-            repositories.search,
+            RepositoryService.search,
             lambda: make_criteria_object("repositories", **base_criteria),
         ),
         "groups": (

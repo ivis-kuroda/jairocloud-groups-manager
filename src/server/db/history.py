@@ -9,7 +9,7 @@ from __future__ import annotations
 import typing as t
 import uuid
 
-from datetime import datetime  # noqa: TC003
+from datetime import datetime  # ruff: ignore[typing-only-standard-library-import]
 from typing import get_args
 
 from sqlalchemy import (
@@ -46,7 +46,7 @@ class _FileContent(t.TypedDict):
 class _ResultData(t.TypedDict):
     """Definition for json data of `UploadHistory.results`."""
 
-    summary: dict[str, int]
+    summary: _SummaryData
     """Summary of execution results or check results."""
 
     items: list[dict]
@@ -54,6 +54,29 @@ class _ResultData(t.TypedDict):
 
     missing_users: list[dict]
     """Users not contained in the file."""
+
+
+class _SummaryData(t.TypedDict):
+    """Definition for summary data in `UploadHistory.results`."""
+
+    create: int
+    """Number of created items."""
+
+    update: int
+    """Number of updated items."""
+
+    delete: int
+    """Number of deleted items."""
+
+    skip: int
+    """Number of skipped items."""
+
+    error: int
+    """Number of error items."""
+
+
+type ResultStatus = t.Literal["create", "update", "delete", "skip", "error"]
+"""Allowed status values for the result items."""
 
 
 class Files(db.Model):
@@ -150,7 +173,7 @@ class DownloadHistory(db.Model):
 
     parent: Mapped[DownloadHistory | None] = relationship(
         back_populates="children",
-        remote_side=[id],  # noqa: A003
+        remote_side=[id],  # ruff: ignore[builtin-attribute-shadowing]
     )
     """Relationship to parent DownloadHistory record."""
 
@@ -192,10 +215,10 @@ class UploadHistory(db.Model):
         ForeignKey(Files.id),
         nullable=False,
     )
-    """Foreign key to `Files.id` (uploaded file ID)."""
+    """Foreign key to :attr:`Files`.id (uploaded file ID)."""
 
     file: Mapped[Files] = relationship()
-    """Relationship to the `Files` model."""
+    """Relationship to the :class:`Files` model."""
 
     operator_id: Mapped[str] = mapped_column(
         String(50),

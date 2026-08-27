@@ -5,7 +5,6 @@
 """API endpoints for user-related operations."""
 
 import inspect
-import sys
 import traceback
 import typing as t
 
@@ -21,7 +20,6 @@ from server.exc import (
     InvalidExportError,
     InvalidFormError,
     InvalidQueryError,
-    RequestConflict,
     ResourceInvalid,
     ResourceNotFound,
 )
@@ -151,25 +149,24 @@ def id_put(user_id: str, body: UserDetail) -> tuple[UserDetail | ErrorResponse, 
     # permission will be checked in validation process.
     try:
         updated = users.update(body)
-    except* InvalidFormError as exc:
-        if exc.exceptions[0].message == E.USER_NO_UPDATE_SYSTEM_ADMIN:
-            error = ErrorResponse(message=exc.message), 403
-        else:
-            error = ErrorResponse(message=exc.message), 400
-    except* ResourceNotFound as exc:
-        error = ErrorResponse(message=exc.message), 404
-    except* (ResourceInvalid, RequestConflict) as exc:
-        error = ErrorResponse(message=exc.message), 409
-    else:
-        if t.cast("LoginUser", current_user).map_id == user_id:
-            # user is updating their own information, need to refresh session role.
-            inspect.unwrap(logout)()
-        return updated, 200
-    finally:
-        if sys.exc_info()[0] is not None:
-            traceback.print_exc()
+    except ExceptionGroup as eg:
+        traceback.print_exc()
+        return ErrorResponse(message=eg.message), 400
 
-    return error
+    except InvalidFormError as exc:
+        traceback.print_exc()
+        if exc.message == E.USER_NO_UPDATE_SYSTEM_ADMIN:
+            return ErrorResponse(message=exc.message), 403
+
+        return ErrorResponse(message=exc.message), 400
+    except ResourceNotFound as exc:
+        traceback.print_exc()
+        return ErrorResponse(message=exc.message), 404
+
+    if t.cast("LoginUser", current_user).map_id == user_id:
+        # user is updating their own information, need to refresh session role.
+        inspect.unwrap(logout)()
+    return updated, 200
 
 
 def has_permission(user: UserDetail) -> bool:
@@ -242,7 +239,7 @@ def export_post(body: ExportUsersQuery) -> tuple[Response | ErrorResponse, int]:
     return __export(operator, body)
 
 
-def __export(operator: LoginUser, query: ExportUsersQuery):  # noqa: ANN202
+def __export(operator: LoginUser, query: ExportUsersQuery):  # ruff: ignore[missing-return-type-private-function]
     try:
         files = users.make_export_file(operator.map_id, operator.user_name, query)
     except InvalidQueryError as exc:

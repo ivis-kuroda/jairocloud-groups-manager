@@ -34,7 +34,7 @@ from server.entities.map_service import (
 )
 from server.entities.map_user import EPPN, Email, Group as UserGroup, MapUser
 from server.entities.repository_detail import RepositoryDetail
-from server.entities.summaries import GroupSummary, RepositorySummary
+from server.entities.summaries import GroupSummary, RepositorySummary, UserSummary
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.exc import InvalidFormError, SystemAdminNotFound
 from server.messages import E
@@ -45,6 +45,7 @@ from .permissions import (
     is_current_user_system_admin as is_super,
 )
 from .resolvers import resolve_repository_id, resolve_service_id
+from .roles import get_highest_role
 from .search_queries import make_criteria_object
 
 
@@ -95,15 +96,13 @@ def prepare_role_groups(
     Raises:
         SystemAdminNotFound: If no administrators are provided.
     """
-    service_id = resolve_service_id(repository_id=repository_id)
-
     if not administrators:
         raise SystemAdminNotFound(E.REPOSITORY_REQUIRES_SYSTEM_ADMIN)
 
     role_groups = []
     for role in USER_ROLES:
         if role == USER_ROLES.SYSTEM_ADMIN:
-            continue  # System admin group is not necessary.
+            continue  # System admin group is not necessary for each repository.
 
         id_pattern = config.GROUPS.id_patterns[role]
         name_pattern = config.GROUPS.name_patterns[role]
@@ -118,7 +117,6 @@ def prepare_role_groups(
                 ],
                 services=[
                     GroupService(value=config.SP.connector_id),
-                    GroupService(value=service_id),
                 ],
             )
         )
@@ -365,11 +363,11 @@ def make_group_detail(group: MapGroup, *, more_detail: bool = False) -> GroupDet
     )
     repository_id = detected.repository_id if detected else None
     if repository_id:
-        from server.services import (  # ruff:ignore[import-outside-top-level]
-            repositories,
+        from server.services.resources import (  # ruff:ignore[import-outside-top-level]
+            RepositoryService,
         )
 
-        if repo := repositories.get_by_id(repository_id):
+        if repo := RepositoryService.get_by_id(repository_id):
             detail.repository = GroupRepository(
                 id=repository_id, service_name=repo.service_name
             )
@@ -429,9 +427,11 @@ def validate_group_to_map_group(  # ruff:ignore[complex-structure]
         error = E.GROUP_REQUIRES_REPOSITORY
         raise InvalidFormError(error)
 
-    from server.services import repositories  # ruff:ignore[import-outside-top-level]
+    from server.services.resources import (  # ruff: ignore[import-outside-top-level]
+        RepositoryService,
+    )
 
-    if repositories.get_by_id(repository_id) is None:
+    if RepositoryService.get_by_id(repository_id) is None:
         error = E.GROUP_REQUIRES_EXISTING_REPOSITORY % {"rid": repository_id}
         raise InvalidFormError(error)
 
@@ -606,8 +606,8 @@ def make_user_detail(user: MapUser, *, more_detail: bool = False) -> UserDetail:
         ]
 
     if user_roles:
-        from server.services import (  # ruff:ignore[import-outside-top-level]
-            repositories,
+        from server.services.resources import (  # ruff:ignore[import-outside-top-level]
+            RepositoryService,
         )
 
         repositories_query = make_criteria_object(
@@ -619,7 +619,7 @@ def make_user_detail(user: MapUser, *, more_detail: bool = False) -> UserDetail:
                 service_name=r.service_name,
                 user_role=user_roles[r.id],
             )
-            for r in repositories.search(criteria=repositories_query).resources
+            for r in RepositoryService.search(criteria=repositories_query).resources
             if r.id in user_roles
         ]
 
@@ -704,14 +704,18 @@ def validate_user_roles(user: UserDetail, permitted: set[str]) -> list[str]:
         error = E.USER_REQUIRES_REPOSITORY
         raise InvalidFormError(error)
 
-    from server.services import repositories  # ruff:ignore[import-outside-top-level]
+    from server.services.resources import (  # ruff: ignore[import-outside-top-level]
+        RepositoryService,
+    )
 
     repositories_query = make_criteria_object(
         "repositories",
         i=[role.id for role in user.repository_roles if role.id],
         l=-1,
     )
-    existed = {r.id for r in repositories.search(criteria=repositories_query).resources}
+    existed = {
+        r.id for r in RepositoryService.search(criteria=repositories_query).resources
+    }
 
     valid_group_ids: list[str] = []
     for repo_role in user.repository_roles:
@@ -828,3 +832,31 @@ def make_map_user(user: UserDetail) -> MapUser:
         map_user.groups = groups
 
     return map_user
+
+
+def make_user_summary(user: MapUser) -> UserSummary:
+    """Convert a MapUser instance to a UserSummary instance.
+
+    Args:
+        user (MapUser): The MapUser instance to convert.
+
+    Returns:
+        UserSummary: The converted UserSummary instance.
+    """
+    highest_role: USER_ROLES | None = None
+    if user.groups:
+        group_ids = [group.value for group in user.groups]
+        roles, _ = detect_affiliations(group_ids)
+        if not is_super():
+            permitted_repo_ids = get_permitted_repository_ids()
+            roles = [role for role in roles if role.repository_id in permitted_repo_ids]
+        highest_role = get_highest_role([repo.role for repo in roles])
+
+    return UserSummary(
+        id=t.cast("str", user.id),
+        user_name=user.user_name,
+        role=highest_role,
+        emails=[email.value for email in user.emails or []],
+        eppns=[eppn.value for eppn in user.edu_person_principal_names or []],
+        last_modified=user.meta.last_modified if user.meta else None,
+    )

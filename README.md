@@ -1,6 +1,7 @@
 # JAIRO Cloud Groups Manager
 
-[![GitHub Licensed](https://img.shields.io/github/license/RCOSDP/jairocloud-groups-manager)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3BABC3?logo=flask&labelColor=000000)](https://flask.palletsprojects.com)
 [![Nuxt UI](https://img.shields.io/badge/Nuxt%20UI-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com)
 
@@ -20,7 +21,7 @@ With DevContainer, your development environment is ready in no time!
 1. Install [Python 3.14+](https://www.python.org/downloads/) and [Node.js 24+](https://nodejs.org/en/download/).
 2. Install dependencies:
     ```bash
-    uv sync && uv pip install -e .
+    uv sync
     pnpm install -r
     ```
 3. Create docker network:

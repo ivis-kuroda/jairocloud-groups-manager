@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import SQLAlchemyError
 
-from server.api.schemas import OperatorQuery
+from server.api.schemas import HistoryQuery, OperatorQuery
 from server.db.history import DownloadHistory, Files, UploadHistory, _FileContent, _ResultData
-from server.entities.history_detail import DownloadHistoryData, HistoryQuery, UploadHistoryData
+from server.entities.history_detail import DownloadHistoryData, UploadHistoryData
 from server.entities.search_request import SearchResult
 from server.entities.summaries import UserSummary
 from server.exc import DatabaseError, InvalidQueryError, RecordNotFound
@@ -313,7 +313,7 @@ def test_get_download_history_data(app, mocker: MockerFixture, criteria, data_ra
 )
 def test__build_filters_for_history(
     mocker: MockerFixture,
-    is_system_admin: bool,  # noqa: FBT001
+    is_system_admin: bool,  # ruff: ignore[boolean-type-hint-positional-argument]
     criteria: HistoryQuery,
     history_type: t.Literal["upload", "download"],
     expected_sqls,
@@ -321,7 +321,7 @@ def test__build_filters_for_history(
 ):
     mocker.patch("server.services.history.is_current_user_system_admin", return_value=is_system_admin)
     repoadmin_filter = mocker.patch("server.services.history.get_permitted_repository_ids", return_value={"repo1"})
-    filters = history._build_filters_for_history(criteria, history_type)  # noqa: SLF001
+    filters = history._build_filters_for_history(criteria, history_type)
     assert len(filters) == len(expected_sqls) == len(expected_params)
     for f, expected_sql, expected_param in zip(filters, expected_sqls, expected_params, strict=False):
         assert str(f) == expected_sql
@@ -421,19 +421,3 @@ def test_get_file_path_db_error(app, mocker: MockerFixture):
     with pytest.raises(DatabaseError) as exc:
         history.get_file_path(file_id)
     assert str(exc.value) == str(E.FAILED_GET_FILE_PATH % {"file_id": file_id})
-
-
-def test_empty_history_criteria():
-    criteria = history.empty_history_criteria()
-    assert hasattr(criteria, "i")
-    assert hasattr(criteria, "r")
-    assert hasattr(criteria, "g")
-    assert hasattr(criteria, "u")
-    assert hasattr(criteria, "o")
-    assert hasattr(criteria, "s")
-    assert hasattr(criteria, "e")
-    assert hasattr(criteria, "d")
-    assert hasattr(criteria, "p")
-    assert hasattr(criteria, "l")
-    for attr in vars(criteria):
-        assert getattr(criteria, attr) is None

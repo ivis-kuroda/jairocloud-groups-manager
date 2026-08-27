@@ -4,7 +4,7 @@
 
 """Constant values for the server application."""
 
-# ruff: noqa: N801
+# ruff: file-ignore[invalid-class-name]
 
 from enum import StrEnum
 from typing import Final
@@ -93,7 +93,7 @@ MAP_OAUTH_ISSUE_ENDPOINT: Final = "/oauth/sslauth/issue.php"
 MAP_OAUTH_AUTHORIZE_ENDPOINT: Final = "/oauth/shib/authrequest.php"
 """Endpoint for issuing authorization code from mAP Core Authorization Server."""
 
-MAP_OAUTH_TOKEN_ENDPOINT: Final = "/oauth/token.php"  # noqa: S105
+MAP_OAUTH_TOKEN_ENDPOINT: Final = "/oauth/token.php"  # ruff: ignore[hardcoded-password-string]
 """Endpoint for issuing access tokens from mAP Core Authorization Server."""
 
 MAP_OAUTH_CHECK_ENDPOINT: Final = "/oauth/resource.php"

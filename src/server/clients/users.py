@@ -27,7 +27,7 @@ from .utils import compute_signature, get_time_stamp
 
 
 type GetMapUserResponse = MapUser | MapError
-"""Type alias for Get MapUser response."""
+"""Type alias for response of getting a MapUser."""
 adapter: TypeAdapter[GetMapUserResponse] = TypeAdapter(GetMapUserResponse)
 
 
@@ -49,7 +49,7 @@ def search(
     """Search for User resources in mAP API.
 
     Args:
-        query (SearchRequestParameter): The search filter criteria.
+        query (SearchRequestParameter): The search query parameters.
         include (set[str] | None):
             Attribute names to include in the response. Optional.
         exclude (set[str] | None):
@@ -58,7 +58,9 @@ def search(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        list[GetMapUserResponse]: List of User resources matching the search criteria.
+        SearchResponse | MapError:
+            The search response containing User resources. If the search fails,
+            returns an Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -106,7 +108,7 @@ def get_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapUserResponse: The User resource if found, otherwise Error response.
+        MapUser | MapError: The User resource if found, otherwise Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -152,7 +154,7 @@ def get_by_eppn(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapUserResponse: The User resource if found, otherwise Error response.
+        MapUser | MapError: The User resource if found, otherwise Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -198,7 +200,7 @@ def post(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapUserResponse:
+        MapUser | MapError:
             The created User resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -231,7 +233,7 @@ def post(
     if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def put_by_id(
@@ -255,7 +257,7 @@ def put_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapUserResponse:
+        MapUser | MapError:
             The updated User resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -288,7 +290,7 @@ def put_by_id(
     if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text)
+    resource = adapter.validate_json(response.text, extra="ignore")
 
     if isinstance(resource, MapUser):
         user_updated.send(put_by_id, user=resource)
@@ -316,10 +318,10 @@ def patch_by_id(
         exclude (set[str] | None):
             Attribute names to exclude from update. Optional.
         access_token (str): OAuth access token for authorization.
-        client_secret (str): Client secret for Basic Authentication.
+        client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapUserResponse:
+        MapUser | MapError:
             The updated User resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -348,7 +350,7 @@ def patch_by_id(
     if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text)
+    resource = adapter.validate_json(response.text, extra="ignore")
 
     if isinstance(resource, MapUser):
         user_updated.send(patch_by_id, user=resource)
@@ -374,7 +376,7 @@ def get_self(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapUserResponse: The User resource if found, otherwise Error response.
+        MapUser | MapError: The User resource if found, otherwise Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -396,7 +398,7 @@ def get_self(
     if response.status_code > HTTPStatus.BAD_REQUEST:
         response.raise_for_status()
 
-    return adapter.validate_json(response.text)
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 @cache
@@ -435,34 +437,11 @@ def _build_user_dump_exclude(exclude: set[str] | None) -> dict[str, t.Any]:
 
 @user_updated.connect
 @user_deleted.connect
-def handle_user_updated(
-    _sender: object = None,
-    *_args,  # noqa: ANN002
-    user: MapUser | None = None,
-    **_kwargs,  # noqa: ANN003
-) -> None:
-    """Handle user_updated signal to clear cache of the updated user.
-
-    Args:
-        sender: The sender of the signal.
-        user (MapUser): The updated User resource.
-    """
-    if not isinstance(user, MapUser) or not user.id:
-        return
-
-    get_by_id.clear_cache(user.id)
-    get_by_eppn.clear_cache(*[
-        eppn.value for eppn in user.edu_person_principal_names or []
-    ])
-
-
-@user_updated.connect
-@user_deleted.connect
 def handle_user_updated_by_eppn(
     _sender: object = None,
-    *_args,  # noqa: ANN002
+    *_args,  # ruff: ignore[missing-type-args]
     eppns: list[str] | None = None,
-    **_kwargs,  # noqa: ANN003
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
 ) -> None:
     """Handle user_updated signal to clear cache of the updated user by ePPN.
 
@@ -480,9 +459,9 @@ def handle_user_updated_by_eppn(
 @user_deleted.connect
 def handle_user_updated_by_id(
     _sender: object = None,
-    *_args,  # noqa: ANN002
+    *_args,  # ruff: ignore[missing-type-args]
     user_id: str | None = None,
-    **_kwargs,  # noqa: ANN003
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
 ) -> None:
     """Handle user_updated signal to clear cache of the updated user by ID.
 
@@ -501,8 +480,8 @@ def handle_user_updated_by_id(
 @user_deleted.connect
 def handle_reset_search_cache(
     _sender: object = None,
-    *_args,  # noqa: ANN002
-    **_kwargs,  # noqa: ANN003
+    *_args,  # ruff: ignore[missing-type-args]
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
 ) -> None:
     """Handle users signals to clear cache of the search results.
 

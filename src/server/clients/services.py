@@ -51,7 +51,7 @@ def search(
     """Search for Service resources in mAP API.
 
     Args:
-        query (SearchRequestPayload): The search filter criteria.
+        query (SearchRequestParameter): The search query parameters.
         include (set[str] | None):
             Attribute names to include in the response. Optional.
         exclude (set[str] | None):
@@ -60,7 +60,9 @@ def search(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        list[GetMapUserResponse]: List of User resources matching the search criteria.
+        SearchResponse | MapError:
+            The search response containing Service resources. If the search fails,
+            returns an Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -69,11 +71,7 @@ def search(
         "signature": signature,
     }
     attributes_params = _build_attribute_params(include, exclude)
-
-    query_params = query.model_dump(
-        mode="json",
-        by_alias=True,
-    )
+    query_params = query.model_dump(mode="json", by_alias=True)
 
     response = requests.get(
         f"{config.MAP_CORE.base_url}{MAP_SERVICES_ENDPOINT}",
@@ -112,7 +110,7 @@ def get_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapServiceResponse: The Service resource if found, otherwise Error response.
+        MapService | MapError: The Service resource if found, otherwise Error response.
     """
     time_stamp = get_time_stamp()
     signature = compute_signature(client_secret, access_token, time_stamp)
@@ -149,7 +147,7 @@ def post(
     """Create a Service resource in mAP API.
 
     Args:
-        service (MapService): Service resource to create.
+        service (MapService): The Service resource to create.
         include (set[str] | None):
             Attribute names to include in creation. Optional.
         exclude (set[str] | None):
@@ -158,7 +156,7 @@ def post(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapServiceResponse:
+        MapService | MapError:
             The created Service resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -206,7 +204,7 @@ def put_by_id(
     """Update a Service resource by its ID in mAP API.
 
     Args:
-        service (MapService): Service resource to update.
+        service (MapService): The Service resource to update.
         include (set[str] | None):
             Attribute names to include in update. Optional.
         exclude (set[str] | None):
@@ -215,7 +213,7 @@ def put_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapServiceResponse:
+        MapService | MapError:
             The updated Service resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -248,12 +246,7 @@ def put_by_id(
     if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text, extra="ignore")
-
-    if isinstance(resource, MapService):
-        repository_updated.send(put_by_id, service=resource)
-
-    return resource
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def patch_by_id(
@@ -269,17 +262,17 @@ def patch_by_id(
     """Patch a Service resource by its ID in mAP API.
 
     Args:
-        service_id (str): ID of the Service resource to patch.
+        service_id (str): ID of the Service resource to update.
         operations (Sequence[PatchOperation]): List of patch operations to apply.
         include (set[str] | None):
-            Attribute names to include in patch. Optional.
+            Attribute names to include in update. Optional.
         exclude (set[str] | None):
-            Attribute names to exclude from patch. Optional.
+            Attribute names to exclude from update. Optional.
         access_token (str): OAuth access token for authorization.
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        GetMapServiceResponse:
+        MapService | MapError:
             The patched Service resource if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -291,7 +284,7 @@ def patch_by_id(
     attributes_params = _build_attribute_params(include, exclude)
 
     payload = PatchRequestPayload(operations=operations).model_dump(
-        mode="json", by_alias=True, exclude_none=False
+        mode="json", by_alias=True, exclude_none=True
     )
 
     response = requests.patch(
@@ -304,15 +297,11 @@ def patch_by_id(
         timeout=config.MAP_CORE.timeout,
     )
 
-    if response.status_code > HTTPStatus.BAD_REQUEST:
+    status_code = response.status_code
+    if status_code not in {HTTPStatus.BAD_REQUEST, HTTPStatus.CONFLICT}:
         response.raise_for_status()
 
-    resource = adapter.validate_json(response.text, extra="ignore")
-
-    if isinstance(resource, MapService):
-        repository_updated.send(patch_by_id, service=resource)
-
-    return resource
+    return adapter.validate_json(response.text, extra="ignore")
 
 
 def delete_by_id(
@@ -329,7 +318,7 @@ def delete_by_id(
         client_secret (str): Client secret for Authentication.
 
     Returns:
-        MapError:
+        MapError | None:
             The None if successful, otherwise Error response.
     """
     time_stamp = get_time_stamp()
@@ -352,7 +341,6 @@ def delete_by_id(
         response.raise_for_status()
 
     if not response.text:
-        repository_deleted.send(delete_by_id, service=MapService(id=service_id))
         return None
 
     return MapError.model_validate_json(response.text, extra="ignore")
@@ -382,33 +370,13 @@ def _build_attribute_params(
 
 @repository_updated.connect
 @repository_deleted.connect
-def handle_repository_updated(
-    _sender: object = None,
-    *_args,  # noqa: ANN002
-    service: MapService | None = None,
-    **_kwargs,  # noqa: ANN003
-) -> None:
-    """Handle repository updated signal to clear cache for the updated service.
-
-    Args:
-        sender: The sender of the signal.
-        service (MapService): The updated Service resource.
-    """
-    if not isinstance(service, MapService) or not service.id:
-        return
-
-    get_by_id.clear_cache(service.id)
-
-
-@repository_updated.connect
-@repository_deleted.connect
 def handle_repository_updated_by_id(
     _sender: object = None,
-    *_args,  # noqa: ANN002
+    *_args,  # ruff:ignore[missing-type-args]
     service_id: str | None = None,
-    **_kwargs,  # noqa: ANN003
+    **_kwargs,  # ruff:ignore[missing-type-kwargs]
 ) -> None:
-    """Handle repository updated signal to clear cache for the updated service by ID.
+    """Handle repository updated signal to clear cache of the updated service by ID.
 
     Args:
         sender: The sender of the signal.
@@ -425,13 +393,12 @@ def handle_repository_updated_by_id(
 @repository_deleted.connect
 def handle_reset_search_cache(
     _sender: object = None,
-    *_args,  # noqa: ANN002
-    **_kwargs,  # noqa: ANN003
+    *_args,  # ruff:ignore[missing-type-args]
+    **_kwargs,  # ruff:ignore[missing-type-kwargs]
 ) -> None:
-    """Handle users signals to clear cache of the search results.
+    """Handle services signals to clear cache of the search results.
 
     Args:
         sender: The sender of the signal.
-        **kwargs: Other keyword arguments passed with the signal.
     """
     search.clear_cache(default_id_generator())

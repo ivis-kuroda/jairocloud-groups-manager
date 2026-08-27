@@ -14,7 +14,6 @@ from pydantic.alias_generators import to_snake
 from server.const import USER_ROLES
 
 from .common import camel_case_config, forbid_extra_config
-from .map_user import MapUser
 from .summaries import GroupSummary
 
 
@@ -54,32 +53,6 @@ class UserDetail(BaseModel):
     model_config = camel_case_config | forbid_extra_config
     """Configure to use camelCase aliasing and forbid extra fields."""
 
-    @classmethod
-    def from_map_user(cls, user: MapUser, *, more_detail: bool = False) -> UserDetail:
-        """Create a UserDetail instance from a MapUser instance.
-
-        Args:
-            user (MapUser): The MapUser instance to convert.
-            more_detail (bool):
-                Whether to include more details such as groups and repositories.
-
-        Returns:
-            UserDetail: The created UserDetail instance.
-        """
-        from server.services.utils.transformers import make_user_detail  # noqa: PLC0415
-
-        return make_user_detail(user, more_detail=more_detail)
-
-    def to_map_user(self) -> MapUser:
-        """Convert this UserDetail instance to a MapUser instance.
-
-        Returns:
-            MapUser: The created MapUser instance.
-        """
-        from server.services.utils.transformers import make_map_user  # noqa: PLC0415
-
-        return make_map_user(self)
-
 
 class RepositoryRole(BaseModel):
     """Model for summary Repository information in mAP Core API."""
@@ -95,7 +68,7 @@ class RepositoryRole(BaseModel):
 
     @field_validator("user_role", mode="before")
     @classmethod
-    def transform_user_role(cls, v: t.Any) -> t.Any:  # noqa: ANN401
+    def transform_user_role(cls, v: t.Any) -> t.Any:  # ruff: ignore[any-type]
         """Transform the user_role field to USER_ROLES enum.
 
         Args:

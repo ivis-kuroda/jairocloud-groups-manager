@@ -19,7 +19,7 @@ from server.entities.map_group import (
     Service as GroupService,
 )
 from server.entities.map_service import (
-    Administrator as ServiceAdministrator,
+    Administrator as ServiceAdmin,
     Group as MapServiceGroup,
     MapService,
     ServiceEntityID,
@@ -73,8 +73,8 @@ def test_prepare_service(app, mocker: MockerFixture):
         meta=None,
         entity_ids=[ServiceEntityID(value="https://<FQDN>/shibboleth-sp")],
         administrators=[
-            ServiceAdministrator(ref=None, display=None, value="admin1"),
-            ServiceAdministrator(ref=None, display=None, value="admin2"),
+            ServiceAdmin(ref=None, display=None, value="admin1"),
+            ServiceAdmin(ref=None, display=None, value="admin2"),
         ],
         groups=[
             MapServiceGroup(ref=None, display=None, value="jc_roles_sysadm_test"),
@@ -238,7 +238,7 @@ def test_make_repository_detail_more(app, mocker: MockerFixture):
         suspended=True,
         meta=None,
         entity_ids=[ServiceEntityID(value=entity_id)],
-        administrators=[ServiceAdministrator(value="admin1"), ServiceAdministrator(value="admin2")],
+        administrators=[ServiceAdmin(value="admin1"), ServiceAdmin(value="admin2")],
         groups=[MapServiceGroup(value="jc_repo1_gr_test_group")],
     )
     expected = RepositoryDetail(
@@ -252,9 +252,9 @@ def test_make_repository_detail_more(app, mocker: MockerFixture):
         users_count=2,
         created=None,
     )
-    expected._groups = ["jc_repo1_gr_test_group"]  # noqa: SLF001
-    expected._rolegroups = []  # noqa: SLF001
-    expected._admins = ["admin1", "admin2"]  # noqa: SLF001
+    expected._groups = ["jc_repo1_gr_test_group"]
+    expected._rolegroups = []
+    expected._admins = ["admin1", "admin2"]
     affiliation = _Group(repository_id=repository_id, group_id="jc_repo1_gr_test_group", user_defined_id="test_group")
     mocker.patch("server.services.utils.transformers.resolve_repository_id", return_value=repository_id)
     mocker.patch("server.services.utils.transformers.detect_affiliation", return_value=affiliation)
@@ -414,9 +414,9 @@ def test_make_group_detail(app, mocker: MockerFixture):
         created=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
         last_modified=datetime(2026, 1, 2, 0, 0, 0, tzinfo=UTC),
     )
-    expected._users = ["user1", "user2"]  # noqa: SLF001
-    expected._admins = ["admin1", "admin2"]  # noqa: SLF001
-    expected._services = ["jc_repo1_test"]  # noqa: SLF001
+    expected._users = ["user1", "user2"]
+    expected._admins = ["admin1", "admin2"]
+    expected._services = ["jc_repo1_test"]
     group_detail = transformers.make_group_detail(group)
     assert group_detail == expected
 
@@ -688,9 +688,9 @@ def test_make_map_group(app, mocker: MockerFixture, private_attr, expected):
         type="group",
     )
     users, admins, services = private_attr
-    group._users = users  # noqa: SLF001
-    group._admins = admins  # noqa: SLF001
-    group._services = services  # noqa: SLF001
+    group._users = users
+    group._admins = admins
+    group._services = services
     assert transformers.make_map_group(group) == expected
 
 

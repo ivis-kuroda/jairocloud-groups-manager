@@ -23,7 +23,7 @@ def dump(obj: object, name: str) -> None:
     instance_path = pathlib.Path(current_app.instance_path) / "contrib"
     instance_path.mkdir(parents=True, exist_ok=True)
 
-    try:
+    try:  # ruff: ignore[too-many-statements-in-try-clause]
         if isinstance(obj, str) and obj.strip().startswith(("{", "[")):
             parsed = json.loads(obj)
             with (instance_path / f"{name}.json").open("w", encoding="utf-8") as f:

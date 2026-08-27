@@ -10,7 +10,7 @@ These types are used in client arguments.
 import typing as t
 
 
-# ruff: noqa: PYI046
+# ruff: file-ignore[unused-private-protocol]
 
 
 class _SpCerts(t.Protocol):

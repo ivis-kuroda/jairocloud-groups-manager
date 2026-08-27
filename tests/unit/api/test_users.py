@@ -53,7 +53,7 @@ def test_get_invalid_query_error(mocker: MockerFixture):
     assert_message(res.message, E.UNSUPPORTED_SEARCH_FILTER)
 
 
-def test_post(app, user_details, mocker: MockerFixture):
+def test_post(use_blueprint, app, user_details, mocker: MockerFixture):
     body = expected = user_details[USER_ROLES.CONTRIBUTOR]
     mock_create = mocker.patch.object(server.api.users.users, "create", return_value=expected)
 

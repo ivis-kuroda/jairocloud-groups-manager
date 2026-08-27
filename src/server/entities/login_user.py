@@ -13,8 +13,6 @@ from typing import override
 from flask_login import UserMixin
 from pydantic import BaseModel, Field, computed_field
 
-from server.config import config
-
 from .common import camel_case_config
 
 
@@ -46,10 +44,11 @@ class LoginUser(BaseModel, UserMixin):
     @cached_property
     def is_system_admin(self) -> bool:
         """If the logged-in user is a system administrator, then True."""
-        from server.services.utils import extract_group_ids  # noqa: PLC0415
+        from server.services.utils import (  # ruff: ignore[import-outside-top-level]
+            is_current_user_system_admin,
+        )
 
-        group_ids = extract_group_ids(self.is_member_of)
-        return config.GROUPS.id_patterns.system_admin in group_ids
+        return is_current_user_system_admin()
 
     @override
     def get_id(self) -> str:
@@ -57,8 +56,8 @@ class LoginUser(BaseModel, UserMixin):
 
     @property
     def permitted_repositories(self) -> set[str]:
-        """Get the list of repository IDs the user has permission to operate on."""
-        from server.services.utils.permissions import (  # noqa: PLC0415
+        """The list of repository IDs the user has permission to operate on."""
+        from server.services.utils import (  # ruff: ignore[import-outside-top-level]
             get_permitted_repository_ids,
         )
 

@@ -95,7 +95,7 @@ class UserSummary(BaseModel):
         Returns:
             UserSummary: The created UserSummary instance.
         """
-        from server.services.utils import (  # noqa: PLC0415
+        from server.services.utils import (  # ruff: ignore[import-outside-top-level]
             detect_affiliations,
             get_highest_role,
             get_permitted_repository_ids,

@@ -143,7 +143,7 @@ const pageInfo = computed(() => makePageInfo(executeResult))
     </div>
 
     <BulkUserTable
-      :data="executeResult!.results"
+      :data="executeResult!.items"
       :total-count="executeResult!.total"
       :page-info="pageInfo"
       :offset="executeResult!.offset"

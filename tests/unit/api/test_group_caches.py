@@ -28,11 +28,10 @@ def test_init_settings(config: RuntimeConfig, mocker: MockerFixture):
     mock_setup_config.assert_called_once_with(config.for_group_caches)
 
 
-def test_get(repository_summaries, cached_data, mocker: MockerFixture):
+def test_get(repository_summaries, repository_caches, mocker: MockerFixture):
     page, length, total = 1, 20, 20
     query = CacheQuery(q=None, p=page, l=length)
-    summaries = repository_summaries * 2
-    cache_result = SearchResult(resources=cached_data(summaries), total=total, page_size=length, offset=page)
+    cache_result = SearchResult(resources=repository_caches * 2, total=total, page_size=length, offset=page)
     mock_get_cache = mocker.patch.object(server.api.group_caches.group_caches, "get_repository_cache")
     mock_get_cache.return_value = cache_result
 
@@ -81,9 +80,9 @@ def test_post_conflict(mocker: MockerFixture):
     mock_update.assert_called_once_with(operation, ids)
 
 
-def test_status(repository_summaries, cached_data, mocker: MockerFixture):
+def test_status(repository_caches, mocker: MockerFixture):
     done, total = 10, 20
-    repository_cache = cached_data(repository_summaries[:1])[0]
+    repository_cache = repository_caches[0]
     expected = TaskDetail(
         results=[repository_cache], status="in_progress", current="test_1_repo_ac_jp", done=done, total=total
     )

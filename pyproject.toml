@@ -1,41 +1,55 @@
+#:schema https://json.schemastore.org/pyproject.json
+
 [build-system]
-requires = ["uv_build>=0.11.21,<0.12"]
+requires = ["uv_build>=0.11.32,<0.13"]
 build-backend = "uv_build"
 
 [project]
 name = "jairocloud-groups-manager"
 version = "1.0.0a3"
 authors = [
-  {name = "National Institute of Informatics"}
+    { name = "National Institute of Informatics" },
+    { name = "Research Center for Open Science and Data Platform" }
 ]
 description = "A web client for JAIRO Cloud repository administrators to manage groups in the GakuNin Cloud Gateway."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
 requires-python = ">=3.14"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.14",
+    "Framework :: Flask",
+]
 dependencies = [
-  "celery[redis]>=5.6.3",
-  "flask>=3.1.3",
-  "flask-login>=0.6.3",
-  "flask-pydantic>=0.14.0",
-  "flask-sqlalchemy>=3.1.1",
-  "openpyxl>=3.1.5",
-  "psycopg[binary]>=3.3.4",
-  "pydantic-settings>=2.14.1",
-  "pydantic[email]>=2.13.4",
-  "requests>=2.34.2",
-  "sqlalchemy-utils>=0.42.1",
-  "weko-group-cache-db",
+    "celery[redis]>=5.6.3",
+    "flask>=3.1.3",
+    "flask-login>=0.6.3",
+    "flask-pydantic>=0.14.0",
+    "flask-sqlalchemy>=3.1.1",
+    "openpyxl>=3.1.5",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.2",
+    "pydantic[email]>=2.13.4",
+    "requests>=2.34.2",
+    "sqlalchemy-utils>=0.42.1",
+    "weko-group-cache-db",
 ]
 
 [dependency-groups]
 dev = [
-  "celery-types>=0.26.0",
-  "pyright>=1.1.410",
-  "pytest>=9.1.0",
-  "pytest-cov>=7.1.0",
-  "pytest-mock>=3.15.1",
-  "taskipy>=1.14.1",
+    "celery-types>=0.26.0",
+    "pyright>=1.1.410",
+    "pytest>=9.1.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "pytest-profiling>=1.8.1",
+    "pytest-timeout>=2.4.0",
+    "taskipy>=1.14.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/RCOSDP/jairocloud-groups-manager.git"
 
 [project.scripts]
 jairocloud-groups-manager = "server.main:cli"
@@ -61,8 +75,11 @@ module-root = "src"
 [tool.pytest]
 pythonpath = ["."]
 addopts = [
-  "--import-mode=importlib",
+    "--import-mode=importlib",
 ]
+timeout = "2"
+timeout_method = "thread"
+
 
 [tool.coverage.run]
 branch = true
@@ -71,27 +88,38 @@ source = ["src/server"]
 [tool.coverage.report]
 omit = ["__init__.py", "src/contrib/*", "tests/*"]
 exclude_also = [
-  "if t.TYPE_CHECKING:",
+    "if t.TYPE_CHECKING:",
 ]
 
 
 [tool.ruff.lint]
 # refer to https://docs.astral.sh/ruff/settings/#lint
 ignore = [
-  "COM812",
-  "INP001",
-  "D203",
-  "D213",
-  "TRY400",
+    "missing-trailing-comma",
+    "implicit-namespace-package",
+    "incorrect-blank-line-before-class",
+    "multi-line-summary-second-line",
+    "error-instead-of-exception",
 ]
 preview = true
 select = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"**/api/**.py" = ["TC001", "TC002", "TC003"]
-"**/entities/**.py" = ["TC001", "TC002", "TC003"]
-"*.pyi" = ["CPY001", "E501"]
+"__init__.py" = ["unused-import"]
+"**/api/**.py" = [
+    "typing-only-first-party-import",
+    "typing-only-third-party-import",
+    "typing-only-standard-library-import",
+]
+"**/entities/**.py" = [
+    "typing-only-first-party-import",
+    "typing-only-third-party-import",
+    "typing-only-standard-library-import"
+]
+"*.pyi" = [
+    "missing-copyright-notice",
+    "line-too-long"
+]
 
 [tool.ruff.lint.isort]
 # refer to https://docs.astral.sh/ruff/settings/#lintisort
@@ -101,12 +129,12 @@ lines-between-types = 1
 known-first-party = ["server"]
 sections = { "testing-helpers" = ["tests"] }
 section-order = [
-  "future",
-  "standard-library",
-  "third-party",
-  "first-party",
-  "testing-helpers",
-  "local-folder",
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "testing-helpers",
+    "local-folder",
 ]
 
 [tool.ruff.lint.pylint]

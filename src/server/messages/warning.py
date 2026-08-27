@@ -73,6 +73,12 @@ FAILED_DELETE_CACHE = LogMessage(
 )
 
 
+ROLE_GROUP_ALREADY_EXISTS = LogMessage(
+    "W115",
+    "Role group already exists for Repository (id: %(rid)s, rolegroup: %(gid)s).",
+)
+
+
 CONFIRM_DELETE_GROUP = LogMessage(
     "W230",
     "Are you sure to delete the Group (id: %(gid)s)?",

@@ -95,7 +95,7 @@ class GlobalSearchQuery(BaseModel):
     q: t.Annotated[str | None, "query"] = None
     """Search term to filter results."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
 
@@ -130,7 +130,7 @@ class RepositoriesQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
     model_config = ignore_extra_config
@@ -179,7 +179,7 @@ class GroupsQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
     model_config = ignore_extra_config
@@ -229,7 +229,7 @@ class UsersQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
     model_config = ignore_extra_config
@@ -289,7 +289,7 @@ class OperatorQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
     model_config = ignore_extra_config
@@ -363,7 +363,7 @@ class BulkResultQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
 
@@ -400,7 +400,7 @@ class HistoryQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number to retrieve."""
 
-    l: t.Annotated[int | None, "length"] = None  # noqa: E741
+    l: t.Annotated[int | None, "length"] = None  # ruff: ignore[ambiguous-variable-name]
     """Page size (number of items per page)."""
 
     model_config = ignore_extra_config
@@ -432,7 +432,7 @@ class CacheQuery(BaseModel):
     p: t.Annotated[int | None, "page"] = None
     """Page number for pagination."""
 
-    l: t.Annotated[int | None, "per"] = None  # noqa: E741
+    l: t.Annotated[int | None, "per"] = None  # ruff: ignore[ambiguous-variable-name]
     """Number of items per page for pagination."""
 
 

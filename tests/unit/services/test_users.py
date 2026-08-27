@@ -8,14 +8,13 @@ import pytest
 import requests
 
 from pydantic_core import ValidationError
-from pytest_mock import MockerFixture
 from requests import Response
 
 from server.const import USER_ROLES
 from server.entities.map_error import MapError
-from server.entities.map_user import EPPN, Email, Group, MapUser
+from server.entities.map_user import Group, MapUser
 from server.entities.search_request import SearchRequestParameter, SearchResponse, SearchResult
-from server.entities.summaries import UserSummary
+from server.entities.summaries import GroupSummary, RepositorySummary, UserSummary
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.exc import (
     ApiClientError,
@@ -35,9 +34,8 @@ from server.services.utils import (
     UsersCriteria,
     make_criteria_object,
 )
-from server.services.utils.affiliations import Affiliations, _Group, _RoleGroup
 
-from tests.helpers import load_json_data
+from tests.helpers import regex
 
 
 if t.TYPE_CHECKING:
@@ -1346,71 +1344,65 @@ def test_make_export_file(app, mocker: MockerFixture) -> None:
     assert isinstance(result, Path)
 
 
-def test__wite_user(app, mocker: MockerFixture):
-    user_list = [
-        MapUser(
-            id="user1",
-            user_name="User 1",
-            groups=[Group(value="jc_repo1_gr_test_1"), Group(value="jc_repo2_gr_test_1")],
-            emails=[Email(value="test@example.ac.jp")],
-            edu_person_principal_names=[EPPN(value="eppn1")],
-        )
-    ]
+def test__wite_user(app, test_config, map_users, mocker: MockerFixture):
     delimiter = ","
-    file_path = Path("/test/path")
-    permitted_repository_ids = {"repo1"}
-    mocker.patch(
-        "server.services.users.detect_affiliations",
-        return_value=Affiliations(
-            roles=[],
-            groups=[
-                _Group(repository_id="repo1", group_id="jc_repo1_gr_test_1", user_defined_id="test_1"),
-                _Group(repository_id="repo2", group_id="jc_repo2_gr_test_1", user_defined_id="test_1"),
-            ],
-        ),
-    )
+    file_path = Path("/var/test/path")
+    pattern = test_config.GROUPS.id_patterns["user_defined"]
+    repository_id = "test_repo_ac_jp"
+    group_id = pattern.format(repository_id=repository_id, user_defined_id="test")
+    user_list = map_users.values()
+
+    mocker.patch("server.services.users.is_current_user_system_admin", return_value=True)
+    mocker.patch("pathlib.Path.write_text", return_value=None)
+
+    (_, repositories), (_, groups), (_, users_) = users._wite_user(user_list, delimiter, file_path, {"*"})
+    assert repositories == [RepositorySummary(id="test_repo_ac_jp")]
+    assert groups == [GroupSummary(id=group_id)]
+    assert users_ == [UserSummary(id=u.id, user_name=u.user_name) for u in user_list]
+
+
+def test__wite_user_no_system_admin(app, test_config, map_users, mocker: MockerFixture):
+    delimiter = ","
+    file_path = Path("/var/test/path")
+    pattern = test_config.GROUPS.id_patterns["user_defined"]
+    repository_id = "test_repo_ac_jp"
+    group_id = pattern.format(repository_id=repository_id, user_defined_id="test")
+    user_list = list(map_users.values())[1:]
+
+    other_repository_id = "test_repo_other_ac_jp"
+    other_group_id = pattern.format(repository_id=other_repository_id, user_defined_id="test-other")
+    user_list[2].groups.append(Group(value=other_group_id))
+
     mocker.patch("server.services.users.is_current_user_system_admin", return_value=False)
     mocker.patch("pathlib.Path.write_text", return_value=None)
-    file_repositories, file_groups, file_users = users._wite_user(  # noqa: SLF001
-        user_list, delimiter, file_path, permitted_repository_ids
-    )
-    assert file_repositories == [{"id": "repo1", "service_name": ""}]
-    assert file_groups == [{"id": "jc_repo1_gr_test_1", "display_name": ""}]
-    assert file_users == [{"id": "user1", "user_name": "User 1"}]
+
+    (_, repositories), (_, groups), (_, users_) = users._wite_user(user_list, delimiter, file_path, {repository_id})
+    assert repositories == [RepositorySummary(id="test_repo_ac_jp")]
+    assert groups == [GroupSummary(id=group_id)]
+    assert users_ == [UserSummary(id=u.id, user_name=u.user_name) for u in user_list]
 
 
-@pytest.mark.parametrize(
-    ("affiliations", "expected"),
-    [
-        (
-            Affiliations(roles=[_RoleGroup(repository_id=None, role=USER_ROLES.SYSTEM_ADMIN)], groups=[]),
-            E.USER_CANNOT_EXPORT_SYSTEM_ADMIN,
-        ),
-        (Affiliations(roles=[], groups=[]), E.USER_FORBIDDEN_EXPORT),
-    ],
-)
-def test__wite_user_with_exception(app, mocker: MockerFixture, affiliations, expected) -> None:
-    user_list = [
-        MapUser(
-            id="user1",
-            user_name="User 1",
-            groups=[Group(value="jc_repo1_gr_test_1")],
-            emails=[Email(value="test@example.ac.jp")],
-            edu_person_principal_names=[EPPN(value="eppn1")],
-        )
-    ]
+def test__wite_user_cannot_export_system_admin(app, map_users, mocker: MockerFixture):
     delimiter = ","
-    file_path = Path("/test/path")
-    permitted_repository_ids = {"repo1"}
-    mocker.patch("server.services.users.detect_affiliations", return_value=affiliations)
+    file_path = Path("/var/test/path")
+    user_list = list(map_users.values())
+    repository_id = "test_repo_ac_jp"
+
     mocker.patch("server.services.users.is_current_user_system_admin", return_value=False)
-    with pytest.raises(InvalidExportError) as exc:
-        users._wite_user(user_list, delimiter, file_path, permitted_repository_ids)  # noqa: SLF001
-    assert str(exc.value) == str(expected)
+    mocker.patch("pathlib.Path.write_text")
+
+    with pytest.raises(InvalidExportError, match=regex(E.USER_CANNOT_EXPORT_SYSTEM_ADMIN)):
+        users._wite_user(user_list, delimiter, file_path, {repository_id})
 
 
-@pytest.fixture
-def user_data() -> tuple[dict[str, t.Any], MapUser]:
-    json_data = load_json_data("data/map_user.json")
-    user = MapUser.model_validate(json_data)
-    return json_data, user
+def test__wite_user_forbidden(app, map_users, mocker: MockerFixture):
+    delimiter = ","
+    file_path = Path("/var/test/path")
+    user_list = list(map_users.values())[1:]
+    repository_id = "test_repo_other_ac_jp"
+
+    mocker.patch("server.services.users.is_current_user_system_admin", return_value=False)
+    mocker.patch("pathlib.Path.write_text")
+
+    with pytest.raises(InvalidExportError, match=regex(E.USER_FORBIDDEN_EXPORT)):
+        users._wite_user(user_list, delimiter, file_path, {repository_id})

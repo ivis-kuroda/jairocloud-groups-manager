@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 
 ARG PYTHON_VERSION=3.14
+ARG UV_VERSION=0.12
+
+FROM docker.io/astral/uv:${UV_VERSION} AS uv
 
 # ==============================
 # Base stage: common setup
@@ -16,10 +19,18 @@ ENV VIRTUAL_ENV="/code/.venv"
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /code
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-RUN pip install -U pip && pip install uv
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get upgrade --yes \
+    && \
+    apt-get install -y --no-install-recommends \
+        git
+
+# Setup uv
+# From https://docs.astral.sh/uv/guides/integration/docker/
+# but using docker.io/astral/uv because failure to fetch oauth token
+COPY --from=uv /uv /uvx /bin/
 
 RUN groupadd -g ${GID} ${GROUPNAME} && \
     useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME}
@@ -34,7 +45,8 @@ USER ${USERNAME}
 FROM base AS dev
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-install-project
 
 COPY --chown=${USERNAME}:${GROUPNAME} . .
 RUN uv pip install -e .
@@ -55,14 +67,17 @@ CMD ["flask", "run", "--reload"]
 FROM base AS prod
 
 USER root
-RUN apt-get update && \
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && \
     apt-get install -y --no-install-recommends \
         build-essential \
         python3-dev \
         libssl-dev \
         libpcre2-dev \
-        supervisor && \
-    rm -rf /var/lib/apt/lists/*
+        supervisor
 RUN uv pip install uwsgi --system
 
 

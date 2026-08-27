@@ -4,7 +4,7 @@
 
 """Providers of decorators for client functions."""
 
-# ruff: noqa: ANN002, ANN003
+# ruff: file-ignore[missing-type-args, missing-type-kwargs]
 
 import hashlib
 import inspect
@@ -27,12 +27,15 @@ from server.entities.map_error import MapError
 from server.messages import E, I, W
 
 
-class Cacheable[**P, R: BaseModel](t.Protocol):
+class CacheableClient[**P, R: BaseModel](t.Protocol):
     """Callable protocol for cached resources with cache control methods."""
 
     __name__: str
 
     _cache_namespace: str
+
+    def run(self, *args: P.args, **kwargs: P.kwargs) -> R:  # ruff:ignore[undocumented-public-method]
+        return self(*args, **kwargs)
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Call wrapped function with cache behavior."""
@@ -48,21 +51,21 @@ class Cacheable[**P, R: BaseModel](t.Protocol):
 
 
 @t.overload
-def cache_resource[**P, R: BaseModel](f: t.Callable[P, R]) -> Cacheable[P, R]: ...
+def cache_resource[**P, R: BaseModel](f: t.Callable[P, R]) -> CacheableClient[P, R]: ...
 @t.overload
 def cache_resource[**P, R: BaseModel](
     *,
     id_generator: t.Callable[..., str] | None = None,
     timeout: int | None = None,
-) -> t.Callable[[t.Callable[P, R]], Cacheable[P, R]]: ...
+) -> t.Callable[[t.Callable[P, R]], CacheableClient[P, R]]: ...
 
 
-def cache_resource[**P, R: BaseModel](  # noqa: C901
+def cache_resource[**P, R: BaseModel](  # ruff: ignore[complex-structure]
     f: t.Callable[P, R] | None = None,
     *,
     id_generator: t.Callable[..., str] | None = None,
     timeout: int | None = None,
-) -> Cacheable[P, R] | t.Callable[[t.Callable[P, R]], Cacheable[P, R]]:
+) -> CacheableClient[P, R] | t.Callable[[t.Callable[P, R]], CacheableClient[P, R]]:
     """Cache the response of the API client function using Redis.
 
     This decorator attaches cache metadata and provides a method to clear the cache
@@ -80,7 +83,7 @@ def cache_resource[**P, R: BaseModel](  # noqa: C901
         Callable: Decorated function with caching.
     """
 
-    def decorator(func: t.Callable[P, R]) -> Cacheable[P, R]:
+    def decorator(func: t.Callable[P, R]) -> CacheableClient[P, R]:
 
         hints = get_type_hints(func)
         return_type: type[R] | None = hints.get("return")
@@ -159,8 +162,8 @@ def cache_resource[**P, R: BaseModel](  # noqa: C901
                 traceback.print_exc()
             return result
 
-        wrapper = t.cast("Cacheable[P, R]", _wrapper)
-        wrapper._cache_namespace = namespace  # noqa: SLF001
+        wrapper = t.cast("CacheableClient[P, R]", _wrapper)
+        wrapper._cache_namespace = namespace  # ruff: ignore[private-member-access]
         wrapper.clear_cache = partial(_clear_cache, wrapper)
         return wrapper
 
@@ -188,7 +191,7 @@ def default_id_generator(*_, **__) -> str:
     return ",".join(permitted)
 
 
-def _clear_cache(func: Cacheable, *identifier: str) -> None:
+def _clear_cache(func: CacheableClient, *identifier: str) -> None:
     """Delete cached responses for the given function and resource id.
 
     Args:
@@ -200,7 +203,7 @@ def _clear_cache(func: Cacheable, *identifier: str) -> None:
     """
     prefix = config.REDIS.key_prefix
     try:
-        namespace = func._cache_namespace  # noqa: SLF001
+        namespace = func._cache_namespace  # ruff: ignore[private-member-access]
     except AttributeError as exc:
         raise NotImplementedError(
             E.UNINIT_RESOURCE_CACHE % {"name": func.__name__}

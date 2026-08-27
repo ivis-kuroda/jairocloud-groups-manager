@@ -102,7 +102,7 @@ def test_prepare_issuing_url(config: RuntimeConfig, client_creds: ClientCredenti
 
 
 def test_prepare_issuing_url_no_credentials(
-    app, config: RuntimeConfig, client_creds: ClientCredentials, mocker: MockerFixture, caplog
+    use_blueprint, app, config: RuntimeConfig, client_creds: ClientCredentials, mocker: MockerFixture, caplog
 ):
     mocker.patch.object(server.services.token, "get_client_credentials", return_value=None)
     mock_issue = mocker.patch.object(server.services.token.auth, "issue_client_credentials", return_value=client_creds)

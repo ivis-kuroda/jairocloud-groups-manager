@@ -16,7 +16,6 @@ from tests.helpers import assert_message
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
-    from werkzeug.local import LocalProxy
 
     from server.config import RuntimeConfig
 
@@ -123,7 +122,7 @@ def test_proxy(test_config: RuntimeConfig, mocker: MockerFixture):
     app.config["SQLALCHEMY_DATABASE_URI"] = test_config.SQLALCHEMY_DATABASE_URI
     expected = SQLAlchemy(app)
 
-    proxy = t.cast("LocalProxy[SQLAlchemy]", server.db.utils.db)
+    proxy = server.db.utils.db
     with app.app_context():
         assert proxy == expected
         assert proxy._get_current_object() == expected

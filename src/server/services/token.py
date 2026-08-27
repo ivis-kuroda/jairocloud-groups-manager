@@ -19,7 +19,6 @@ from server.config import config
 from server.const import MAP_OAUTH_AUTHORIZE_ENDPOINT, OAUTH_CALLBACK_CHANNEL
 from server.datastore import app_cache
 from server.entities.map_error import MapError
-from server.entities.user_detail import UserDetail
 from server.exc import (
     CertificatesError,
     CredentialsError,
@@ -34,10 +33,12 @@ from .service_settings import (
     save_client_credentials,
     save_oauth_token,
 )
+from .utils import make_user_detail
 
 
 if t.TYPE_CHECKING:
     from server.entities.map_user import MapUser
+    from server.entities.user_detail import UserDetail
 
 
 def get_access_token() -> str:
@@ -294,4 +295,4 @@ def get_token_owner() -> UserDetail:
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
-    return UserDetail.from_map_user(result)
+    return make_user_detail(result)

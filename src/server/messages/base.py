@@ -4,7 +4,7 @@
 
 """Provides base classes for log messages used in the server application."""
 
-# ruff: noqa: D105
+# ruff: file-ignore[undocumented-magic-method]
 
 import typing as t
 
@@ -34,8 +34,8 @@ class LogMessage(UserString):
     def __hash__(self) -> int:
         return hash((self.code, self.data))
 
-    def __format__(self, format_spec: str) -> t.NoReturn:
-        raise NotImplementedError
+    # def __format__(self, format_spec: str) -> t.NoReturn:
+    #     raise NotImplementedError
 
     def __add__(self, other: object) -> t.NoReturn:
         raise NotImplementedError

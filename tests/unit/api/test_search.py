@@ -26,7 +26,7 @@ def test_get(user_summaries, group_summaries, repository_summaries, mocker: Mock
     rresult = SearchResult(total=rnum, page_size=size, offset=offset, resources=rresrc)
     gresult = SearchResult(total=gnum, page_size=size, offset=offset, resources=gresrc)
     uresult = SearchResult(total=unum, page_size=size, offset=offset, resources=uresrc)
-    mock_rsearch = mocker.patch.object(server.api.search.repositories, "search", return_value=rresult)
+    mock_rsearch = mocker.patch.object(server.api.search.RepositoryService, "search", return_value=rresult)
     mock_gsearch = mocker.patch.object(server.api.search.groups, "search", return_value=gresult)
     mock_usearch = mocker.patch.object(server.api.search.users, "search", return_value=uresult)
 
@@ -59,7 +59,7 @@ def test_get_partial_invalid_query_error(repository_summaries, user_summaries, m
     rresult = SearchResult(total=rnum, page_size=size, offset=0, resources=rresrc)
     uresult = SearchResult(total=unum, page_size=size, offset=0, resources=uresrc)
 
-    mocker.patch.object(server.api.search.repositories, "search", return_value=rresult)
+    mocker.patch.object(server.api.search.RepositoryService, "search", return_value=rresult)
     mock_groups_search = mocker.patch.object(server.api.search.groups, "search")
     mock_groups_search.side_effect = InvalidQueryError(E.UNSUPPORTED_SEARCH_FILTER)
     mocker.patch.object(server.api.search.users, "search", return_value=uresult)
@@ -75,7 +75,7 @@ def test_get_all_invalid_query_error(mocker: MockerFixture):
     query = GlobalSearchQuery(q=search_term, l=size)
     error = InvalidQueryError(E.UNSUPPORTED_SEARCH_FILTER)
 
-    mocker.patch.object(server.api.search.repositories, "search", side_effect=error)
+    mocker.patch.object(server.api.search.RepositoryService, "search", side_effect=error)
     mocker.patch.object(server.api.search.groups, "search", side_effect=error)
     mocker.patch.object(server.api.search.users, "search", side_effect=error)
 

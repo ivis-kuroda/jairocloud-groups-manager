@@ -26,7 +26,6 @@ from server.entities.map_error import MapError
 from server.entities.search_request import SearchResponse, SearchResult
 from server.entities.summaries import RepositorySummary
 from server.exc import (
-    CredentialsError,
     InvalidFormError,
     InvalidQueryError,
     JAIROCloudGroupsManagerError,
@@ -40,6 +39,7 @@ from server.services.utils import (
     RepositoriesCriteria,
     build_patch_operations,
     build_search_query,
+    make_map_service,
     make_repository_detail,
     make_repository_summary,
     prepare_service,
@@ -88,14 +88,13 @@ def search(
 
     Raises:
         InvalidQueryError: If the query construction is invalid.
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
     default_include = {"id", "service_name", "service_url", "entity_ids"}
     query = build_search_query(criteria)
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         results: SearchResponse[MapService] | MapError = services.search(
             query,
             include=default_include,
@@ -104,8 +103,7 @@ def search(
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_SEARCH_REPOSITORIES, {"filter": query.filter})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -117,9 +115,6 @@ def search(
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_SEARCH_REPOSITORIES, {"filter": query.filter})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError, InvalidQueryError:
-        raise
 
     if isinstance(results, MapError):
         current_app.logger.error(E.FAILED_SEARCH_REPOSITORIES, {"filter": query.filter})
@@ -169,20 +164,18 @@ def get_by_id(
         - MapService: The raw Repository object from mAP Core API.
 
     Raises:
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
     service_id = resolve_service_id(repository_id=repository_id)
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapService | MapError = services.get_by_id(
             service_id, access_token=access_token, client_secret=client_secret
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_GET_REPOSITORY, {"id": repository_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -194,8 +187,7 @@ def get_by_id(
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_GET_REPOSITORY, {"id": repository_id})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-    except CredentialsError, OAuthTokenError:
-        raise
+
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_GET_REPOSITORY, {"id": repository_id})
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
@@ -218,14 +210,13 @@ def create(repository: RepositoryDetail, admins: set[str]) -> RepositoryDetail:
         RepositoryDetail: The created Repository.
 
     Raises:
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         ResourceInvalid: If the Repository data is invalid.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
     service, repository_id = prepare_service(repository, admins)
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapService | MapError = services.post(
             service,
             exclude={"meta"},
@@ -234,8 +225,7 @@ def create(repository: RepositoryDetail, admins: set[str]) -> RepositoryDetail:
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_CREATE_REPOSITORY, {"id": repository_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
         raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
@@ -247,9 +237,6 @@ def create(repository: RepositoryDetail, admins: set[str]) -> RepositoryDetail:
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_CREATE_REPOSITORY, {"id": repository_id})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError:
-        raise
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_CREATE_REPOSITORY, {"id": repository_id})
@@ -272,7 +259,7 @@ def create(repository: RepositoryDetail, admins: set[str]) -> RepositoryDetail:
     return make_repository_detail(result)
 
 
-def update(repository: RepositoryDetail) -> RepositoryDetail:  # ruff:ignore[complex-structure]
+def update(repository: RepositoryDetail) -> RepositoryDetail:
     """Update an existing Repository.
 
     Args:
@@ -283,7 +270,6 @@ def update(repository: RepositoryDetail) -> RepositoryDetail:  # ruff:ignore[com
         RepositoryDetail: The updated Repository.
 
     Raises:
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         InvalidFormError: If failed to validate repository form data for update.
         ResourceNotFound: If the Repository does not exist.
@@ -299,13 +285,13 @@ def update(repository: RepositoryDetail) -> RepositoryDetail:  # ruff:ignore[com
         raise InvalidFormError(E.UNCHANGEABLE_REPOSITORY_URL)
 
     operations = build_patch_operations(
-        current.to_map_service(),
+        make_map_service(current),
         validated,
         include={"service_name", "suspended", "entity_ids"},
     )
 
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapService | MapError = services.patch_by_id(
             validated.id,
             operations,
@@ -315,11 +301,10 @@ def update(repository: RepositoryDetail) -> RepositoryDetail:  # ruff:ignore[com
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
@@ -328,9 +313,6 @@ def update(repository: RepositoryDetail) -> RepositoryDetail:  # ruff:ignore[com
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError:
-        raise
 
     if isinstance(result, MapError):
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
@@ -379,8 +361,8 @@ def update_put(repository: RepositoryDetail) -> RepositoryDetail:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
         raise InvalidFormError(E.UNCHANGEABLE_REPOSITORY_URL)
 
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapService | MapError = services.put_by_id(
             validated,
             exclude={"meta"},
@@ -389,15 +371,14 @@ def update_put(repository: RepositoryDetail) -> RepositoryDetail:
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
-        raise UnexpectedResponseError(E.FAILED_CONNECT_REDIS) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_UPDATE_REPOSITORY, {"id": repository_id})
@@ -436,7 +417,6 @@ def delete_by_id(repository_id: str, service_name: str) -> RepositoryDetail:
         RepositoryDetail: The deleted Repository.
 
     Raises:
-        CredentialsError: If client credentials are not available.
         OAuthTokenError: If the access token is invalid or expired.
         ResourceNotFound: If the Repository does not exist.
         InvalidFormError: If the service name to confirm does not match.
@@ -449,19 +429,17 @@ def delete_by_id(repository_id: str, service_name: str) -> RepositoryDetail:
         raise InvalidFormError(E.REPOSITORY_NAME_NOT_MATCH % {"id": repository_id})
 
     service_id = resolve_service_id(repository_id=repository_id)
-
+    access_token, client_secret = get_access_token(), get_client_secret()
     try:
-        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapError | None = services.delete_by_id(
             service_id, access_token=access_token, client_secret=client_secret
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_DELETE_REPOSITORY, {"id": repository_id})
-        code = t.cast("requests.Response", exc.response).status_code
-        if code == HTTPStatus.UNAUTHORIZED:
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
             raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        raise UnexpectedResponseError(E.UNEXPECTED_SERVER_ERROR) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_DELETE_REPOSITORY, {"id": repository_id})
@@ -470,9 +448,6 @@ def delete_by_id(repository_id: str, service_name: str) -> RepositoryDetail:
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_DELETE_REPOSITORY, {"id": repository_id})
         raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
-
-    except CredentialsError, OAuthTokenError:
-        raise
 
     if result:
         current_app.logger.error(E.FAILED_DELETE_REPOSITORY, {"id": repository_id})
@@ -486,10 +461,7 @@ def delete_by_id(repository_id: str, service_name: str) -> RepositoryDetail:
 
     with suppress(JAIROCloudGroupsManagerError):
         repository_deleted.send(
-            delete_by_id,
-            service_id=service_id,
-            repository_id=repository_id,
-            repository=current,
+            delete_by_id, service_id=service_id, repository_id=repository_id
         )
 
     return current

@@ -7,10 +7,8 @@
 import re
 import typing as t
 
-from datetime import UTC, datetime
+from contextlib import suppress
 from http import HTTPStatus
-from pathlib import Path
-from uuid import uuid7
 
 import requests
 
@@ -18,53 +16,40 @@ from flask import current_app
 from pydantic_core import ValidationError
 
 from server.clients import users
-from server.config import config
 from server.const import (
     MAP_ALREADY_TIED_PATTERN,
     MAP_DUPLICATE_ID_PATTERN,
     MAP_ILLEGAL_EPPN_PATTERN,
-    MAP_NO_RIGHTS_APPEND_PATTERN,
     MAP_NO_RIGHTS_UPDATE_PATTERN,
     MAP_NOT_FOUND_PATTERN,
-    USER_EXPORT_HEADERS_V1,
-    USER_ROLES,
 )
-from server.db import db
-from server.entities.bulk import FileContent
 from server.entities.map_error import MapError
-from server.entities.search_request import (
-    SearchResponse,
-    SearchResult,
-)
-from server.entities.summaries import GroupSummary, RepositorySummary, UserSummary
-from server.entities.user_detail import UserDetail
+from server.entities.search_request import SearchResponse, SearchResult
 from server.exc import (
     ApiClientError,
     ApiRequestError,
     CredentialsError,
-    InvalidExportError,
     InvalidFormError,
     InvalidQueryError,
+    JAIROCloudGroupsManagerError,
     OAuthTokenError,
     ResourceInvalid,
     ResourceNotFound,
     UnexpectedResponseError,
 )
 from server.messages import E, I
-from server.services import history_table
 from server.services.utils import (
-    ExportUsersCriteria,
     UsersCriteria,
     build_patch_operations,
     build_search_query,
     is_current_user_system_admin,
-    make_criteria_object,
+    make_map_user,
+    make_user_detail,
+    make_user_summary,
     prepare_user,
     validate_user_to_map_user,
 )
-from server.services.utils.affiliations import detect_affiliations
-from server.services.utils.permissions import get_permitted_repository_ids
-from server.signals import user_deleted, user_updated
+from server.signals import user_created, user_updated
 
 from .token import get_access_token, get_client_secret
 
@@ -73,6 +58,8 @@ if t.TYPE_CHECKING:
     from server.clients.users import UsersSearchResponse
     from server.entities.map_user import Group, MapUser
     from server.entities.patch_request import PatchOperation
+    from server.entities.summaries import UserSummary
+    from server.entities.user_detail import UserDetail
 
 
 @t.overload
@@ -81,8 +68,6 @@ def search(criteria: UsersCriteria) -> SearchResult[UserSummary]: ...
 def search(
     criteria: UsersCriteria, *, raw: t.Literal[True]
 ) -> SearchResponse[MapUser]: ...
-
-
 def search(
     criteria: UsersCriteria, *, raw: bool = False
 ) -> SearchResult[UserSummary] | SearchResponse[MapUser]:
@@ -119,8 +104,7 @@ def search(
 
     query = build_search_query(criteria)
     try:
-        access_token = get_access_token()
-        client_secret = get_client_secret()
+        access_token, client_secret = get_access_token(), get_client_secret()
         results: UsersSearchResponse = users.search(
             query,
             include=default_include,
@@ -129,23 +113,18 @@ def search(
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_SEARCH_USERS, {"filter": query.filter})
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_SEARCH_USERS, {"filter": query.filter})
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_SEARCH_USERS, {"filter": query.filter})
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
 
     except OAuthTokenError, CredentialsError:
         raise
@@ -155,8 +134,7 @@ def search(
         current_app.logger.error(
             E.RECEIVE_RESPONSE_MESSAGE, {"message": results.detail}
         )
-        error = E.UNSUPPORTED_SEARCH_FILTER
-        raise InvalidQueryError(error)
+        raise InvalidQueryError(E.UNSUPPORTED_SEARCH_FILTER)
 
     if raw:
         return results
@@ -165,7 +143,7 @@ def search(
         total=results.total_results,
         page_size=results.items_per_page,
         offset=results.start_index,
-        resources=[UserSummary.from_map_user(result) for result in results.resources],
+        resources=[make_user_summary(result) for result in results.resources],
     )
 
 
@@ -173,8 +151,6 @@ def search(
 def get_by_id(user_id: str, *, more_detail: bool = False) -> UserDetail | None: ...
 @t.overload
 def get_by_id(user_id: str, *, raw: t.Literal[True]) -> MapUser | None: ...
-
-
 def get_by_id(
     user_id: str, *, raw: bool = False, more_detail: bool = False
 ) -> UserDetail | MapUser | None:
@@ -198,30 +174,24 @@ def get_by_id(
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
     try:
-        access_token = get_access_token()
-        client_secret = get_client_secret()
+        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapUser | MapError = users.get_by_id(
             user_id, access_token=access_token, client_secret=client_secret
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_GET_USER, {"id": user_id})
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_GET_USER, {"id": user_id})
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_GET_USER, {"id": user_id})
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
 
     except OAuthTokenError, CredentialsError:
         raise
@@ -234,20 +204,22 @@ def get_by_id(
     if raw:
         return result
 
-    return UserDetail.from_map_user(result, more_detail=more_detail)
+    return make_user_detail(result, more_detail=more_detail)
 
 
 @t.overload
-def get_by_eppn(eppn: str) -> UserDetail | None: ...
+def get_by_eppn(eppn: str, *, more_detail: bool = False) -> UserDetail | None: ...
 @t.overload
 def get_by_eppn(eppn: str, *, raw: t.Literal[True]) -> MapUser | None: ...
-
-
-def get_by_eppn(eppn: str, *, raw: bool = False) -> UserDetail | MapUser | None:
+def get_by_eppn(
+    eppn: str, *, raw: bool = False, more_detail: bool = False
+) -> UserDetail | MapUser | None:
     """Get a User detail by its eduPersonPrincipalName.
 
     Args:
         eppn (str): eduPersonPrincipalName of the User detail.
+        more_detail (bool):
+            If True, include more detail such as groups and repositories name.
         raw (bool): If True, return raw MapUser object. Defaults to False.
 
     Returns:
@@ -262,30 +234,24 @@ def get_by_eppn(eppn: str, *, raw: bool = False) -> UserDetail | MapUser | None:
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
     try:
-        access_token = get_access_token()
-        client_secret = get_client_secret()
+        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapUser | MapError = users.get_by_eppn(
             eppn, access_token=access_token, client_secret=client_secret
         )
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_GET_USER_BY_EPPN, {"eppn": eppn})
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_GET_USER_BY_EPPN, {"eppn": eppn})
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_GET_USER_BY_EPPN, {"eppn": eppn})
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
 
     except OAuthTokenError, CredentialsError:
         raise
@@ -298,7 +264,7 @@ def get_by_eppn(eppn: str, *, raw: bool = False) -> UserDetail | MapUser | None:
     if raw:
         return result
 
-    return UserDetail.from_map_user(result)
+    return make_user_detail(result, more_detail=more_detail)
 
 
 def create(user: UserDetail) -> UserDetail:
@@ -332,23 +298,18 @@ def create(user: UserDetail) -> UserDetail:
 
     except requests.HTTPError as exc:
         current_app.logger.error(E.FAILED_CREATE_USER, {"eppn": primary_eppn})
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        error = E.FAILED_CREATE_USER
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_CREATE_USER) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(E.FAILED_CREATE_USER, {"eppn": primary_eppn})
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(E.FAILED_CREATE_USER, {"eppn": primary_eppn})
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
 
     except OAuthTokenError, CredentialsError, InvalidFormError:
         raise
@@ -357,22 +318,24 @@ def create(user: UserDetail) -> UserDetail:
         current_app.logger.error(E.FAILED_CREATE_USER, {"eppn": primary_eppn})
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         if m := re.search(MAP_DUPLICATE_ID_PATTERN, result.detail):
-            error = E.USER_DUPLICATE_ID % {"id": m.group(1)}
-            raise ResourceInvalid(error)
-        if m := re.search(MAP_ALREADY_TIED_PATTERN, result.detail):
-            error = E.USER_ALREADY_TIED_EPPN % {"eppn": m.group(1)}
-            raise ResourceInvalid(error)
-        if m := re.search(MAP_ILLEGAL_EPPN_PATTERN, result.detail):
-            error = E.USER_EPPN_ILLEGAL % {"eppn": m.group(1)}
-            raise ResourceInvalid(error)
+            raise ResourceInvalid(E.USER_DUPLICATE_ID % {"id": m.group(1)})
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error)
+        if m := re.search(MAP_ALREADY_TIED_PATTERN, result.detail):
+            raise ResourceInvalid(E.USER_ALREADY_TIED_EPPN % {"eppn": m.group(1)})
+
+        if m := re.search(MAP_ILLEGAL_EPPN_PATTERN, result.detail):
+            raise ResourceInvalid(E.USER_EPPN_ILLEGAL % {"eppn": m.group(1)})
+
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
     current_app.logger.info(
         I.SUCCESS_CREATE_USER, {"id": result.id, "eppn": primary_eppn}
     )
-    return UserDetail.from_map_user(result)
+
+    with suppress(JAIROCloudGroupsManagerError):
+        user_created.send(create, user_id=result.id, eppn=primary_eppn)
+
+    return make_user_detail(result)
 
 
 def update(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure]
@@ -391,39 +354,28 @@ def update(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure]
         ResourceNotFound: If the User resource is not found.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
-    if not config.MAP_CORE.user_editable:
-        return update_affiliations(user)
-
-    if config.MAP_CORE.update_strategy == "put":
-        return update_put(user)
-
-    user_id = t.cast("str", user.id)
-    current: UserDetail | None = get_by_id(user_id)
-    if current is None:
-        error = E.USER_NOT_FOUND % {"id": user_id}
-        raise ResourceNotFound(error)
+    if (current := get_by_id(user_id := t.cast("str", user.id))) is None:
+        current_app.logger.error(E.FAILED_UPDATE_USER, {"id": user_id})
+        raise ResourceNotFound(E.USER_NOT_FOUND % {"id": user_id})
 
     if not is_current_user_system_admin() and current.is_system_admin:
-        error = E.USER_NO_UPDATE_SYSTEM_ADMIN
-        raise InvalidFormError(error)
+        raise InvalidFormError(E.USER_NO_UPDATE_SYSTEM_ADMIN)
     # promotion permission will be checked in validation process.
 
     primary_eppn = user.eppns[0] if user.eppns else "N/A"
+    validated = validate_user_to_map_user(user, mode="update")
+    operations = build_patch_operations(
+        make_map_user(current),
+        validated,
+        exclude={"schemas", "external_id", "meta"},
+    )
+
     try:
-        validated = validate_user_to_map_user(user, mode="update")
-
-        operations = build_patch_operations(
-            current.to_map_user(),
-            validated,
-            exclude={"schemas", "meta"},
-        )
-
-        access_token = get_access_token()
-        client_secret = get_client_secret()
+        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapUser | MapError = users.patch_by_id(
             user_id,
             operations,
-            exclude={"meta"},
+            exclude={"external_id", "meta"},
             access_token=access_token,
             client_secret=client_secret,
         )
@@ -432,27 +384,22 @@ def update(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure]
         current_app.logger.error(
             E.FAILED_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
         )
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        error = E.FAILED_UPDATE_USER
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_UPDATE_USER) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(
             E.FAILED_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
         )
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(
             E.FAILED_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
         )
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE) from exc
 
     except OAuthTokenError, CredentialsError:
         raise
@@ -463,19 +410,21 @@ def update(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure]
         )
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         if m := re.search(MAP_NOT_FOUND_PATTERN, result.detail):
-            error = E.USER_NOT_FOUND % {"id": m.group(1)}
-            raise ResourceNotFound(error)
-        if re.search(MAP_NO_RIGHTS_UPDATE_PATTERN, result.detail):
-            error = E.NO_RIGHTS_UPDATE_USER % {"id": user_id}
-            raise OAuthTokenError(error)
+            raise ResourceNotFound(E.USER_NOT_FOUND % {"id": m.group(1)})
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error)
+        if re.search(MAP_NO_RIGHTS_UPDATE_PATTERN, result.detail):
+            raise OAuthTokenError(E.NO_RIGHTS_UPDATE_USER % {"id": user_id})
+
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
     current_app.logger.info(
         I.SUCCESS_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
     )
-    return UserDetail.from_map_user(result)
+
+    with suppress(JAIROCloudGroupsManagerError):
+        user_updated.send(update, user_id=user_id, eppn=primary_eppn)
+
+    return make_user_detail(result)
 
 
 def update_put(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure]
@@ -494,28 +443,18 @@ def update_put(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure
         ResourceNotFound: If the User resource is not found.
         UnexpectedResponseError: If response from mAP Core API is unexpected.
     """
-    if not config.MAP_CORE.user_editable:
-        return update_affiliations(user)
-
-    if config.MAP_CORE.update_strategy == "patch":
-        return update(user)
-
-    user_id = t.cast("str", user.id)
-    current: UserDetail | None = get_by_id(user_id)
-    if current is None:
-        error = E.USER_NOT_FOUND % {"id": user_id}
-        raise ResourceNotFound(error)
+    if (current := get_by_id(user_id := t.cast("str", user.id))) is None:
+        current_app.logger.error(E.FAILED_UPDATE_USER, {"id": user_id})
+        raise ResourceNotFound(E.USER_NOT_FOUND % {"id": user_id})
 
     if not is_current_user_system_admin() and current.is_system_admin:
-        error = E.USER_NO_UPDATE_SYSTEM_ADMIN
-        raise InvalidFormError(error)
+        raise InvalidFormError(E.USER_NO_UPDATE_SYSTEM_ADMIN)
 
     primary_eppn = user.eppns[0] if user.eppns else "N/A"
-    try:
-        validated = validate_user_to_map_user(user, mode="update")
+    validated = validate_user_to_map_user(user, mode="update")
 
-        access_token = get_access_token()
-        client_secret = get_client_secret()
+    try:
+        access_token, client_secret = get_access_token(), get_client_secret()
         result: MapUser | MapError = users.put_by_id(
             validated,
             exclude={"external_id", "meta"},
@@ -527,52 +466,47 @@ def update_put(user: UserDetail) -> UserDetail:  # ruff:ignore[complex-structure
         current_app.logger.error(
             E.FAILED_UPDATE_USER, {"id": user.id, "eppn": primary_eppn}
         )
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
+        if exc.response and exc.response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise OAuthTokenError(E.ACCESS_TOKEN_NOT_AVAILABLE) from exc
 
-        error = E.FAILED_UPDATE_USER
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_UPDATE_USER) from exc
 
     except requests.RequestException as exc:
         current_app.logger.error(
             E.FAILED_UPDATE_USER, {"id": user.id, "eppn": primary_eppn}
         )
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_COMMUNICATE_API) from exc
 
     except ValidationError as exc:
         current_app.logger.error(
             E.FAILED_UPDATE_USER, {"id": user.id, "eppn": primary_eppn}
         )
-        error = E.FAILED_PARSE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
+        raise UnexpectedResponseError(E.FAILED_PARSE_RESPONSE) from exc
 
     except OAuthTokenError, CredentialsError:
         raise
 
     if isinstance(result, MapError):
         current_app.logger.error(
-            E.FAILED_UPDATE_USER, {"id": user.id, "eppn": primary_eppn}
+            E.FAILED_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
         )
         current_app.logger.error(E.RECEIVE_RESPONSE_MESSAGE, {"message": result.detail})
         if m := re.search(MAP_NOT_FOUND_PATTERN, result.detail):
-            error = E.USER_NOT_FOUND % {"id": m.group(1)}
-            raise ResourceNotFound(error)
-        if re.search(MAP_NO_RIGHTS_UPDATE_PATTERN, result.detail) or re.search(
-            MAP_NO_RIGHTS_APPEND_PATTERN, result.detail
-        ):
-            error = E.NO_RIGHTS_UPDATE_USER % {"id": user.id}
-            raise OAuthTokenError(error)
+            raise ResourceNotFound(E.USER_NOT_FOUND % {"id": m.group(1)})
 
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error)
+        if re.search(MAP_NO_RIGHTS_UPDATE_PATTERN, result.detail):
+            raise OAuthTokenError(E.NO_RIGHTS_UPDATE_USER % {"id": user_id})
+
+        raise UnexpectedResponseError(E.RECEIVE_UNEXPECTED_RESPONSE)
 
     current_app.logger.info(
-        I.SUCCESS_UPDATE_USER, {"id": user.id, "eppn": primary_eppn}
+        I.SUCCESS_UPDATE_USER, {"id": user_id, "eppn": primary_eppn}
     )
-    return UserDetail.from_map_user(result)
+
+    with suppress(JAIROCloudGroupsManagerError):
+        user_updated.send(update, user_id=user_id, eppn=primary_eppn)
+
+    return make_user_detail(result)
 
 
 def update_affiliations(user: UserDetail) -> UserDetail:
@@ -598,7 +532,7 @@ def update_affiliations(user: UserDetail) -> UserDetail:
 
     validated = validate_user_to_map_user(user, mode="update")
     operations: list[PatchOperation[MapUser]] = build_patch_operations(
-        current.to_map_user(),
+        make_map_user(current),
         validated,
         include={"groups"},
     )
@@ -618,7 +552,7 @@ def update_affiliations(user: UserDetail) -> UserDetail:
             continue
 
         try:
-            groups.update_member(group_id, **{op.op: {user_id}})
+            groups.update_members(group_id, **{op.op: {user_id}})
 
         except OAuthTokenError, CredentialsError:
             raise
@@ -638,262 +572,3 @@ def update_affiliations(user: UserDetail) -> UserDetail:
         I.SUCCESS_UPDATE_USER_AFFILIATIONS, {"id": user_id, "eppn": primary_eppn}
     )
     return t.cast("UserDetail", get_by_id(user_id))
-
-
-@t.overload
-def get_system_admins() -> set[str]: ...
-@t.overload
-def get_system_admins(*, raw: t.Literal[True]) -> list[MapUser]: ...
-
-
-def get_system_admins(*, raw: bool = False) -> set[str] | list[MapUser]:
-    """Get system administrators.
-
-    Args:
-        raw (bool): If True, return raw MapUser objects. Defaults to False.
-
-    Returns:
-        list: The list of system administrators. The type of items depends on
-            the `raw` argument.
-        - str: The IDs of the system administrators.
-        - MapUser: The raw User objects of system administrators from mAP Core API.
-    """
-    criteria = make_criteria_object("users", a=[0], super=True)
-    try:
-        result = search(criteria, raw=True)
-    finally:
-        current_app.logger.info(I.SEARCHED_SYSTEM_ADMINS)
-
-    if raw:
-        return result.resources
-
-    return {t.cast("str", user.id) for user in result.resources}
-
-
-def count(criteria: UsersCriteria) -> int:
-    """Search for users based on given criteria.
-
-    Args:
-        criteria (UsersCriteria): Search criteria for filtering users.
-
-    Returns:
-        int: The count of users matching the given criteria.
-
-    Raises:
-        InvalidQueryError: If the query construction is invalid.
-        OAuthTokenError: If the access token is invalid or expired.
-        CredentialsError: If the client credentials are invalid.
-        UnexpectedResponseError: If response from mAP Core API is unexpected.
-    """
-    criteria.l = 0
-    query = build_search_query(criteria)
-    try:
-        access_token = get_access_token()
-        client_secret = get_client_secret()
-        results: UsersSearchResponse = users.search(
-            query,
-            include={"id"},
-            access_token=access_token,
-            client_secret=client_secret,
-        )
-    except requests.HTTPError as exc:
-        current_app.logger.error(E.FAILED_COUNT_USERS, {"filter": query.filter})
-        code = exc.response.status_code
-        if code == HTTPStatus.UNAUTHORIZED:
-            error = E.ACCESS_TOKEN_NOT_AVAILABLE
-            raise OAuthTokenError(error) from exc
-
-        error = E.RECEIVE_UNEXPECTED_RESPONSE
-        raise UnexpectedResponseError(error) from exc
-
-    except requests.RequestException as exc:
-        current_app.logger.error(E.FAILED_COUNT_USERS, {"filter": query.filter})
-        error = E.FAILED_COMMUNICATE_API
-        raise UnexpectedResponseError(error) from exc
-
-    except ValidationError as exc:
-        current_app.logger.error(E.FAILED_COUNT_USERS, {"filter": query.filter})
-        error = E.FAILED_DECODE_RESPONSE
-        raise UnexpectedResponseError(error) from exc
-
-    except OAuthTokenError, CredentialsError:
-        raise
-
-    if isinstance(results, MapError):
-        current_app.logger.error(E.FAILED_COUNT_USERS, {"filter": query.filter})
-        current_app.logger.error(
-            E.RECEIVE_RESPONSE_MESSAGE, {"message": results.detail}
-        )
-        raise InvalidQueryError(results.detail)
-
-    return results.total_results
-
-
-@user_updated.connect
-@user_deleted.connect
-def handle_user_updated(
-    _sender: object,
-    user: UserDetail | None = None,
-    **kwargs,  # ruff:ignore[missing-type-kwargs, unused-function-argument]
-) -> None:
-    """Handle user_updated signal to clear cache of the updated user.
-
-    Args:
-        sender: The sender of the signal.
-        user (UserDetail): The updated User resource.
-        **kwargs: Other keyword arguments passed with the signal.
-    """
-    if not isinstance(user, UserDetail):
-        return
-    if user.id:
-        users.get_by_id.clear_cache(user.id)  # pyright: ignore[reportFunctionMemberAccess]
-    if user.eppns:
-        users.get_by_eppn.clear_cache(*user.eppns)  # pyright: ignore[reportFunctionMemberAccess]
-
-
-def make_export_file(
-    operator_id: str, operator_name: str, criteria: ExportUsersCriteria | None = None
-) -> Path:
-    """Generate a file containing user details for the specified user IDs.
-
-    Args:
-        operator_id (str): The ID of the operator performing the export.
-        operator_name (str): The name of the operator performing the export.
-        criteria (ExportUsersCriteria | None):
-          The export criteria containing export format and other parameters.
-
-    Returns:
-        Path: The path to the generated export file.
-    """
-    match config.USERS.export_format_version:
-        case 1.0:
-            return _make_export_file_v1(operator_id, operator_name, criteria)
-        case _:
-            return NotImplemented  # pragma: no cover
-
-
-def _make_export_file_v1(
-    operator_id: str, operator_name: str, criteria: ExportUsersCriteria | None = None
-) -> Path:
-
-    results = search(criteria or make_criteria_object("users"), raw=True)
-    user_list = results.resources
-
-    now = datetime.now(UTC)
-    file_format = criteria.f if criteria and criteria.f in {"csv", "tsv"} else "tsv"
-    delimiter = "," if file_format == "csv" else "\t"
-    file_id = uuid7()
-
-    target_dir = Path(config.STORAGE.local.storage) / str(now.year) / str(now.month)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    file_path = target_dir / f"{file_id}.{file_format}"
-    file_path.write_text(
-        delimiter.join([
-            "created:",
-            now.isoformat(timespec="seconds").replace("+00:00", "Z"),
-            "version:",
-            "1.0",
-        ])
-        + "\n",
-        encoding="utf-8",
-    )
-    file_path.write_text(
-        delimiter.join(USER_EXPORT_HEADERS_V1) + "\n", encoding="utf-8"
-    )
-
-    permitted_repository_ids = get_permitted_repository_ids()
-
-    exported_agg = _wite_user(user_list, delimiter, file_path, permitted_repository_ids)
-    history_table.create_download_history(
-        file_id, str(file_path), exported_agg, operator_id, operator_name
-    )
-    db.session.commit()
-    return file_path
-
-
-def _wite_user(
-    user_list: list[MapUser],
-    delimiter: str,
-    file_path: Path,
-    permitted_repository_ids: set[str],
-) -> FileContent:
-    """Write user details to file.
-
-    Args:
-        user_list (list[MapUser]): A list of user details.
-        delimiter (str): The delimiter to use in the file.
-        file_path (Path): The path to the file.
-        permitted_repository_ids (list[str]): A list of permitted repository IDs.
-
-    Returns:
-        FileContent:
-            A dictionary aggregating user exported.
-            It has keys `repositories`, `groups`, and `users`.
-
-    Raises:
-        InvalidExportError:
-          If the user cannot be exported due to insufficient permissions.
-    """
-    repository_agg: dict[str, RepositorySummary] = {}
-    group_agg: dict[str, GroupSummary] = {}
-    user_agg: dict[str, UserSummary] = {}
-
-    is_super = is_current_user_system_admin()
-
-    for map_user in user_list:
-        roles, groups = detect_affiliations([g.value for g in map_user.groups or []])
-        if not is_super and any(
-            role_group.role == USER_ROLES.SYSTEM_ADMIN for role_group in roles
-        ):
-            raise InvalidExportError(E.USER_CANNOT_EXPORT_SYSTEM_ADMIN)
-
-        if not is_super and not any(
-            group.repository_id in permitted_repository_ids for group in groups
-        ):
-            raise InvalidExportError(E.USER_FORBIDDEN_EXPORT)
-
-        user_id = t.cast("str", map_user.id)
-        user_agg[user_id] = UserSummary(id=user_id, user_name=map_user.user_name or "")
-
-        group_ids = []
-        for group in groups:
-            if not is_super and group.repository_id not in permitted_repository_ids:
-                continue
-
-            group_id = t.cast("str", group.group_id)
-            group_agg[group_id] = GroupSummary(id=group_id)
-            repository_id = t.cast("str", group.repository_id)
-            repository_agg[repository_id] = RepositorySummary(id=repository_id)
-            group_ids.append(group_id)
-
-        roles_list = [
-            r.role.value
-            for r in roles
-            if is_super or r.repository_id in permitted_repository_ids
-        ] or [""]
-        eppns = [eppn.value for eppn in map_user.edu_person_principal_names or []]
-        emails = [email.value for email in map_user.emails or []]
-
-        max_len = max(len(group_ids), len(roles_list), len(eppns), len(emails))
-
-        for i in range(max_len):
-            row = [
-                map_user.id,
-                map_user.user_name,
-                group_ids[i] if i < len(group_ids) else group_ids[len(group_ids) - 1],
-                "",  # group name can't be get from mAP Core API search user endpoint
-                roles_list[i]
-                if i < len(roles_list)
-                else roles_list[len(roles_list) - 1],
-                eppns[i] if i < len(eppns) else eppns[len(eppns) - 1],
-                map_user.preferred_language or "",
-                emails[i] if i < len(emails) else emails[len(emails) - 1],
-            ]
-            file_path.write_text(delimiter.join(row) + "\n", encoding="utf-8")
-
-    return FileContent(
-        repositories=list(repository_agg.values()),
-        groups=list(group_agg.values()),
-        users=list(user_agg.values()),
-    )
