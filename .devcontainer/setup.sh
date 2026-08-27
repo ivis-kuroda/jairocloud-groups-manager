@@ -2,7 +2,7 @@
 
 install_deps() {
     # Install Python dependencies
-    pip install --upgrade pip && pip install uv
+    pip install --upgrade pip && pip install "uv>=0.11.32,<0.13"
     uv sync
 
     if ! grep -q "venv_activate_reload" ~/.bashrc 2>/dev/null; then
@@ -16,10 +16,9 @@ install_deps() {
     fi
 
     # Install Node.js dependencies
-    npm install -g npm && npm install -g pnpm@11.6.0
     pnpm config set global-bin-dir "$HOME/.local/bin"
     pnpm config set store-dir "$HOME/.pnpm-store"
-    pnpm install -r
+    pnpm install -r --force
 }
 
 genarate_ssl_key() {

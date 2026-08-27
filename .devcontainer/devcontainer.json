@@ -1,6 +1,6 @@
 {
   "name": "DevContainer for JAIRO Cloud Groups Manager",
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "image": "mcr.microsoft.com/devcontainers/base:trixie",
   "remoteUser": "vscode",
 
   "initializeCommand": "docker network create jairocloud-groups-manager_default || true",
@@ -11,15 +11,16 @@
 
   "features": {
     "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.14"
+      "version": "3.14",
+      "installTools": false
     },
     "ghcr.io/devcontainers/features/node:2": {
-      "version": "24"
+      "version": "24",
+      "pnpmVersion": "12"
     },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
       "version": "latest",
       "dockerDashComposeVersion": "latest",
-      "enableNonRootDocker": true,
       "moby": false
     }
   },
@@ -30,15 +31,14 @@
     "FLASK_ENV": "development",
     "FLASK_DEBUG": "1",
     "FLASK_APP": "server.app"
-
   },
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],
 
-  "onCreateCommand": "/bin/sh .devcontainer/setup_commands.sh install_deps",
-  "postStartCommand": "/bin/sh .devcontainer/setup_commands.sh genarate_ssl_key",
-  "postAttachCommand": "/bin/sh .devcontainer/setup_commands.sh container_watch",
+  "onCreateCommand": "/bin/sh .devcontainer/setup.sh install_deps",
+  "postStartCommand": "/bin/sh .devcontainer/setup.sh genarate_ssl_key",
+  "postAttachCommand": "/bin/sh .devcontainer/setup.sh container_watch",
 
   "customizations": {
     "vscode": {
@@ -49,7 +49,7 @@
           "editor.rulers": [88],
           "editor.formatOnSave": true,
           "editor.codeActionsOnSave": {
-            "source.fixAll.ruff": "explicit",
+            "source.fixAll": "explicit",
             "source.organizeImports": "explicit"
           },
           "editor.defaultFormatter": "charliermarsh.ruff"
@@ -63,7 +63,7 @@
         "[vue]": {
           "editor.rulers": [100]
         },
-        "typescript.tsdk": "./node_modules/typescript/lib",
+        "js/ts.tsdk.path": "./node_modules/typescript/lib",
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "always"
         },
@@ -74,20 +74,30 @@
       },
 
       "extensions": [
+        // Python development support
         "ms-python.python",
         "ms-python.vscode-pylance",
         "tamasfe.even-better-toml",
         "charliermarsh.ruff",
 
+        // Application development support
         "vue.volar",
+        "vitest.explorer",
         "bradlc.vscode-tailwindcss",
         "dbaeumer.vscode-eslint",
         "lokalise.i18n-ally",
 
+        // Commonly used extensions
+        "ms-azuretools.vscode-docker",
+        "docker.docker",
         "editorconfig.editorconfig",
         "shardulm94.trailing-spaces",
         "mhutchie.git-graph",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+
+        "cweijan.vscode-database-client2",
+        "github.copilot-chat",
+        "saoudrizwan.claude-dev"
       ],
       "ignoreExtensions": ["*"]
     }
