@@ -1,0 +1,84 @@
+services:
+  backend:
+    build:
+      context: .
+      target: prod
+    restart: "always"
+    image: jcgroups-backend-prod
+    container_name: web
+
+  dev-backend:
+    build:
+      context: .
+      target: dev
+    restart: "always"
+    image: jcgroups-backend-dev
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.vite
+      target: dev
+    restart: "always"
+    image: jcgroups-frontend-dev
+    container_name: app
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      target: prod
+    image: jc-groups-manager-nginx-prod
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+
+  postgres:
+    restart: "always"
+    image: postgres:12
+    environment:
+      POSTGRES_USER: jcgroups
+      POSTGRES_DB: jcgroups
+      POSTGRES_PASSWORD: jcpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rabbitmq:
+    restart: "always"
+    image: rabbitmq:4.0.2
+    environment:
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit consumer_timeout 10800000"
+
+  redis:
+    restart: "always"
+    image: redis:7.4.1
+
+  redis-master:
+    extends:
+      service: redis
+    container_name: redis-master
+    command: >
+      redis-server
+      --appendonly yes
+      --replica-announce-ip redis-master
+      --replica-announce-port 6379
+
+  sentinel:
+    extends:
+      service: redis
+    container_name: sentinel
+    command: >
+      sh -c "
+      sleep 3 &&
+      echo 'port 26379' > /tmp/sentinel.conf &&
+      echo 'sentinel monitor mymaster redis-master 6379 2' >> /tmp/sentinel.conf &&
+      echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+      echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+      echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+      echo 'sentinel resolve-hostnames yes' >> /tmp/sentinel.conf &&
+      echo 'sentinel announce-hostnames yes' >> /tmp/sentinel.conf &&
+      redis-sentinel /tmp/sentinel.conf
+      "

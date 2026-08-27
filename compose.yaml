@@ -2,12 +2,12 @@
 
 services:
   web:
-    restart: "always"
+    extends:
+      file: compose.service.yaml
+      service: backend
     build:
-      context: .
       target: dev
-    image: jc-groups-manager-dev
-    container_name: web
+    image: jcgroups-backend-dev
     ports:
       - "5050:5050"
     develop:
@@ -32,11 +32,12 @@ services:
       - default
 
   worker:
-    restart: "always"
+    extends:
+      file: compose.service.yaml
+      service: backend
     build:
-      context: .
       target: dev
-    image: jc-groups-manager-dev
+    image: jcgroups-backend-dev
     container_name: worker
     command: celery -A server.celery_app worker
     depends_on:
@@ -61,12 +62,9 @@ services:
       - default
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.vite
-      target: dev
-    image: jc-groups-manager-vite
-    container_name: app
+    extends:
+      file: compose.service.yaml
+      service: frontend
     ports:
       - "3000:3000"
     develop:
@@ -95,15 +93,12 @@ services:
       - default
 
   nginx:
+    extends:
+      file: compose.service.yaml
+      service: nginx
     build:
-      context: .
-      dockerfile: nginx/Dockerfile
       target: dev
     image: jc-groups-manager-nginx-dev
-    container_name: nginx
-    ports:
-      - "80:80"
-      - "443:443"
     depends_on:
       - web
       - app
@@ -111,32 +106,27 @@ services:
       - default
 
   postgres:
-    restart: "always"
-    image: postgres:12
-    environment:
-      POSTGRES_USER: jcgroups
-      POSTGRES_DB: jcgroups
-      POSTGRES_PASSWORD: jcpass
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    extends:
+      file: compose.service.yaml
+      service: postgres
     networks:
       - default
 
   redis:
-    restart: "always"
-    image: redis:7.4.1
+    extends:
+      file: compose.service.yaml
+      service: redis
     ports:
       - "6379:6379"
     networks:
       - default
 
   rabbitmq:
-    restart: "always"
-    image: rabbitmq:4.0.2
-    environment:
-      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit consumer_timeout 10800000"
+    extends:
+      file: compose.service.yaml
+      service: rabbitmq
+    networks:
+      - default
 
 volumes:
   pgdata:

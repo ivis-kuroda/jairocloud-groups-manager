@@ -2,23 +2,20 @@
 
 services:
   web:
-    restart: "always"
-    build:
-      context: .
-      target: prod
-    image: jc-groups-manager-prod
-    container_name: web
+    extends:
+      file: compose.service.yaml
+      service: backend
     ports:
       - "5050:5050"
     networks:
       - default
 
   worker:
-    restart: "always"
+    extends:
+      file: compose.service.yaml
+      service: backend
     build:
-      context: .
       target: prod
-    image: jc-groups-manager-prod
     container_name: worker
     command: "/usr/bin/supervisord -c supervisord.worker.conf"
     depends_on:
@@ -31,50 +28,35 @@ services:
 
 
   nginx:
-    build:
-      context: .
-      dockerfile: nginx/Dockerfile
-      target: prod
-    image: jc-groups-manager-nginx-prod
-    container_name: nginx
-    ports:
-      - "80:80"
-      - "443:443"
+    extends:
+      file: compose.service.yaml
+      service: nginx
     depends_on:
       - web
     networks:
       - default
 
   postgres:
-    restart: "always"
-    image: postgres:12
-    environment:
-      POSTGRES_USER: jcgroups
-      POSTGRES_DB: jcgroups
-      POSTGRES_PASSWORD: jcpass
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    extends:
+      file: compose.service.yaml
+      service: postgres
     networks:
       - default
 
 
   redis-master:
-    image: redis:7.4.1
-    container_name: redis-master
-    command: >
-      redis-server
-      --appendonly yes
-      --replica-announce-ip redis-master
-      --replica-announce-port 6379
+    extends:
+      file: compose.service.yaml
+      service: redis-master
     ports:
       - "6379:6379"
     networks:
       - default
 
   redis-replica-1:
-    image: redis:7.4.1
+    extends:
+      file: compose.service.yaml
+      service: redis
     container_name: redis-replica-1
     command: >
       redis-server
@@ -88,7 +70,9 @@ services:
       - default
 
   redis-replica-2:
-    image: redis:7.4.1
+    extends:
+      file: compose.service.yaml
+      service: redis
     container_name: redis-replica-2
     command: >
       redis-server
@@ -102,7 +86,9 @@ services:
       - default
 
   sentinel-1:
-    image: redis:7.4.1
+    extends:
+      file: compose.service.yaml
+      service: sentinel
     container_name: sentinel-1
     depends_on: &sentinel-depends-on
       - redis-master
@@ -110,43 +96,32 @@ services:
       - redis-replica-2
     ports:
       - "26379:26379"
-    command: &sentinel-command >
-      sh -c "
-      sleep 3 &&
-      echo 'port 26379' > /tmp/sentinel.conf &&
-      echo 'sentinel monitor mymaster redis-master 6379 2' >> /tmp/sentinel.conf &&
-      echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
-      echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
-      echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
-      echo 'sentinel resolve-hostnames yes' >> /tmp/sentinel.conf &&
-      echo 'sentinel announce-hostnames yes' >> /tmp/sentinel.conf &&
-      redis-sentinel /tmp/sentinel.conf
-      "
     networks:
       - default
 
   sentinel-2:
-    image: redis:7.4.1
+    extends:
+      file: compose.service.yaml
+      service: sentinel
     container_name: sentinel-2
     depends_on: *sentinel-depends-on
-    command: *sentinel-command
     networks:
       - default
 
   sentinel-3:
-    image: redis:7.4.1
+    extends:
+      file: compose.service.yaml
+      service: sentinel
     container_name: sentinel-3
     depends_on: *sentinel-depends-on
-    command: *sentinel-command
     networks:
       - default
 
 
   rabbitmq:
-    restart: "always"
-    image: rabbitmq:4.0.2
-    environment:
-      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit consumer_timeout 10800000"
+    extends:
+      file: compose.service.yaml
+      service: rabbitmq
 
 
 volumes:
