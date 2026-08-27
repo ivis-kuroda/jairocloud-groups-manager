@@ -4,8 +4,6 @@ packages:
 
 shamefullyHoist: true
 
-packageManagerStrict: true
-
 allowBuilds:
   better-sqlite3: true
   '@parcel/watcher': true
