@@ -1,15 +1,29 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=24
+ARG OS_VERSION=trixie
+ARG NODE_VERSION=26
+ARG PNPM_VERSION=12
 
 # ==============================
 # Base stage: common setup
 # ==============================
-FROM node:${NODE_VERSION}-slim AS base
+FROM docker.io/node:${NODE_VERSION}-${OS_VERSION} AS base
+
+ARG PNPM_VERSION
 
 WORKDIR /code
 RUN chown node:node /code
-RUN npm install -g npm && npm install -g pnpm
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get upgrade --yes \
+    && \
+    # Install system dependencies
+    apt-get install --yes --no-install-recommends \
+        python3 \
+        make \
+        g++
+RUN npm install -g pnpm@${PNPM_VERSION} --allow-scripts=pnpm
 
 USER node
 

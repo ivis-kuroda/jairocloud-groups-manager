@@ -27,7 +27,7 @@ RUN \
     && \
     # Install system dependencies
     apt-get install --yes --no-install-recommends \
-    git
+        git
 
 # Setup uv
 # From https://docs.astral.sh/uv/guides/integration/docker/
@@ -73,13 +73,16 @@ CMD ["flask", "run", "--reload"]
 FROM base AS build
 
 USER root
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    # Install build dependencies
+    apt-get install --yes --no-install-recommends \
         build-essential \
         python3-dev \
         libssl-dev \
-        libpcre2-dev && \
-    rm -rf /var/lib/apt/lists/*
+        libpcre2-dev
 RUN uv pip install uwsgi --system
 
 COPY pyproject.toml uv.lock ./

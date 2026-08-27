@@ -1,25 +1,31 @@
 # syntax=docker/dockerfile:1
 
-ARG NGINX_VERSION=1.31.1
-ARG NODE_VERSION=24
+ARG OS_VERSION=trixie
+ARG NGINX_VERSION=1.31.4
+ARG NODE_VERSION=26
+ARG PNPM_VERSION=12
 ARG SHIB_MOD_VERSION=2.0.2
-ARG HEADERS_MORE_VERSION=0.37
+ARG HEADERS_MORE_VERSION=0.40
 
 # ==============================
 # Build stage:
 #   build modules nginx-http-shibboleth
 # ==============================
-FROM debian:trixie-slim AS build
+FROM docker.io/debian:${OS_VERSION}-slim AS build
 
 ARG NGINX_VERSION
 ARG SHIB_MOD_VERSION
 ARG HEADERS_MORE_VERSION
 WORKDIR /usr/src
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential git wget ca-certificates libpcre2-dev zlib1g-dev libssl-dev && \
-    rm -rf /var/lib/apt/lists/*
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get upgrade --yes \
+    && \
+    # Install build dependencies
+    apt-get install --yes --no-install-recommends \
+    build-essential git wget ca-certificates libpcre2-dev zlib1g-dev libssl-dev
 
 RUN wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
     tar xzf nginx-${NGINX_VERSION}.tar.gz
@@ -39,11 +45,21 @@ RUN ./configure --with-compat \
 # Build stage:
 #   build the Nuxt application
 # ==============================
-FROM node:${NODE_VERSION}-slim AS app
+FROM docker.io/node:${NODE_VERSION}-${OS_VERSION} AS app
 
 WORKDIR /code
 RUN chown node:node /code
-RUN npm install -g npm && npm install -g pnpm
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get upgrade --yes \
+    && \
+    # Install system dependencies
+    apt-get install --yes --no-install-recommends \
+        python3 \
+        make \
+        g++
+RUN npm install -g pnpm@${PNPM_VERSION} --allow-scripts=pnpm
 
 USER node
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -57,15 +73,20 @@ RUN NODE_ENV=production pnpm nuxt generate
 # Base stage:
 #   install dependencies and configure nginx + shibboleth
 # ==============================
-FROM nginx:${NGINX_VERSION}-trixie AS base
+FROM docker.io/nginx:${NGINX_VERSION}-${OS_VERSION} AS base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    supervisor \
-    libapache2-mod-shib \
-    shibboleth-sp-utils \
-    shibboleth-sp-common \
-    xmlsec1 &&\
-    rm -rf /var/lib/apt/lists/*
+RUN \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get upgrade --yes \
+    && \
+    # Install system dependencies
+    apt-get install --yes --no-install-recommends \
+        supervisor \
+        libapache2-mod-shib \
+        shibboleth-sp-utils \
+        shibboleth-sp-common \
+        xmlsec1
 
 RUN mkdir -p /opt/shibboleth /var/log/supervisor && \
     chown nginx:nginx /opt/shibboleth /var/log/supervisor
