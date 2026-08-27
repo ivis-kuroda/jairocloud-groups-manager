@@ -1,17 +1,26 @@
+#:schema https://json.schemastore.org/pyproject.json
+
 [build-system]
-requires = ["uv_build>=0.11.21,<0.12"]
+requires = ["uv_build>=0.11.32,<0.13"]
 build-backend = "uv_build"
 
 [project]
 name = "jairocloud-groups-manager"
 version = "1.0.0a3"
 authors = [
-  {name = "National Institute of Informatics"}
+    { name = "National Institute of Informatics" },
+    { name = "Research Center for Open Science and Data Platform" }
 ]
 description = "A web client for JAIRO Cloud repository administrators to manage groups in the GakuNin Cloud Gateway."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
 requires-python = ">=3.14"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.14",
+    "Framework :: Flask",
+]
 dependencies = [
   "celery[redis]>=5.6.3",
   "flask>=3.1.3",
@@ -36,6 +45,9 @@ dev = [
   "pytest-mock>=3.15.1",
   "taskipy>=1.14.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/RCOSDP/jairocloud-groups-manager.git"
 
 [project.scripts]
 jairocloud-groups-manager = "server.main:cli"
@@ -78,20 +90,31 @@ exclude_also = [
 [tool.ruff.lint]
 # refer to https://docs.astral.sh/ruff/settings/#lint
 ignore = [
-  "COM812",
-  "INP001",
-  "D203",
-  "D213",
-  "TRY400",
+    "missing-trailing-comma",
+    "implicit-namespace-package",
+    "incorrect-blank-line-before-class",
+    "multi-line-summary-second-line",
+    "error-instead-of-exception",
 ]
 preview = true
 select = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"**/api/**.py" = ["TC001", "TC002", "TC003"]
-"**/entities/**.py" = ["TC001", "TC002", "TC003"]
-"*.pyi" = ["CPY001", "E501"]
+"__init__.py" = ["unused-import"]
+"**/api/**.py" = [
+    "typing-only-first-party-import",
+    "typing-only-third-party-import",
+    "typing-only-standard-library-import",
+]
+"**/entities/**.py" = [
+    "typing-only-first-party-import",
+    "typing-only-third-party-import",
+    "typing-only-standard-library-import"
+]
+"*.pyi" = [
+    "missing-copyright-notice",
+    "line-too-long"
+]
 
 [tool.ruff.lint.isort]
 # refer to https://docs.astral.sh/ruff/settings/#lintisort
