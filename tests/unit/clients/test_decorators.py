@@ -27,15 +27,15 @@ if t.TYPE_CHECKING:
     from server.config import RuntimeConfig
 
 
-class TestModel(BaseModel):
+class ResourceModel(BaseModel):
     value: str
     data: dict
 
 
-def target_func(arg: str, access_token: str, client_secret: str, **kwargs: str) -> TestModel | MapError:
+def target_func(arg: str, access_token: str, client_secret: str, **kwargs: str) -> ResourceModel | MapError:
     if arg == "error-id":
         return MapError(status="400", scim_type="invalidValue", detail=arg)
-    return TestModel(value=arg, data=kwargs)
+    return ResourceModel(value=arg, data=kwargs)
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def function(mocker: MockerFixture):
 
 
 def test_cache_resource_hit(app, config, datastore, function, mocker: MockerFixture, caplog):
-    cached_obj = TestModel(value=(identifier := "cached-id"), data=(cached_data := {"key": "cached-data"}))
+    cached_obj = ResourceModel(value=(identifier := "cached-id"), data=(cached_data := {"key": "cached-data"}))
 
     target, namespace = function
     hashed_args = hashlib.md5(
@@ -75,7 +75,7 @@ def test_cache_resource_hit(app, config, datastore, function, mocker: MockerFixt
 
 
 def test_cache_resource_miss(app, config: RuntimeConfig, datastore, function, mocker: MockerFixture, caplog):
-    src_obj = TestModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
 
     target, namespace = function
     hashed_args = hashlib.md5(f"{(identifier,)}-{list(src_data.items())!s}".encode(), usedforsecurity=False).hexdigest()
@@ -120,7 +120,7 @@ def test_cache_resource_maperror(app, config: RuntimeConfig, datastore, function
 
 
 def test_cache_resource_redis_error(app, config: RuntimeConfig, datastore, function, mocker: MockerFixture, caplog):
-    src_obj = TestModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
 
     target, namespace = function
     app_cache, _, _ = datastore
@@ -141,7 +141,7 @@ def test_cache_resource_redis_error(app, config: RuntimeConfig, datastore, funct
 
 
 def test_cache_resource_invalid_cache_data(app, datastore, function, mocker: MockerFixture, caplog):
-    src_obj = TestModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
 
     target, namespace = function
     app_cache, _, _ = datastore
@@ -160,7 +160,7 @@ def test_cache_resource_invalid_cache_data(app, datastore, function, mocker: Moc
 def test_cache_resource_zero_timeout(app, config: RuntimeConfig, datastore, function, mocker: MockerFixture):
     config.REDIS.cache_timeout = 0  # when timeout is 0, decorator does nothing
 
-    src_obj = TestModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
 
     target, _ = function
     app_cache, _, _ = datastore
@@ -176,7 +176,7 @@ def test_cache_resource_zero_timeout(app, config: RuntimeConfig, datastore, func
 
 
 def test_cache_resource_no_args(app, datastore, function, mocker: MockerFixture):
-    src_obj = TestModel(value=(identifier := "kw-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "kw-id"), data=(src_data := {"key": "src-data"}))
 
     target, _ = function
     app_cache, _, _ = datastore
@@ -195,7 +195,7 @@ def test_cache_resource_with_id_generator(app, config: RuntimeConfig, datastore,
     def test_id_generator(*args, **kwargs):
         return f"generated-{args[0]}"
 
-    src_obj = TestModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
 
     target, namespace = function
     app_cache, _, _ = datastore
@@ -217,7 +217,7 @@ def test_cache_resource_with_id_generator(app, config: RuntimeConfig, datastore,
 def test_cache_resource_override_timeout(app, config: RuntimeConfig, datastore, function, mocker: MockerFixture):
     override_timeout = 5
 
-    src_obj = TestModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
+    src_obj = ResourceModel(value=(identifier := "src-id"), data=(src_data := {"key": "src-data"}))
 
     target, namespace = function
     app_cache, _, _ = datastore
@@ -264,6 +264,7 @@ def test_default_id_system_admin(app: Flask, login_users, mocker: MockerFixture)
 
     with app.test_request_context():
         login_user(user)
+
         result = default_id_generator()
 
     assert result == "by_system_admin"

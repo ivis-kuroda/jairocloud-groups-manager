@@ -5,20 +5,20 @@ line-length = 120
 [lint]
 ignore = [
   "ANN",
-  "S101",
-  "S105",
-  "S106",
-  "CPY001",
-  "SLF001",
-  "ARG001",
+  "assert",
+  "hardcoded-password-string",
+  "hardcoded-password-func-arg",
+  "missing-copyright-notice",
+  "private-member-access",
+  "unused-function-argument",
   "DOC",
   "D",
-  "PLC2701",
-  "PLR0914",
-  "PLR0913",
-  "PLR0917",
-  "PLR6301",
-  "RUF076",
+  "import-private-name",
+  "too-many-locals",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "no-self-use",
+  "pytest-fixture-autouse",
 ]
 
 [lint.isort]

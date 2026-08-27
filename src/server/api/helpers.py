@@ -8,9 +8,10 @@ import traceback
 import typing as t
 
 from functools import wraps
+from http import HTTPStatus
 from typing import get_origin
 
-from flask import Response, jsonify, make_response, request
+from flask import Response, abort, jsonify, make_response, request
 from flask_login import current_user
 from flask_pydantic.core import _sanitize_ctx_errors  # noqa: PLC2701
 from pydantic import BaseModel, ValidationError
@@ -19,20 +20,22 @@ from werkzeug.datastructures import FileStorage
 from server.auth import is_user_logged_in
 from server.config import config
 from server.const import USER_ROLES
-from server.exc import ProgrammingError
 from server.messages import E
 from server.services.utils import (
     detect_affiliations_from_is_member_of,
     get_highest_role,
 )
 
-from .schemas import ErrorResponse
-
 
 def roles_required[**P, R](
     *required: USER_ROLES,
 ) -> t.Callable[[t.Callable[P, R]], t.Callable[P, R]]:
     """Verify that the user has the requested role.
+
+    If the current user is not logged in, it will abort the request with a
+    :class:`~werkzeug.exceptions.Unauthorized` error.
+    If the current user does not have the required role,
+    it will abort the request with a :class:`~werkzeug.exceptions.Forbidden` error.
 
     Args:
         *required: List of role names to grant access to.
@@ -45,9 +48,6 @@ def roles_required[**P, R](
         func: t.Callable[P, R],
     ) -> t.Callable[P, R]:
         """Inner decorator that handles the function wrapping.
-
-        If the current user's highest role is not in the required roles,
-        it returns a 403 Forbidden response.
 
         Args:
             func (t.Callable[P, R]): The function to be decorated.
@@ -66,12 +66,10 @@ def roles_required[**P, R](
 
             Returns:
                 R: The result of the decorated function.
-
-            Raises:
-                ProgrammingError: If the user is not logged in.
             """
             if not is_user_logged_in(current_user):
-                raise ProgrammingError(E.AUTHENTICATION_NOT_YET)
+                # make response in common error handler in api router.
+                abort(HTTPStatus.UNAUTHORIZED, description=E.UNAUTHORIZED)
 
             user_roles, _ = detect_affiliations_from_is_member_of(
                 current_user.is_member_of
@@ -79,8 +77,8 @@ def roles_required[**P, R](
             highest = get_highest_role([repository.role for repository in user_roles])
 
             if highest not in required:
-                error = ErrorResponse(message=E.FORBIDDEN)
-                return make_response(jsonify(error.model_dump(mode="json")), 403)
+                # make response in common error handler in api router.
+                abort(HTTPStatus.FORBIDDEN, description=E.FORBIDDEN)
 
             return func(*args, **kwargs)
 
@@ -129,7 +127,9 @@ def validate_files(func: t.Callable) -> t.Callable:  # noqa: C901
                 )
 
             if err:
-                return make_response(jsonify({"validation_error": err}), 400)
+                return make_response(
+                    jsonify({"validation_error": err}), HTTPStatus.BAD_REQUEST
+                )
 
             try:
                 fl = files_model(**file_params)
@@ -138,7 +138,9 @@ def validate_files(func: t.Callable) -> t.Callable:  # noqa: C901
                 err["file_params"] = _sanitize_ctx_errors(exc.errors())
 
         if err:
-            return make_response(jsonify({"validation_error": err}), 400)
+            return make_response(
+                jsonify({"validation_error": err}), HTTPStatus.BAD_REQUEST
+            )
 
         if files_in_kwargs:
             kwargs["files"] = fl

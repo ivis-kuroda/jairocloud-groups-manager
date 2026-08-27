@@ -1,0 +1,285 @@
+# Application configuration for server side
+
+# Server hostname of this application.
+server_name = 'test.localhost'
+
+# Secret key for cryptographic operations.
+secret_key = 'test-secret-key'
+
+
+[log]
+# Log level for the application standard output.
+# Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+level = "DEBUG"
+
+# Log format string for log messages.
+# If not set, the default format will be used.
+# format = "[%(asctime)s.%(msecs)03dZ] %(levelname)-8s %(message)s (%(addr)s - %(user)s)"
+
+# Date format string for log timestamps.
+# If not set, the default date format will be used.
+# datefmt = "%Y-%m-%dT%H:%M:%S"
+
+
+[session]
+# Strategy for session expiration.
+# Possible values: "absolute" or "sliding"
+# Default is "sliding".
+strategy = "sliding"
+
+# Sliding session lifetime (in seconds)
+# Default is 3600 seconds (1 hour).
+sliding_lifetime = 3600
+
+# Absolute session lifetime (in seconds)
+# Default is 86400 seconds (24 hours).
+absolute_lifetime = 86400
+
+
+[api]
+# Maximum allowed file upload size in bytes.
+# Default is 10485760 bytes (10 MB).
+max_upload_size = 10485760  # 10 MB
+
+
+[storage]
+# Type of storage backend to use.
+# In the future, support for "ObjectStorage" will be added.
+# Possible values: "local", "object_storage", etc.
+type = "local"
+
+[storage.local]
+# Path to the temporary directory.
+temporary = "/var/tests/tmp/jcgroups"
+
+# Path to the storage directory.
+storage = "/var/tests/tmp/jcgroups"
+
+
+[sp]
+# SP connector ID for the application.
+connector_id = "jairocloud-groups-manager_test"
+
+# Entity ID of the Service Provider.
+entity_id = "https://test.localhost/shibboleth-sp"
+
+# Path to the Service Provider's certificate file.
+crt = "./test/server.crt"
+
+# Path to the Service Provider's private key file.
+key = "./test/server.key"
+
+
+[repositories]
+# Maximum allowed length for repository URL, expressed as a Python expression.
+# Built-in functions `len`, `max`, and `min` are available.
+# If you change this setting, you must also change setting `repositories.maxUrlLength`
+# in `app.config.ts` accordingly to keep them consistent.
+# (excluding “https://”, the “jc_” prefix assigned to the ID, and additional padding)
+max_url_length = "50 - len('jc_') - len('_ro_radm') - 2"
+
+[repositories.id_patterns]
+# SP connector ID pattern. It should include '{repository_id}' placeholder.
+# `repository_id` is the FQDN, with its dots and hyphens replaced by underscores.
+sp_connector = "jc_{repository_id}_test"
+
+
+[groups]
+# Maximum allowed length for group ID, expressed as a Python expression.
+# Built-in functions `len`, `max`, and `min` are available.
+# If you change this setting, you must also change setting `groups.maxIdLength`
+# in `app.config.ts` accordingly to keep them consistent.
+# (excluding the “jc_” prefix assigned to the ID and additional padding)
+max_id_length = "50 - len('jc_') - len('_gr_')"
+
+[groups.id_patterns]
+# ID of the system administrator group.
+system_admin = "jc_roles_sysadm_test"
+
+# Pattern for repository administrator group IDs.
+# It should include '{repository_id}' placeholder.
+repository_admin = "jc_{repository_id}_ro_radm_test"
+
+# Pattern for community administrator group IDs.
+# It should include '{repository_id}' placeholder.
+community_admin = "jc_{repository_id}_ro_cadm_test"
+# Pattern for contributor group IDs.
+# It should include '{repository_id}' placeholder.
+contributor = "jc_{repository_id}_ro_cont_test"
+
+# Pattern for general user group IDs.
+# It should include '{repository_id}' placeholder.
+general_user = "jc_{repository_id}_ro_user_test"
+
+# Pattern for user-defined group IDs.
+# It should include `{repository_id}` followed by `{user_defined_id}` placeholders.
+user_defined = "jc_{repository_id}_gr_{user_defined_id}_test"
+
+
+[groups.name_patterns]
+# Name of the system administrator group.
+system_admin = "ジャイロクラウドシステム管理者（テスト）"
+
+# Pattern for repository administrator group names.
+# It should include '{repository_name}' placeholder.
+repository_admin = "{repository_name}管理者（テスト）"
+
+# Pattern for community administrator group names.
+# It should include '{repository_name}' placeholder.
+community_admin = "{repository_name}コミュニティ管理者（テスト）"
+
+# Pattern for contributor group names.
+# It should include '{repository_name}' placeholder.
+contributor = "{repository_name}投稿ユーザー（テスト）"
+
+# Pattern for general user group names.
+# It should include '{repository_name}' placeholder.
+general_user = "{repository_name}一般ユーザー（テスト）"
+
+
+[users]
+# Version of the export file format
+export_format_version = 1.0
+
+
+[map_core]
+# Base URL for the mAP Core service.
+base_url = "https://test.mapcore.jp"
+
+# Timeout (in seconds) for requests to mAP Core service.
+timeout = 3
+
+# Update strategy for mAP Core service. Possible values: "put" or "patch"
+update_strategy = "patch"
+
+# Whether the user information is editable via this application.
+user_editable = false
+
+
+[postgres]
+# Database user name for authentication.
+user = "jcgroups"
+
+# Database user password for authentication.
+password = "jcpass"
+
+# Host name or IP address of the PostgreSQL server.
+host = "disable"
+
+# Port number for the PostgreSQL server.
+port = 5432
+
+# Name of the PostgreSQL database.
+db = "jctest"
+
+
+[redis]
+# Type of caching backend to use. Possible values: "RedisCache" or "RedisSentinelCache"
+cache_type = "RedisCache"
+
+# Socket timeout (in seconds) for Redis connections.
+socket_timeout = 1.0
+
+# Default timeout (in seconds) for cached items.
+# Use in caching mAP API responses.
+cache_timeout = 300
+
+# Prefix for cache keys used by app-cache and account-store.
+key_prefix = "jcgroups-test-"
+
+# Redis database number to use.
+[redis.database]
+# Database number for application cache.
+app_cache = 0
+
+# Database number for storing account information.
+account_store = 1
+
+# Database number for Celery result backend.
+result_backend = 2
+
+# Database number for group informations cache.
+# refer to https://github.com/RCOSDP/weko-group-cache-db
+group_cache = 4
+
+# Configuration for single Redis server, when cache_type is "RedisCache".
+[redis.single]
+# URL of the Redis server.
+base_url = "redis://disable:6379"
+
+# Configuration for Redis Sentinel, when cache_type is "RedisSentinelCache".
+[redis.sentinel]
+# Name of the Redis Sentinel master node.
+master_name = "mymaster"
+
+# List of Redis Sentinel nodes.
+[[redis.sentinel.nodes]]
+# Hostname or IP address of a Redis Sentinel node.
+host = "sentinel-1"
+port = 26379
+
+[[redis.sentinel.nodes]]
+# Hostname or IP address of a Redis Sentinel node.
+host = "sentinel-2"
+port = 26379
+
+[[redis.sentinel.nodes]]
+# Hostname or IP address of a Redis Sentinel node.
+host = "sentinel-3"
+port = 26379
+
+
+[rabbitmq]
+# Hostname or IP address of the RabbitMQ server for Celery broker.
+url = "amqp://guest:guest@disable:5672//"
+
+
+[cache_groups]
+# Cache key suffix of group information in Redis.
+cache_key_suffix = "_gakunin_groups"
+
+# Map groups API endpoint.
+api_endpoint = "/api/groups"
+
+# Cache time-to-live of group information in Redis.
+# if it specified less than 0, it will be considered as no expiration.
+cache_ttl = 86400
+
+# Request timeout (in seconds) when connecting to mAP API.
+request_timeout = 20
+
+# Request interval (in seconds) between mAP API requests.
+request_interval = 3
+
+# Request retries when failed to fetch groups from mAP API.
+request_retries = 3
+
+# Base time (in seconds) for exponential backoff during request retries.
+request_retry_base = 4
+
+# Factor (in seconds) for exponential backoff during request retries.
+request_retry_factor = 5
+
+# Maximum time (in seconds) for exponential backoff during request retries.
+request_retry_max = 90
+
+
+# Path to the directory containing institution TLS files.
+directory_path = "/var/tests/mnt"
+
+
+# Feature flags for enabling or disabling application features.
+# These are due to temporary constraints
+# in the future, all features will be enabled and the settings will be deleted.
+[features]
+# Whether user search by user name only in users.
+# If false, Enable search by username, email, or ePPN.
+search_only_username = true
+
+# Whether mAP Core API bulk operation is enabled or disabled.
+enable_bulk_operation = false
+
+
+[develop]
+# Enable or disable developer login feature.
+developer_login = false

@@ -37,6 +37,10 @@ from .search_queries import (
     make_criteria_object,
 )
 from .transformers import (
+    make_group_detail,
+    make_group_summary,
+    make_repository_detail,
+    make_repository_summary,
     prepare_group,
     prepare_role_groups,
     prepare_service,

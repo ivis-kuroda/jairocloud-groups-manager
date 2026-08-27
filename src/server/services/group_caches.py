@@ -72,12 +72,9 @@ def get_repository_cache(query: GroupCacheCriteria) -> SearchResult[RepositoryCa
 
     page_size = searched.page_size
     start = (query.p - 1) * page_size if query.p else 0
-    end = min(start + page_size, len(searched.resources))
+    end = start + page_size  # NOTE: safe to exceed list length.
 
-    results = check_cache_exists(
-        repositories=searched.resources,
-        status_filter=query.f,
-    )
+    results = check_cache_exists(searched.resources, status_filter=query.f)
 
     resources = results
     total = searched.total
@@ -85,6 +82,7 @@ def get_repository_cache(query: GroupCacheCriteria) -> SearchResult[RepositoryCa
         # If filtering by status, apply pagination in this app.
         resources = results[start:end]
         total = len(results)
+        page_size = min(query.l or page_size, total)
 
     return SearchResult(
         resources=resources,
@@ -174,10 +172,10 @@ def update(op: GroupCacheOperation, repository_ids: list[str] | None = None) -> 
     try:
         app_cache.delete(cache_key)
         app_cache.hset(cache_key, mapping={"status": "pending"})
-        task = update_task.apply_async((fqdn_list,))
+        task = update_task.delay(fqdn_list)
     except RedisError as exc:
-        error = E.FAILED_ENQUEUE_CACHE_UPDATE_TASK
-        raise TaskExecutionError(error) from exc
+        current_app.logger.error(E.FAILED_ENQUEUE_CACHE_UPDATE_TASK)
+        raise TaskExecutionError(E.FAILED_ENQUEUE_CACHE_UPDATE_TASK) from exc
 
     current_app.logger.info(
         I.GROUP_CACHE_UPDATE_STARTED, {"op": op, "task_id": task.id}
@@ -209,13 +207,17 @@ def is_update_task_running() -> bool:
 
 
 @progress_signal.connect
-def handle_progress(_: object, data: ProgressDataBase, **kwargs: object) -> None:  # noqa: ARG001
+def handle_progress(
+    _sender: object = None,
+    *_args,  # ruff: ignore[missing-type-args]
+    data: ProgressDataBase,
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
+) -> None:
     """Receive progress update signal and update task progress in Redis.
 
     Args:
-        _: The sender of the signal.
+        sender: The sender of the signal.
         data (ProgressData): Data containing progress information.
-        **kwargs: Additional keyword arguments containing task details.
     """
     cache_key = _unique_progress_key()
     try:
@@ -229,17 +231,22 @@ def handle_progress(_: object, data: ProgressDataBase, **kwargs: object) -> None
 
 
 @executed_signal.connect
-def handle_excuted(_: object, data: ExecutedData, **kwargs: object) -> None:  # noqa: ARG001
+def handle_excuted(
+    _sender: object = None,
+    *_args,  # ruff: ignore[missing-type-args]
+    data: ExecutedData,
+    **_kwargs,  # ruff: ignore[missing-type-kwargs]
+) -> None:
     """Receive executed signal and update task execution status in Redis.
 
     Args:
-        _: The sender of the signal.
+        sender: The sender of the signal.
         data (ExecutedData): Data containing executed information.
-        **kwargs: Additional keyword arguments containing task details.
     """
-    cache_key = _unique_progress_key()
     repository_id = resolve_repository_id(fqdn=data.fqdn)
     field_name = f"{repository_id}_{data.retries}"
+
+    cache_key = _unique_progress_key()
     try:
         app_cache.hset(cache_key, mapping={field_name: data.model_dump_json()})
     except RedisError, PydanticSerializationError:
@@ -264,9 +271,11 @@ def get_task_status() -> TaskDetail | None:
     cache_key = _unique_progress_key()
     try:
         raw = app_cache.hgetall(cache_key)
+
         if not raw:
             return None
     except RedisError as exc:
+        current_app.logger.error(E.FAILED_FETCH_UPDATE_TASK_STATUS)
         raise DatastoreError(E.FAILED_FETCH_UPDATE_TASK_STATUS) from exc
 
     task_data = {
@@ -275,19 +284,26 @@ def get_task_status() -> TaskDetail | None:
     }
 
     try:
+        # separate progress data and executed results from the task data.
         progress = ProgressData.model_validate(task_data, extra="ignore")
 
+        # executed results which contain each repository's execution.
         results: list[ExecutedData] = [
             ExecutedData.model_validate_json(value)
             for key, value in task_data.items()
             if key not in {"status", "current", "done", "total"}
         ]
-        repository_ids = [resolve_repository_id(fqdn=result.fqdn) for result in results]
-        repository_query = make_criteria_object(
-            "repositories", i=repository_ids, l=len(repository_ids)
-        )
-        searchd = repositories.search(repository_query)
-        repository_map = {repo.id: repo for repo in searchd.resources}
+    except ValidationError as exc:
+        current_app.logger.error(E.FAILED_PARSE_UPDATE_TASK_STATUS)
+        raise GroupCacheError(E.FAILED_PARSE_UPDATE_TASK_STATUS) from exc
+
+    repository_ids = [resolve_repository_id(fqdn=result.fqdn) for result in results]
+    repository_query = make_criteria_object(
+        "repositories", i=repository_ids, l=len(repository_ids)
+    )
+    searchd = repositories.search(repository_query)
+    repository_map = {repo.id: repo for repo in searchd.resources}
+    try:
         detail_results = [
             RepositoryCache(
                 id=r.id,

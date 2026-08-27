@@ -135,7 +135,7 @@ MAP_ILLEGAL_EPPN_PATTERN: Final = (
 )
 """Pattern to identify 'Illegal ePPN' errors from mAP Core API."""
 
-MAP_NO_RIGHTS_CREATE_PATTERN: Final = r"You do not have creation right of '(.*)'"
+MAP_NO_RIGHTS_CREATE_PATTERN: Final = r"You do not have creation right of (.*)"
 """Pattern to identify 'No Creation Rights' errors from mAP Core API."""
 
 MAP_NO_RIGHTS_UPDATE_PATTERN: Final = r"No update rights for '(.*)'"

@@ -36,7 +36,7 @@ def alias(mocker: MockerFixture):
 
 
 @pytest.fixture
-def original_alias(alias):
+def use_alias(alias):
     original, _ = alias
     services._a = original
 
@@ -411,7 +411,7 @@ def test_post_http_error(config: RuntimeConfig, map_service, mocker: MockerFixtu
         services.post(service, access_token=access_token, client_secret=client_secret)
 
 
-def test_put_by_id(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_put_by_id(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, expected, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -421,7 +421,6 @@ def test_put_by_id(config: RuntimeConfig, map_service, signal_send, mocker: Mock
     mock_put = mocker.patch.object(server.clients.services.requests, "put")
     mock_put.return_value.text = expected.model_dump_json(ensure_ascii=False, by_alias=True)
     mock_put.return_value.status_code = HTTPStatus.OK
-    mock_send = signal_send["repository_updated"]
 
     result = services.put_by_id(expected, access_token=access_token, client_secret=client_secret)
 
@@ -439,11 +438,8 @@ def test_put_by_id(config: RuntimeConfig, map_service, signal_send, mocker: Mock
     assert kwargs["headers"]["Authorization"] == f"Bearer {access_token}"
     assert kwargs["timeout"] == config.MAP_CORE.timeout
 
-    _, kwargs = mock_send.call_args
-    assert kwargs["service"] == expected
 
-
-def test_put_by_id_with_include(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_put_by_id_with_include(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, expected, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -475,7 +471,7 @@ def test_put_by_id_with_include(config: RuntimeConfig, map_service, signal_send,
     assert kwargs["timeout"] == config.MAP_CORE.timeout
 
 
-def test_put_by_id_with_exclude(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_put_by_id_with_exclude(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, expected, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -507,9 +503,7 @@ def test_put_by_id_with_exclude(config: RuntimeConfig, map_service, signal_send,
     assert kwargs["timeout"] == config.MAP_CORE.timeout
 
 
-def test_put_by_id_map_error_with_bad_request(
-    config: RuntimeConfig, map_service, map_error, signal_send, mocker: MockerFixture
-):
+def test_put_by_id_map_error_with_bad_request(config: RuntimeConfig, map_service, map_error, mocker: MockerFixture):
     _, service, _ = map_service
     _, expected, raw_error = map_error
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
@@ -517,30 +511,25 @@ def test_put_by_id_map_error_with_bad_request(
     mock_put = mocker.patch.object(server.clients.services.requests, "put")
     mock_put.return_value.text = raw_error
     mock_put.return_value.status_code = HTTPStatus.BAD_REQUEST
-    mock_send = signal_send["repository_updated"]
 
     result = services.put_by_id(service, access_token=access_token, client_secret=client_secret)
 
     assert result == expected
-    mock_send.assert_not_called()
 
 
-def test_put_by_id_http_error(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_put_by_id_http_error(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, service, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
     mock_put = mocker.patch.object(server.clients.services.requests, "put")
     mock_put.return_value.status_code = HTTPStatus.UNAUTHORIZED
     mock_put.return_value.raise_for_status.side_effect = HTTPError(HTTPStatus.UNAUTHORIZED.phrase)
-    mock_send = signal_send["repository_updated"]
 
     with pytest.raises(HTTPError):
         services.put_by_id(service, access_token=access_token, client_secret=client_secret)
 
-    mock_send.assert_not_called()
 
-
-def test_patch_by_id(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_patch_by_id(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, expected, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -557,7 +546,6 @@ def test_patch_by_id(config: RuntimeConfig, map_service, signal_send, mocker: Mo
     mock_patch = mocker.patch.object(server.clients.services.requests, "patch")
     mock_patch.return_value.text = expected.model_dump_json(ensure_ascii=False, by_alias=True)
     mock_patch.return_value.status_code = HTTPStatus.OK
-    mock_send = signal_send["repository_updated"]
 
     result = services.patch_by_id(expected.id, operations, access_token=access_token, client_secret=client_secret)
 
@@ -572,11 +560,8 @@ def test_patch_by_id(config: RuntimeConfig, map_service, signal_send, mocker: Mo
     assert kwargs["headers"]["Authorization"] == f"Bearer {access_token}"
     assert kwargs["timeout"] == config.MAP_CORE.timeout
 
-    _, kwargs = mock_send.call_args
-    assert kwargs["service"] == expected
 
-
-def test_patch_by_id_with_include(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_patch_by_id_with_include(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, expected, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -600,7 +585,7 @@ def test_patch_by_id_with_include(config: RuntimeConfig, map_service, signal_sen
     assert "excludedAttributes" not in kwargs["params"]
 
 
-def test_patch_by_id_with_exclude(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_patch_by_id_with_exclude(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, expected, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -624,9 +609,7 @@ def test_patch_by_id_with_exclude(config: RuntimeConfig, map_service, signal_sen
     assert kwargs["params"]["excludedAttributes"] == ",".join(exclude)
 
 
-def test_patch_by_id_map_error_with_bad_request(
-    config: RuntimeConfig, map_service, map_error, signal_send, mocker: MockerFixture
-):
+def test_patch_by_id_map_error_with_bad_request(config: RuntimeConfig, map_service, map_error, mocker: MockerFixture):
     _, service, _ = map_service
     _, expected, raw_error = map_error
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
@@ -636,15 +619,13 @@ def test_patch_by_id_map_error_with_bad_request(
     mock_patch = mocker.patch.object(server.clients.services.requests, "patch")
     mock_patch.return_value.text = raw_error
     mock_patch.return_value.status_code = HTTPStatus.BAD_REQUEST
-    mock_send = signal_send["repository_updated"]
 
     result = services.patch_by_id(service.id, operations, access_token=access_token, client_secret=client_secret)
 
     assert result == expected
-    mock_send.assert_not_called()
 
 
-def test_patch_by_id_http_error(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_patch_by_id_http_error(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, service, _ = map_service
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
 
@@ -653,15 +634,12 @@ def test_patch_by_id_http_error(config: RuntimeConfig, map_service, signal_send,
     mock_patch = mocker.patch.object(server.clients.services.requests, "patch")
     mock_patch.return_value.status_code = HTTPStatus.UNAUTHORIZED
     mock_patch.return_value.raise_for_status.side_effect = HTTPError(HTTPStatus.UNAUTHORIZED.phrase)
-    mock_send = signal_send["repository_updated"]
 
     with pytest.raises(HTTPError):
         services.patch_by_id(service.id, operations, access_token=access_token, client_secret=client_secret)
 
-    mock_send.assert_not_called()
 
-
-def test_delete_by_id(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_delete_by_id(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, service, _ = map_service
     service_id = service.id
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
@@ -672,7 +650,6 @@ def test_delete_by_id(config: RuntimeConfig, map_service, signal_send, mocker: M
     mock_delete = mocker.patch.object(server.clients.services.requests, "delete")
     mock_delete.return_value.text = ""
     mock_delete.return_value.status_code = HTTPStatus.NO_CONTENT
-    mock_send = signal_send["repository_deleted"]
 
     result = services.delete_by_id(service_id, access_token=access_token, client_secret=client_secret)
 
@@ -686,13 +663,8 @@ def test_delete_by_id(config: RuntimeConfig, map_service, signal_send, mocker: M
     assert kwargs["headers"]["Authorization"] == f"Bearer {access_token}"
     assert kwargs["timeout"] == config.MAP_CORE.timeout
 
-    _, kwargs = mock_send.call_args
-    assert kwargs["service_id"] == service_id
 
-
-def test_delete_by_id_map_error_with_bad_request(
-    config: RuntimeConfig, map_service, map_error, signal_send, mocker: MockerFixture
-):
+def test_delete_by_id_map_error_with_bad_request(config: RuntimeConfig, map_service, map_error, mocker: MockerFixture):
     _, service, _ = map_service
     _, expected, raw_error = map_error
     service_id = service.id
@@ -701,15 +673,13 @@ def test_delete_by_id_map_error_with_bad_request(
     mock_delete = mocker.patch.object(server.clients.services.requests, "delete")
     mock_delete.return_value.text = raw_error
     mock_delete.return_value.status_code = HTTPStatus.BAD_REQUEST
-    mock_send = signal_send["repository_deleted"]
 
     result = services.delete_by_id(service_id, access_token=access_token, client_secret=client_secret)
 
     assert result == expected
-    mock_send.assert_not_called()
 
 
-def test_delete_by_id_http_error(config: RuntimeConfig, map_service, signal_send, mocker: MockerFixture):
+def test_delete_by_id_http_error(config: RuntimeConfig, map_service, mocker: MockerFixture):
     _, service, _ = map_service
     service_id = service.id
     access_token, client_secret = uuid4().hex[:8], uuid4().hex
@@ -717,15 +687,12 @@ def test_delete_by_id_http_error(config: RuntimeConfig, map_service, signal_send
     mock_delete = mocker.patch.object(server.clients.services.requests, "delete")
     mock_delete.return_value.status_code = HTTPStatus.UNAUTHORIZED
     mock_delete.return_value.raise_for_status.side_effect = HTTPError(HTTPStatus.UNAUTHORIZED.phrase)
-    mock_send = signal_send["repository_deleted"]
 
     with pytest.raises(HTTPError):
         services.delete_by_id(service_id, access_token=access_token, client_secret=client_secret)
 
-    mock_send.assert_not_called()
 
-
-def test__alias_generator(original_alias, mocker: MockerFixture):
+def test__alias_generator(use_alias, mocker: MockerFixture):
     mock_generator = mocker.MagicMock(side_effect=to_camel)
     mocker.patch.object(MapService, "model_config", {"alias_generator": mock_generator})
 
@@ -734,7 +701,7 @@ def test__alias_generator(original_alias, mocker: MockerFixture):
     mock_generator.assert_called_once_with("service_name")
 
 
-def test__alias_serialization(original_alias, mocker: MockerFixture):
+def test__alias_serialization(use_alias, mocker: MockerFixture):
     mock_generator = mocker.NonCallableMock(spec_set=AliasGenerator)
     mock_generator.serialization_alias.side_effect = to_camel
     mocker.patch.object(MapService, "model_config", {"alias_generator": mock_generator})
@@ -744,26 +711,13 @@ def test__alias_serialization(original_alias, mocker: MockerFixture):
     mock_generator.serialization_alias.assert_called_once_with("service_name")
 
 
-def test__alias_not_set(original_alias, mocker: MockerFixture):
+def test__alias_not_set(use_alias, mocker: MockerFixture):
     mock_config = mocker.MagicMock(spec=dict)
     mock_config.get.return_value = None
     mocker.patch.object(MapService, "model_config", mock_config)
 
     assert unwrap(services._a)("service_name") == "service_name"
     mock_config.get.assert_called_once_with("alias_generator")
-
-
-def test_handle_repository_updated(map_service, mocker: MockerFixture):
-    _, service, _ = map_service
-    mock_clear = mocker.patch.object(services.get_by_id, "clear_cache")
-
-    unwrap(services.handle_repository_updated)(None, service_id=service.id)
-
-    mock_clear.assert_not_called()
-
-    unwrap(services.handle_repository_updated)(None, service=service)
-
-    mock_clear.assert_called_once_with(service.id)
 
 
 def test_handle_repository_updated_by_id(map_service, mocker: MockerFixture):

@@ -26,7 +26,7 @@ if t.TYPE_CHECKING:
 def test_setup_datastore(test_config: RuntimeConfig, mocker: MockerFixture):
     app = Flask(__name__)
     mock_stores = [mocker.MagicMock(name=f"redis_{i}", spec=Redis) for i in range(5)]
-    mocker.patch.object(server.datastore, "connection", side_effect=lambda _, db, config: mock_stores[db])  # noqa: ARG005
+    mocker.patch.object(server.datastore, "connection", side_effect=lambda _, db, config: mock_stores[db])  # ruff: ignore[unused-lambda-argument]
 
     stores = setup_datastore(app, test_config)
 
@@ -89,9 +89,9 @@ def test_connection_ping_error(test_config: RuntimeConfig, mocker: MockerFixture
 
 @pytest.mark.redis_enabled
 @pytest.mark.parametrize("name", ["app_cache", "account_store", "group_cache"])
-def test_proxy(name: str, base_app: Flask, test_config, mocker: MockerFixture):
+def test_proxy(name: str, base_app: Flask, mocker: MockerFixture):
     mocker.patch.object(Redis, "ping")
-    ext = JAIROCloudGroupsManager(base_app, config=test_config)
+    ext = JAIROCloudGroupsManager(base_app)
     expected = ext.datastore[name]
 
     proxy: LocalProxy[Redis] = getattr(server.datastore, name)

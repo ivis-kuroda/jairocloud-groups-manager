@@ -4,7 +4,7 @@
 
 """Services to provide resource transformers for entities."""
 
-# ruff: noqa: SLF001
+# ruff:file-ignore[private-member-access]
 
 import typing as t
 
@@ -27,14 +27,14 @@ from server.entities.map_group import (
     Service as GroupService,
 )
 from server.entities.map_service import (
-    Administrator as ServiceAdministrator,
+    Administrator as ServiceAdmin,
     Group as MapServiceGroup,
     MapService,
     ServiceEntityID,
 )
 from server.entities.map_user import EPPN, Email, Group as UserGroup, MapUser
 from server.entities.repository_detail import RepositoryDetail
-from server.entities.summaries import GroupSummary
+from server.entities.summaries import GroupSummary, RepositorySummary
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.exc import InvalidFormError, SystemAdminNotFound
 from server.messages import E
@@ -69,9 +69,7 @@ def prepare_service(
     if not administrators:
         raise SystemAdminNotFound(E.REPOSITORY_REQUIRES_SYSTEM_ADMIN)
 
-    service.administrators = [
-        ServiceAdministrator(value=user_id) for user_id in administrators
-    ]
+    service.administrators = [ServiceAdmin(value=user_id) for user_id in administrators]
     service.groups = [
         MapServiceGroup(
             value=config.GROUPS.id_patterns[role].format(repository_id=repository_id)
@@ -157,7 +155,7 @@ def make_repository_detail(
     if not more_detail or not service.groups:
         return repository
 
-    from server.services import users  # noqa: PLC0415
+    from server.services import users  # ruff:ignore[import-outside-top-level]
 
     valid_groups = [
         (g.value, detected)
@@ -256,6 +254,37 @@ def make_map_service(repository: RepositoryDetail) -> MapService:
     return service
 
 
+def make_repository_summary(
+    service: MapService, repository_id: str | None = None
+) -> RepositorySummary:
+    """Convert a MapService instance to a RepositorySummary instance.
+
+    Args:
+        service (MapService): The MapService instance to convert.
+        repository_id (str | None):
+            The repository ID. If not provided, it will be resolved from the service ID.
+
+    Returns:
+        RepositorySummary: The converted RepositorySummary instance.
+    """
+    if not repository_id:
+        repository_id = resolve_repository_id(service_id=service.id)
+    if not repository_id:
+        raise NotImplementedError
+
+    summary = RepositorySummary(
+        id=repository_id,
+        service_name=service.service_name,
+        service_url=service.service_url,
+        service_id=service.id,
+    )
+
+    if service.entity_ids:
+        summary.entity_ids = [eid.value for eid in service.entity_ids]
+
+    return summary
+
+
 def prepare_group(
     detail: GroupDetail,
     administrators: set[str],
@@ -336,7 +365,9 @@ def make_group_detail(group: MapGroup, *, more_detail: bool = False) -> GroupDet
     )
     repository_id = detected.repository_id if detected else None
     if repository_id:
-        from server.services import repositories  # noqa: PLC0415
+        from server.services import (  # ruff:ignore[import-outside-top-level]
+            repositories,
+        )
 
         if repo := repositories.get_by_id(repository_id):
             detail.repository = GroupRepository(
@@ -356,7 +387,7 @@ def validate_group_to_map_group(
 ) -> MapGroup: ...
 
 
-def validate_group_to_map_group(  # noqa: C901
+def validate_group_to_map_group(  # ruff:ignore[complex-structure]
     group: GroupDetail, *, mode: t.Literal["create", "update"]
 ) -> tuple[MapGroup, str] | MapGroup:
     """Validate the GroupDetail instance and convert it to a MapGroup instance.
@@ -382,7 +413,6 @@ def validate_group_to_map_group(  # noqa: C901
             raise InvalidFormError(error)
 
         detected = detect_affiliation(group.id)
-        current_app.logger.error("Detected affiliation: %s", detected)
         if not detected:
             # out of this service's scope.
             error = E.GROUP_INVALID_ID_PATTERN
@@ -399,7 +429,7 @@ def validate_group_to_map_group(  # noqa: C901
         error = E.GROUP_REQUIRES_REPOSITORY
         raise InvalidFormError(error)
 
-    from server.services import repositories  # noqa: PLC0415
+    from server.services import repositories  # ruff:ignore[import-outside-top-level]
 
     if repositories.get_by_id(repository_id) is None:
         error = E.GROUP_REQUIRES_EXISTING_REPOSITORY % {"rid": repository_id}
@@ -461,6 +491,33 @@ def make_map_group(group: GroupDetail) -> MapGroup:
         map_group.services = [GroupService(value=sid) for sid in group._services]
 
     return map_group
+
+
+def make_group_summary(group: MapGroup, repository_name: str) -> GroupSummary:
+    """Convert a MapGroup instance to a GroupSummary instance.
+
+    Args:
+        group (MapGroup): The MapGroup instance to convert.
+        repository_name (str): The name of the repository associated with the group.
+
+    Returns:
+        GroupSummary: The converted GroupSummary instance.
+    """
+    if not group.id:
+        raise NotImplementedError
+
+    summary = GroupSummary(
+        id=group.id,
+        display_name=group.display_name,
+        repository_name=repository_name,
+        public=group.public,
+        member_list_visibility=group.member_list_visibility,
+    )
+
+    if group.members is not None:
+        summary.users_count = len(group.members)
+
+    return summary
 
 
 def prepare_user(user: UserDetail) -> MapUser:
@@ -539,7 +596,7 @@ def make_user_detail(user: MapUser, *, more_detail: bool = False) -> UserDetail:
         return detail
 
     if group_ids:
-        from server.services import groups  # noqa: PLC0415
+        from server.services import groups  # ruff:ignore[import-outside-top-level]
 
         group_query = make_criteria_object("groups", i=list(group_ids), l=-1)
         detail.groups = [
@@ -549,7 +606,9 @@ def make_user_detail(user: MapUser, *, more_detail: bool = False) -> UserDetail:
         ]
 
     if user_roles:
-        from server.services import repositories  # noqa: PLC0415
+        from server.services import (  # ruff:ignore[import-outside-top-level]
+            repositories,
+        )
 
         repositories_query = make_criteria_object(
             "repositories", i=list(user_roles.keys()), l=-1
@@ -645,7 +704,7 @@ def validate_user_roles(user: UserDetail, permitted: set[str]) -> list[str]:
         error = E.USER_REQUIRES_REPOSITORY
         raise InvalidFormError(error)
 
-    from server.services import repositories  # noqa: PLC0415
+    from server.services import repositories  # ruff:ignore[import-outside-top-level]
 
     repositories_query = make_criteria_object(
         "repositories",
@@ -701,7 +760,7 @@ def validate_user_groups(user: UserDetail, permitted: set[str]) -> list[str]:
         "groups", i=[group.group_id for group in detected], l=-1
     )
 
-    from server.services import groups  # noqa: PLC0415
+    from server.services import groups  # ruff:ignore[import-outside-top-level]
 
     existed = {g.id for g in groups.search(criteria=group_query).resources}
     current_app.logger.error("Existed group IDs: %s", existed)

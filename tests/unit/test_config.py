@@ -18,7 +18,6 @@ from tests.helpers import regex
 
 if t.TYPE_CHECKING:
     from pytest_mock import MockerFixture
-    from werkzeug.local import LocalProxy
 
     from server.config import RuntimeConfig
 
@@ -194,9 +193,9 @@ def test_proxy(test_config: RuntimeConfig):
     app = Flask(__name__)
     ext = JAIROCloudGroupsManager()
     app.extensions["jairocloud-groups-manager"] = ext
-    expected = ext._config = test_config
+    expected = ext.config = test_config
 
-    proxy = t.cast("LocalProxy[RuntimeConfig]", server.config.config)
+    proxy = server.config.config
     with app.app_context():
         assert proxy == expected
         assert proxy._get_current_object() is expected

@@ -4,12 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from flask import Flask
+from flask import Blueprint, Flask
 
 import server.ext
 
-from server.const import DEFAULT_CONFIG_PATH
-from server.exc import ConfigurationError
+from server.exc import JAIROCloudGroupsManagerError
 from server.ext import JAIROCloudGroupsManager
 from server.messages import E, W
 
@@ -26,37 +25,71 @@ class TestJAIROCloudGroupsManager:
     def test__init__(self):
         ext = JAIROCloudGroupsManager()
 
-        assert ext._config == DEFAULT_CONFIG_PATH
-        assert ext.datastore == {}
-
-    def test__init__with_config_obj(self, test_config):
-        ext = JAIROCloudGroupsManager(config=test_config)
-
-        assert ext._config == test_config
-        assert ext.datastore == {}
+        assert ext
+        with pytest.raises(JAIROCloudGroupsManagerError, match=regex(E.EXTENSION_NOT_INITIALIZED)):
+            _ = ext.config
 
     def test__init__with_app(self, mocker: MockerFixture):
         app = Flask(__name__)
-        mock_init = mocker.patch.object(JAIROCloudGroupsManager, "init_app")
+        mock_init_app = mocker.patch.object(JAIROCloudGroupsManager, "init_app")
 
         JAIROCloudGroupsManager(app=app)
 
-        mock_init.assert_called_once_with(app)
+        mock_init_app.assert_called_once_with(app)
 
-    def test_init_config(self, test_config: RuntimeConfig, mocker: MockerFixture):
+    def test_init_app_state(self, test_config: RuntimeConfig, mocker: MockerFixture):
         app = Flask(__name__)
-        mock_setup = mocker.patch.object(server.ext, "load_config", return_value=test_config)
-        mock_setup_cache = mocker.patch.object(server.ext, "setup_weko_group_cache_db_config")
+        app.config["RUNTIME_CONFIG"] = test_config
+
+        mock_blueprint = mocker.patch.object(server.ext, "create_api_blueprint")
+        mock_blueprint.return_value = mocker.MagicMock(spec=Blueprint)
+        mocker.patch.object(server.ext, "register_cli_commands")
+        mocker.patch.object(JAIROCloudGroupsManager, "init_db_app")
 
         ext = JAIROCloudGroupsManager()
+        ext.init_app(app)
 
-        ext.init_config(app)
-        mock_setup.assert_called_once()
-        mock_setup_cache.assert_called_once_with(test_config.for_group_caches)
+        assert ext.config == test_config
+        assert ext.datastore
+        assert ext.temporary_storage == Path(test_config.STORAGE.local.temporary)
+        assert ext.storage == Path(test_config.STORAGE.local.storage)
+
+    def test_init_app_config(self, test_config: RuntimeConfig, mocker: MockerFixture):
+        app = Flask(__name__)
+        app.config["RUNTIME_CONFIG"] = test_config
+
+        mock_blueprint = mocker.patch.object(server.ext, "create_api_blueprint")
+        mock_blueprint.return_value = mocker.MagicMock(spec=Blueprint)
+        mocker.patch.object(server.ext, "register_cli_commands")
+        mocker.patch.object(JAIROCloudGroupsManager, "init_db_app")
+
+        ext = JAIROCloudGroupsManager()
+        ext.init_app(app)
 
         assert app.config["SERVER_NAME"] == test_config.SERVER_NAME
         assert app.config["SECRET_KEY"] == test_config.SECRET_KEY
         assert app.config["SQLALCHEMY_DATABASE_URI"] == test_config.SQLALCHEMY_DATABASE_URI
+
+    def test_init_app_setup(self, test_config: RuntimeConfig, mocker: MockerFixture):
+        app = Flask(__name__)
+        app.config["RUNTIME_CONFIG"] = test_config
+
+        mock_setup_cache = mocker.patch.object(server.ext, "setup_weko_group_cache_db_config")
+        mock_setup_logger = mocker.patch.object(server.ext, "setup_logger")
+        mock_blueprint = mocker.patch.object(server.ext, "create_api_blueprint")
+        mock_blueprint.return_value = mocker.MagicMock(spec=Blueprint)
+        mock_cli = mocker.patch.object(server.ext, "register_cli_commands")
+        mock_init_db_app = mocker.patch.object(JAIROCloudGroupsManager, "init_db_app")
+
+        ext = JAIROCloudGroupsManager()
+        ext.init_app(app)
+
+        mock_setup_cache.assert_called_once_with(test_config.for_group_caches)
+
+        mock_setup_logger.assert_called_once_with(app, test_config)
+        mock_blueprint.assert_called_once()
+        mock_cli.assert_called_once_with(app)
+        mock_init_db_app.assert_called_once_with(app)
 
     def test_init_db_app(self, test_config: RuntimeConfig, mocker: MockerFixture, caplog):
         app = Flask(__name__)
@@ -90,28 +123,29 @@ class TestJAIROCloudGroupsManager:
 
         assert_message(caplog.records[0], W.DATABASE_NOT_EXIST)
 
-    def test_init_storage_local(self, test_config: RuntimeConfig):
-        ext = JAIROCloudGroupsManager()
-        ext._config = test_config
+    def test_init_storage_local(self, test_config: RuntimeConfig, mocker: MockerFixture):
+        app = Flask(__name__)
+        app.config["RUNTIME_CONFIG"] = test_config
 
-        local = Path(test_config.STORAGE.local.temporary)
+        mock_blueprint = mocker.patch.object(server.ext, "create_api_blueprint")
+        mock_blueprint.return_value = mocker.MagicMock(spec=Blueprint)
+        mocker.patch.object(server.ext, "register_cli_commands")
+        mocker.patch.object(JAIROCloudGroupsManager, "init_db_app")
+
+        ext = JAIROCloudGroupsManager()
+
+        temporary = Path(test_config.STORAGE.local.temporary)
         storage = Path(test_config.STORAGE.local.storage)
-        assert not local.exists()
+        assert not temporary.exists()
         assert not storage.exists()
 
-        ext.init_storage()
+        ext.init_app(app)
 
-        assert local.exists()
-        assert storage.exists()
+        assert ext.temporary_storage.exists()
+        assert ext.storage.exists()
 
-    def test_config_property(self, test_config: RuntimeConfig):
+    def test_config_property(self, test_config: RuntimeConfig, mocker: MockerFixture):
         ext = JAIROCloudGroupsManager()
-        ext._config = test_config
+        ext.state = mocker.MagicMock(config=test_config)
 
         assert ext.config == test_config
-
-    def test_config_property_not_set(self):
-        ext = JAIROCloudGroupsManager()
-
-        with pytest.raises(ConfigurationError, match=regex(E.UNINIT_SERVER_CONFIG)):
-            _ = ext.config

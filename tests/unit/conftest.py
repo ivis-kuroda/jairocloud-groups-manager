@@ -1,6 +1,7 @@
 import typing as t
 
-from datetime import UTC, datetime
+from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -13,6 +14,7 @@ from redis.sentinel import Sentinel
 import server.config
 import server.datastore
 import server.db
+import server.ext
 import server.signals
 
 from server import const
@@ -29,9 +31,9 @@ from server.entities.map_group import (
     Meta as GroupMeta,
     Service as GroupService,
 )
+from server.entities.map_service import Administrator as ServiceAdmin, MapService, Meta as ServiceMeta, ServiceEntityID
 from server.entities.map_user import EPPN, Email, Group as UserGroup, MapUser, Meta as UserMeta
 from server.entities.repository_detail import RepositoryDetail
-from server.entities.search_request import SearchResult
 from server.entities.summaries import GroupSummary, RepositorySummary, UserSummary
 from server.entities.user_detail import RepositoryRole, UserDetail
 from server.ext import JAIROCloudGroupsManager
@@ -39,12 +41,11 @@ from server.services.utils.affiliations import Affiliations, _Group, _RoleGroup
 
 
 if t.TYPE_CHECKING:
-    from pathlib import Path
-
     from pytest_mock import MockerFixture, MockType
 
 pytest.register_assert_rewrite("tests.helpers")
-from tests.helpers import load_json_data  # noqa: E402
+
+from tests.helpers import load_json_data  # ruff:ignore[module-import-not-at-top-of-file]
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -60,81 +61,19 @@ def instance_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def test_config(tmp_path) -> RuntimeConfig:
+def test_config(tmp_path: Path, mocker: MockerFixture) -> RuntimeConfig:
     """Row RuntimeConfig.
 
     If the test needs application context, use the `config` fixture instead of this one.
     """
-    return RuntimeConfig.model_validate(
-        {
-            "SECRET_KEY": "test_secret_key",
-            "LOG": {
-                "level": "DEBUG",
-            },
-            "SP": {
-                "connector_id": "jairocloud-groups-manager_test",
-                "entity_id": "https://test/shibboleth-sp",
-                "crt": "/test/server.crt",
-                "key": "/test/server.key",
-            },
-            "MAP_CORE": {
-                "base_url": "https://mapcore.test.jp",
-                "timeout": 3,
-            },
-            "REPOSITORIES": {
-                "id_patterns": {
-                    "sp_connector": "jc_{repository_id}_test",
-                },
-            },
-            "GROUPS": {
-                "id_patterns": {
-                    "system_admin": "jc_roles_sysadm_test",
-                    "repository_admin": "jc_{repository_id}_ro_radm_test",
-                    "community_admin": "jc_{repository_id}_ro_cadm_test",
-                    "contributor": "jc_{repository_id}_ro_cont_test",
-                    "general_user": "jc_{repository_id}_ro_user_test",
-                    "user_defined": "jc_{repository_id}_gr_{user_defined_id}_test",
-                },
-                "name_patterns": {
-                    "system_admin": "ジャイロクラウドシステム管理者_テスト",
-                    "repository_admin": "{repository_name}管理者_テスト",
-                    "community_admin": "{repository_name}コミュニティ管理者_テスト",
-                    "contributor": "{repository_name}投稿ユーザー_テスト",
-                    "general_user": "{repository_name}一般ユーザー_テスト",
-                },
-                "max_id_length": "50 - len('jc_') - len('_gr_')",
-            },
-            "POSTGRES": {"db": "jctest", "host": "disable"},
-            "USERS": {
-                "export_format_version": 1.0,
-            },
-            "REDIS": {
-                "cache_type": "RedisCache",
-                "key_prefix": "jcgroups-test-",
-                "single": {"base_url": "redis://disable:6379"},
-                "sentinel": {
-                    "nodes": [
-                        {"host": "sentinel-1", "port": 26379},
-                        {"host": "sentinel-2", "port": 26379},
-                        {"host": "sentinel-3", "port": 26379},
-                    ],
-                },
-            },
-            "RABBITMQ": {"url": "amqp://guest:guest@disable:5672//"},
-            "STORAGE": {
-                "local": {
-                    "temporary": str(tmp_path / "tmp" / "jcgroups"),
-                    "storage": str(tmp_path / "storage" / "jcgroups"),
-                }
-            },
-            "CACHE_GROUPS": {
-                "cache_key_suffix": "_gakunin_groups",
-                "api_endpoint": "https://sample.gakunin.jp/api/groups/",
-                "directory_path": "/var/mnt",
-            },
-            "FEATURES": {"search_only_username": False, "enable_bulk_operation": True},
-        },
-    )
+    mocker.patch("pydantic.main._check_frozen")  # Allow config to be mutable for testing purposes.
+
+    config_path = Path(__file__).parent.parent / "test.config.toml"
+    config = RuntimeConfig(_toml_file=config_path)  # pyright: ignore[reportCallIssue]
+    config.STORAGE.local.temporary = str(tmp_path / "tmp" / "jcgroups")
+    config.STORAGE.local.storage = str(tmp_path / "storage" / "jcgroups")
+
+    return config
 
 
 @pytest.fixture
@@ -187,9 +126,9 @@ def db(mocker: MockerFixture):
 
 @pytest.fixture
 def datastore(mocker: MockerFixture):
-    app_cache = mocker.create_autospec(Redis, instance=True)
-    account_store = mocker.create_autospec(Redis, instance=True)
-    group_cache = mocker.create_autospec(Redis, instance=True)
+    app_cache = mocker.MagicMock(spec=Redis)
+    account_store = mocker.MagicMock(spec=Redis)
+    group_cache = mocker.MagicMock(spec=Redis)
 
     def _get_store(name):
         return {
@@ -213,8 +152,25 @@ def base_app(instance_path, sqlalchemy_disable, redis_disable):
 
 
 @pytest.fixture
-def app(base_app: Flask, test_config):
-    JAIROCloudGroupsManager(base_app, config=test_config)
+def blueprint(mocker: MockerFixture):
+    original = server.ext.create_api_blueprint
+    mock_create = mocker.patch.object(server.ext, "create_api_blueprint")
+
+    return original, mock_create
+
+
+@pytest.fixture
+def use_blueprint(mocker: MockerFixture, blueprint):
+    original, _ = blueprint
+    server.ext.create_api_blueprint = original
+
+
+@pytest.fixture
+def app(base_app: Flask, test_config, blueprint, mocker: MockerFixture):
+    mocker.patch.object(server.ext, "load_models")
+    base_app.config["RUNTIME_ROLE"] = "TEST"
+    base_app.config["RUNTIME_CONFIG"] = test_config
+    JAIROCloudGroupsManager(base_app)
     with base_app.app_context():
         yield base_app
 
@@ -250,15 +206,15 @@ def role_affils():
 
 
 @pytest.fixture
-def user_affils(test_config, role_affils):
+def user_affils(test_config: RuntimeConfig, role_affils):
     patterns = test_config.GROUPS.id_patterns
     gid = f"{patterns.user_defined.format(repository_id='test_repo_ac_jp', user_defined_id='test')}"
     groups = [_Group(group_id=gid, repository_id="test_repo_ac_jp", user_defined_id="test")]
-    return {role: Affiliations(roles=[role_affils[role]], groups=groups) for role in USER_ROLES}
+    return {role: Affiliations([role_affils[role]], groups) for role in USER_ROLES}
 
 
 @pytest.fixture
-def login_users(test_config):
+def login_users(test_config: RuntimeConfig):
     patterns = test_config.GROUPS.id_patterns
     groups = [
         f"{patterns.user_defined.format(repository_id='test_repo_ac_jp', user_defined_id='test')}",
@@ -277,7 +233,7 @@ def login_users(test_config):
 
 
 @pytest.fixture
-def user_details(test_config):
+def user_details(test_config: RuntimeConfig):
     repository_id = "test_repo_ac_jp"
     patterns = test_config.GROUPS.id_patterns
     groups = [
@@ -303,7 +259,7 @@ def user_details(test_config):
 
 
 @pytest.fixture
-def map_users(test_config):
+def map_users(test_config: RuntimeConfig):
     patterns = test_config.GROUPS.id_patterns
     repository_id = "test_repo_ac_jp"
     groups = [
@@ -341,9 +297,9 @@ def user_summaries():
 
 
 @pytest.fixture
-def group_details(test_config):
+def group_details(test_config: RuntimeConfig):
     gpattern = test_config.GROUPS.id_patterns.user_defined
-    repository_id = "test_repo_ac_jp"
+    repository_id = "test_1_repo_ac_jp"
     created = datetime.fromisoformat("2026-03-01T03:00:00Z")
     last_modified = datetime.fromisoformat("2026-03-02T03:00:00Z")
     return [
@@ -363,20 +319,19 @@ def group_details(test_config):
 
 
 @pytest.fixture
-def rolegroups(test_config):
+def rolegroup_details(test_config: RuntimeConfig):
     gpatterns = test_config.GROUPS.id_patterns
-    repository_id = "test_repo_ac_jp"
+    repository_id = "test_1_repo_ac_jp"
     created = datetime.fromisoformat("2026-03-01T03:00:00Z")
     last_modified = datetime.fromisoformat("2026-03-02T03:00:00Z")
+    repository = GroupRepository(id=repository_id, service_name="Test Repository")
     return {
         role: GroupDetail(
             id=gpatterns[role].format(repository_id=repository_id),
             display_name=f"Test Role Group {role}",
             description="This is sample role group for test.",
             public=True,
-            repository=GroupRepository(id=repository_id, service_name="Test Repository")
-            if role != USER_ROLES.SYSTEM_ADMIN
-            else None,
+            repository=repository if role != USER_ROLES.SYSTEM_ADMIN else None,
             member_list_visibility="Private",
             type="role",
             created=created,
@@ -387,27 +342,51 @@ def rolegroups(test_config):
 
 
 @pytest.fixture
-def map_groups(test_config, map_users):
+def map_groups(test_config: RuntimeConfig, map_users):
     rpattern = test_config.REPOSITORIES.id_patterns.sp_connector
     gpattern = test_config.GROUPS.id_patterns.user_defined
-    repository_id = "test_repo_ac_jp"
+    repository_id = "test_1_repo_ac_jp"
     created = datetime.fromisoformat("2026-03-01T03:00:00Z")
     last_modified = datetime.fromisoformat("2026-03-02T03:00:00Z")
+    admin_uri = f"{test_config.MAP_CORE.base_url}/users/{map_users[USER_ROLES.SYSTEM_ADMIN].id}"
+    service_uri = f"{test_config.MAP_CORE.base_url}/services/{rpattern.format(repository_id=repository_id)}"
     return [
         MapGroup(
             id=gpattern.format(repository_id=repository_id, user_defined_id=f"test{i}"),
             display_name=f"Test Group {i}",
             description="This is sample group for test.",
             meta=GroupMeta(created=created, last_modified=last_modified),
-            administrators=[GroupAdministrator(value=map_users[USER_ROLES.SYSTEM_ADMIN].id)],
-            services=[GroupService(value=rpattern.format(repository_id=repository_id))],
+            administrators=[GroupAdministrator(value=admin_uri)],
+            services=[GroupService(value=service_uri)],
         )
         for i in range(1, 6)
     ]
 
 
 @pytest.fixture
-def group_summaries(test_config):
+def map_rolegroups(test_config: RuntimeConfig, map_users):
+    rpattern = test_config.REPOSITORIES.id_patterns.sp_connector
+    gpatterns = test_config.GROUPS.id_patterns
+    repository_id = "test_repo_ac_jp"
+    created = datetime.fromisoformat("2026-03-01T03:00:00Z")
+    last_modified = datetime.fromisoformat("2026-03-02T03:00:00Z")
+    admin_uri = f"{test_config.MAP_CORE.base_url}/users/{map_users[USER_ROLES.SYSTEM_ADMIN].id}"
+    service_uri = f"{test_config.MAP_CORE.base_url}/services/{rpattern.format(repository_id=repository_id)}"
+    return {
+        role: MapGroup(
+            id=gpatterns[role].format(repository_id=repository_id),
+            display_name=f"Test Role Group {role}",
+            description="This is sample role group for test.",
+            meta=GroupMeta(created=created, last_modified=last_modified),
+            administrators=[GroupAdministrator(value=admin_uri)],
+            services=[GroupService(value=service_uri)] if role != USER_ROLES.SYSTEM_ADMIN else [],
+        )
+        for role in USER_ROLES
+    }
+
+
+@pytest.fixture
+def group_summaries(test_config: RuntimeConfig):
     gpattern = test_config.GROUPS.id_patterns.user_defined
     repository_id = "test_repo_ac_jp"
     return [
@@ -422,33 +401,16 @@ def group_summaries(test_config):
 
 
 @pytest.fixture
-def gen_summaries():
-    def _data(num: int) -> SearchResult[RepositorySummary]:
-        resources = [
-            RepositorySummary(
-                id=f"repo_{i}",
-                service_name=f"Repository {i}",
-                service_url=HttpUrl(f"https://repo{i}.example.jp"),
-                service_id=f"jc_repo_{i}_sp",
-            )
-            for i in range(1, num + 1)
-        ]
-        return SearchResult(resources=resources, total=num, page_size=20, offset=1)
-
-    return _data
-
-
-@pytest.fixture
-def repository_details(test_config):
+def repository_details(test_config: RuntimeConfig):
     rpattern = test_config.REPOSITORIES.id_patterns.sp_connector
     return [
         RepositoryDetail(
             id=f"test_{i}_repo_ac_jp",
             service_name=f"Test Repository {i}",
-            service_url=HttpUrl(f"https://test-{i}.repo_ac_jp"),
+            service_url=HttpUrl(f"https://test-{i}.repo.ac.jp"),
             service_id=rpattern.format(repository_id=f"test_{i}_repo_ac_jp"),
             active=True,
-            entity_ids=[f"https://test-{i}.repo_ac_jp/shibboleth-sp"],
+            entity_ids=[f"https://test-{i}.repo.ac.jp/shibboleth-sp"],
             created=datetime.fromisoformat(f"2026-03-{i:02d}T03:00:00Z"),
         )
         for i in range(1, 11)
@@ -456,13 +418,35 @@ def repository_details(test_config):
 
 
 @pytest.fixture
-def repository_summaries():
+def map_services(test_config: RuntimeConfig, map_users):
+    rpattern = test_config.REPOSITORIES.id_patterns.sp_connector
+    created = datetime.fromisoformat("2026-03-01T03:00:00Z")
+    last_modified = datetime.fromisoformat("2026-03-02T03:00:00Z")
+    admin_id = f"{test_config.MAP_CORE.base_url}/users/{map_users[USER_ROLES.SYSTEM_ADMIN].id}"
+    return [
+        MapService(
+            id=rpattern.format(repository_id=f"test_{i}_repo_ac_jp"),
+            service_name=f"Test Repository {i}",
+            service_url=HttpUrl(f"https://test-{i}.repo.ac.jp"),
+            suspended=False,
+            meta=ServiceMeta(created=created, last_modified=last_modified),
+            entity_ids=[ServiceEntityID(value=f"https://test-{i}.repo.ac.jp/shibboleth-sp")],
+            administrators=[ServiceAdmin(value=admin_id)],
+        )
+        for i in range(1, 11)
+    ]
+
+
+@pytest.fixture
+def repository_summaries(test_config: RuntimeConfig):
+    rpattern = test_config.REPOSITORIES.id_patterns.sp_connector
     return [
         RepositorySummary(
             id=f"test_{i}_repo_ac_jp",
             service_name=f"Test Repository {i}",
-            service_url=HttpUrl(f"https://test-{i}.repo_ac_jp"),
-            service_id=f"jc_test_{i}_repo_ac_jp",
+            service_url=HttpUrl(f"https://test-{i}.repo.ac.jp"),
+            service_id=rpattern.format(repository_id=f"test_{i}_repo_ac_jp"),
+            entity_ids=[f"https://test-{i}.repo.ac.jp/shibboleth-sp"],
         )
         for i in range(1, 11)
     ]
@@ -497,37 +481,16 @@ def signal_send(mocker: MockerFixture):
 
 
 @pytest.fixture
-def group_caches():
+def repository_caches():
     return [
         RepositoryCache(
             id=f"test_{i}_repo_ac_jp",
             service_name=f"Test Repository {i}",
-            service_url=HttpUrl(f"https://test-{i}.repo_ac_jp"),
+            service_url=HttpUrl(f"https://test-{i}.repo.ac.jp"),
             updated=datetime.fromisoformat(f"2026-03-{i:02d}T03:00:00Z"),
         )
         for i in range(1, 11)
     ]
-
-
-@pytest.fixture
-def cached_data():
-    def _data(
-        repositories: list[RepositorySummary],
-        now: datetime | None = None,
-        *,
-        every_other: bool = False,
-    ) -> list[RepositoryCache]:
-        return [
-            RepositoryCache(
-                id=repositories[i].id,
-                service_name=t.cast("str", repositories[i].service_name),
-                service_url=repositories[i].service_url,
-                updated=now or datetime.now(UTC) if not every_other or i % 2 == 0 else None,
-            )
-            for i in range(len(repositories))
-        ]
-
-    return _data
 
 
 class MockSignal[T](t.TypedDict):

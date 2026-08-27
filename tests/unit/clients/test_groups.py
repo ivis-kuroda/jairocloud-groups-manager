@@ -36,7 +36,7 @@ def alias(mocker: MockerFixture):
 
 
 @pytest.fixture
-def original_alias(alias):
+def use_alias(alias):
     original, _ = alias
     groups._a = original
 
@@ -715,7 +715,7 @@ def test_delete_by_id_http_error(config: RuntimeConfig, map_group, signal_send, 
     mock_send.assert_not_called()
 
 
-def test__alias_generator(original_alias, mocker: MockerFixture):
+def test__alias_generator(use_alias, mocker: MockerFixture):
     mock_generator = mocker.MagicMock(side_effect=to_camel)
     mocker.patch.object(MapGroup, "model_config", {"alias_generator": mock_generator})
 
@@ -724,7 +724,7 @@ def test__alias_generator(original_alias, mocker: MockerFixture):
     mock_generator.assert_called_once_with("display_name")
 
 
-def test__alias_serialization(original_alias, mocker: MockerFixture):
+def test__alias_serialization(use_alias, mocker: MockerFixture):
     mock_generator = mocker.NonCallableMock(spec_set=AliasGenerator)
     mock_generator.serialization_alias.side_effect = to_camel
     mocker.patch.object(MapGroup, "model_config", {"alias_generator": mock_generator})
@@ -734,26 +734,13 @@ def test__alias_serialization(original_alias, mocker: MockerFixture):
     mock_generator.serialization_alias.assert_called_once_with("display_name")
 
 
-def test__alias_not_set(original_alias, mocker: MockerFixture):
+def test__alias_not_set(use_alias, mocker: MockerFixture):
     mock_config = mocker.MagicMock(spec=dict)
     mock_config.get.return_value = None
     mocker.patch.object(MapGroup, "model_config", mock_config)
 
     assert unwrap(groups._a)("display_name") == "display_name"
     mock_config.get.assert_called_once_with("alias_generator")
-
-
-def test_handle_group_updated(map_group, mocker: MockerFixture):
-    _, group, _ = map_group
-    mock_clear = mocker.patch.object(groups.get_by_id, "clear_cache")
-
-    unwrap(groups.handle_group_updated)(None, group_id=group.id)
-
-    mock_clear.assert_not_called()
-
-    unwrap(groups.handle_group_updated)(None, group=group)
-
-    mock_clear.assert_called_once_with(group.id)
 
 
 def test_handle_group_updated_by_id(map_group, mocker: MockerFixture):

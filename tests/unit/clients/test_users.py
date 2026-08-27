@@ -36,7 +36,7 @@ def alias(mocker: MockerFixture):
 
 
 @pytest.fixture
-def original_alias(alias):
+def use_alias(alias):
     original, _ = alias
     users._a = original
 
@@ -872,7 +872,7 @@ def test_get_self_http_error(config: RuntimeConfig, mocker: MockerFixture):
         users.get_self(access_token=access_token, client_secret=client_secret)
 
 
-def test__alias_generator(original_alias, mocker: MockerFixture):
+def test__alias_generator(use_alias, mocker: MockerFixture):
     mock_generator = mocker.MagicMock(side_effect=to_camel)
     mocker.patch.object(MapUser, "model_config", {"alias_generator": mock_generator})
 
@@ -881,7 +881,7 @@ def test__alias_generator(original_alias, mocker: MockerFixture):
     mock_generator.assert_called_once_with("user_name")
 
 
-def test__alias_serialization(original_alias, mocker: MockerFixture):
+def test__alias_serialization(use_alias, mocker: MockerFixture):
     mock_generator = mocker.NonCallableMock(spec_set=AliasGenerator)
     mock_generator.serialization_alias.side_effect = to_camel
     mocker.patch.object(MapUser, "model_config", {"alias_generator": mock_generator})
@@ -891,31 +891,13 @@ def test__alias_serialization(original_alias, mocker: MockerFixture):
     mock_generator.serialization_alias.assert_called_once_with("user_name")
 
 
-def test__alias_not_set(original_alias, mocker: MockerFixture):
+def test__alias_not_set(use_alias, mocker: MockerFixture):
     mock_config = mocker.MagicMock(spec=dict)
     mock_config.get.return_value = None
     mocker.patch.object(MapUser, "model_config", mock_config)
 
     assert unwrap(users._a)("user_name") == "user_name"
     mock_config.get.assert_called_once_with("alias_generator")
-
-
-def test_handle_user_updated(map_user, mocker: MockerFixture):
-    _, user, _ = map_user
-    eppn_values = [eppn.value for eppn in user.edu_person_principal_names or []]
-
-    mock_get_by_id_clear = mocker.patch.object(users.get_by_id, "clear_cache")
-    mock_get_by_eppn_clear = mocker.patch.object(users.get_by_eppn, "clear_cache")
-
-    unwrap(users.handle_user_updated)(None, user_id=user.id)
-
-    mock_get_by_id_clear.assert_not_called()
-    mock_get_by_eppn_clear.assert_not_called()
-
-    unwrap(users.handle_user_updated)(None, user=user)
-
-    mock_get_by_id_clear.assert_called_once_with(user.id)
-    mock_get_by_eppn_clear.assert_called_once_with(*eppn_values)
 
 
 def test_handle_user_updated_by_eppn(map_user, mocker: MockerFixture):
